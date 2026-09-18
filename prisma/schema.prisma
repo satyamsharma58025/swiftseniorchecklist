@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Cadence {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ChecklistStatus {
+  PENDING
+  DONE
+  NOT_DONE
+}
+
+enum ColorStatus {
+  GREEN
+  YELLOW
+  ORANGE
+  RED
+  GREY
+}
+
+enum DeliveryStatus {
+  SENT
+  DELIVERED
+  FAILED
+  PENDING
+}
+
+enum QueueSource {
+  AUTO
+  MANUAL
+}
+
+enum Role {
+  MANAGER
+  SENIOR
+  EMPLOYEE
+}
+
+enum NotificationChannel {
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED_NO_PHONE
+  SKIPPED_OUTSIDE_WINDOW
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  role         Role
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Employee {
+  id                 String     @id @default(cuid())
+  name               String
+  phone              String?
+  designation        String
+  department         String
+  active             Boolean    @default(true)
+  supervisorId       String?
+  supervisor         Employee?  @relation("Supervises", fields: [supervisorId], references: [id])
+  reports            Employee[] @relation("Supervises")
+  plantHeadId        String?
+  plantHead          Employee?  @relation("PlantHeadOf", fields: [plantHeadId], references: [id])
+  managedByPlantHead Employee[] @relation("PlantHeadOf")
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  taskMasters        TaskMaster[]
+  queueItems         AssignmentQueueItem[]
+}
+
+model TaskMaster {
+  id                  String    @id @default(cuid())
+  taskCode            String    @unique
+  employeeId          String
+  employee            Employee  @relation(fields: [employeeId], references: [id])
+  taskDescription     String
+  cadence             Cadence
+  scheduleDetail      String?
+  active              Boolean   @default(true)
+  startDate           DateTime? @db.Date
+  endDate             DateTime? @db.Date
+  escalationThreshold Int       @default(2)
+  category            String?
+  notes               String?
+  priority            Priority  @default(MEDIUM)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  items               DailyChecklistItem[]
+  queueItems          AssignmentQueueItem[]
+  pauses              TaskPause[]
+  reassignments       Reassignment[]
+
+  @@index([active])
+}
+
+model AssignmentQueueItem {
+  id              String      @id @default(cuid())
+  queueCode       String      @unique
+  date            DateTime    @db.Date
+  employeeId      String
+  employee        Employee    @relation(fields: [employeeId], references: [id])
+  taskDescription String
+  source          QueueSource @default(AUTO)
+  taskMasterId    String?
+  taskMaster      TaskMaster? @relation(fields: [taskMasterId], references: [id])
+  includeToday    Boolean     @default(true)
+  priority        Priority
+  locked          Boolean     @default(false)
+  lockedAt        DateTime?
+  createdAt       DateTime    @default(now())
+
+  @@unique([taskMasterId, date])
+  @@index([date, locked])
+}
+
+model DailyChecklistItem {
+  id                        String          @id @default(cuid())
+  checklistCode             String          @unique
+  date                      DateTime        @db.Date
+  taskMasterId              String
+  taskMaster                TaskMaster      @relation(fields: [taskMasterId], references: [id])
+
+  employeeName              String
+  employeePhone             String?
+  taskDescription           String
+  supervisorName            String
+  supervisorPhone           String?
+  escalationThreshold       Int
+  priority                  Priority
+
+  status                    ChecklistStatus @default(PENDING)
+  seniorRemarks             String?
+  employeeResponse          String?
+  employeeRespondedAt       DateTime?
+  reminderCount             Int             @default(0)
+  lastRemindedAt            DateTime?
+  escalated                 Boolean         @default(false)
+  escalatedAt               DateTime?
+  escalationTier            Int?
+  colorStatus               ColorStatus     @default(YELLOW)
+  deliveryStatus            DeliveryStatus  @default(PENDING)
+  needsManualReconciliation Boolean         @default(false)
+  formSubmissionTimestamp   DateTime?
+
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+
+  escalationLogs            EscalationLog[]
+  notifications             NotificationLog[]
+  activity                  ActivityLog[]
+
+  @@unique([taskMasterId, date])
+  @@index([date])
+  @@index([status])
+  @@index([escalated])
+}
+
+model EscalationLog {
+  id                        String             @id @default(cuid())
+  checklistItemId           String
+  checklistItem             DailyChecklistItem @relation(fields: [checklistItemId], references: [id])
+  escalationTier            Int                @default(1)
+  escalatedAt               DateTime           @default(now())
+  reminderCountAtEscalation Int
+  supervisorNotified        String
+  resolved                  Boolean            @default(false)
+  resolvedAt                DateTime?
+}
+
+model NotificationLog {
+  id                 String              @id @default(cuid())
+  checklistItemId    String
+  checklistItem      DailyChecklistItem  @relation(fields: [checklistItemId], references: [id])
+  channel            NotificationChannel @default(WHATSAPP)
+  templateName       String
+  recipientPhone     String
+  status             NotificationStatus
+  providerMessageId  String?
+  errorMessage       String?
+  attemptedAt        DateTime            @default(now())
+}
+
+model ActivityLog {
+  id              String             @id @default(cuid())
+  checklistItemId String
+  checklistItem   DailyChecklistItem @relation(fields: [checklistItemId], references: [id])
+  actorUserId     String
+  fromStatus      ChecklistStatus?
+  toStatus        ChecklistStatus?
+  note            String?
+  createdAt       DateTime           @default(now())
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  name      String
+  appliesTo String   @default("All")
+  notes     String?
+}
+
+model TaskPause {
+  id             String     @id @default(cuid())
+  taskMasterId   String
+  taskMaster     TaskMaster @relation(fields: [taskMasterId], references: [id])
+  startDate      DateTime   @db.Date
+  endDate        DateTime   @db.Date
+  reason         String
+  pausedByUserId String
+  createdAt      DateTime   @default(now())
+}
+
+model Reassignment {
+  id                 String     @id @default(cuid())
+  taskMasterId       String
+  taskMaster         TaskMaster @relation(fields: [taskMasterId], references: [id])
+  previousEmployeeId String
+  newEmployeeId      String
+  effectiveDate      DateTime   @db.Date
+  reason             String
+  reassignedByUserId String
+  createdAt          DateTime   @default(now())
+}
+
+model Settings {
+  id                            Int      @id @default(1)
+  reminderIntervalHoursDefault  Int      @default(4)
+  reminderIntervalHoursHigh     Int      @default(2)
+  maxRemindersPerDayHigh        Int      @default(4)
+  escalationThresholdDefault    Int      @default(2)
+  escalationTier2Enabled        Boolean  @default(false)
+  assignmentQueueLockTimeIst    String   @default("08:30")
+  dailyFormSendTimeIst          String   @default("09:00")
+  eodCutoffTimeIst              String   @default("19:00")
+  timezone                      String   @default("Asia/Kolkata")
+  updatedAt                     DateTime @updatedAt
+}
+
+model CronRunLog {
+  id           String    @id @default(cuid())
+  jobName      String
+  runDate      DateTime  @db.Date
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  itemsTouched Int?
+  status       String
+  errorMessage String?
+
+  @@unique([jobName, runDate])
+}

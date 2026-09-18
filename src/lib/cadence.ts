@@ -19,6 +19,36 @@ export function queueCode(date: Date | string, index: number): string {
   return `Q-${key}-${String(index).padStart(4, "0")}`;
 }
 
+export async function reserveNextQueueCode(
+  tx: {
+    $queryRaw: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+    queueCodeSequence: {
+      upsert: (args: { where: { date: Date }; update: Record<string, unknown>; create: { date: Date; nextValue: number } }) => Promise<{ id: string; nextValue: number }>;
+      update: (args: { where: { id: string }; data: { nextValue: number } }) => Promise<unknown>;
+    };
+  },
+  date: Date | string,
+): Promise<string> {
+  const normalizedDate = typeof date === "string" ? new Date(`${date}T00:00:00.000Z`) : new Date(date);
+  const dateKeyValue = dateKey(normalizedDate);
+
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${dateKeyValue}`}))`;
+
+  const sequence = await tx.queueCodeSequence.upsert({
+    where: { date: normalizedDate },
+    update: {},
+    create: { date: normalizedDate, nextValue: 1 },
+  });
+
+  const nextValue = sequence.nextValue;
+  await tx.queueCodeSequence.update({
+    where: { id: sequence.id },
+    data: { nextValue: nextValue + 1 },
+  });
+
+  return queueCode(normalizedDate, nextValue);
+}
+
 function isHoliday(date: string): boolean {
   const holidaySheet: string[] = ["2026-10-02"];
   return holidaySheet.includes(date);

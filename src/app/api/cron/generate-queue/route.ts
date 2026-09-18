@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { cadenceMatches, queueCode } from "@/lib/cadence";
+import { cadenceMatches, reserveNextQueueCode } from "@/lib/cadence";
 import { prisma } from "@/lib/prisma";
 import { normalizeCronDate, runCronJob } from "@/lib/cron";
 
@@ -48,23 +48,7 @@ export async function GET(request: Request) {
           continue;
         }
 
-        const nextQueueCode = await prisma.$transaction(async (tx) => {
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${runDate.toISOString().slice(0, 10)}`}))`;
-
-          const sequence = await tx.queueCodeSequence.upsert({
-            where: { date: runDate },
-            update: {},
-            create: { date: runDate, nextValue: 1 },
-          });
-
-          const nextValue = sequence.nextValue;
-          await tx.queueCodeSequence.update({
-            where: { id: sequence.id },
-            data: { nextValue: nextValue + 1 },
-          });
-
-          return queueCode(runDate, nextValue);
-        });
+        const nextQueueCode = await prisma.$transaction(async (tx) => reserveNextQueueCode(tx, runDate));
 
         await prisma.assignmentQueueItem.create({
           data: {

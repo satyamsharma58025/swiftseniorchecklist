@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { normalizePhone } from "@/lib/business-logic";
 import { prisma } from "@/lib/prisma";
+import { reserveNextQueueCode } from "@/lib/cadence";
 
 export async function GET(
   _request: Request,
@@ -58,9 +59,11 @@ export async function POST(
   }
 
   const targetDate = new Date(`${date}T00:00:00.000Z`);
+  const nextQueueCode = await prisma.$transaction(async (tx) => reserveNextQueueCode(tx, targetDate));
+
   const item = await prisma.assignmentQueueItem.create({
     data: {
-      queueCode: `Q-${date.replace(/-/g, "")}-${Date.now().toString().slice(-4)}`,
+      queueCode: nextQueueCode,
       date: targetDate,
       employeeId,
       taskDescription,

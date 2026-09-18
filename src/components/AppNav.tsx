@@ -1,9 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { auth, signOut } from "@/auth";
 import logo from "@/lib/logo.png";
 
 const today = new Date().toISOString().slice(0, 10);
+
+async function handleSignOut() {
+  "use server";
+  await signOut({ redirectTo: "/login" });
+}
 
 const navGroups = [
   {
@@ -30,7 +36,9 @@ const navGroups = [
   },
 ];
 
-export function AppNav() {
+export async function AppNav() {
+  const session = await auth();
+
   return (
     <nav className="sticky top-0 z-20 border-b border-brand-navy/10 bg-brand-cream/90 backdrop-blur-sm">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-3 py-3 md:flex-row md:items-center md:justify-between md:px-6">
@@ -44,7 +52,7 @@ export function AppNav() {
           </div>
         </Link>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {navGroups.map((group) => (
             <div key={group.label} className="flex items-center gap-1 rounded-full border border-brand-navy/10 bg-white/70 p-1">
               {group.items.map((item) => (
@@ -58,6 +66,24 @@ export function AppNav() {
               ))}
             </div>
           ))}
+
+          {session ? (
+            <form action={handleSignOut}>
+              <button
+                type="submit"
+                className="rounded-full border border-brand-navy/10 bg-brand-navy px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-brand-navy/90"
+              >
+                Sign out
+              </button>
+            </form>
+          ) : (
+            <Link
+              href="/login"
+              className="rounded-full border border-brand-navy/10 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-brand-navy transition hover:bg-brand-cream"
+            >
+              Login
+            </Link>
+          )}
         </div>
       </div>
     </nav>

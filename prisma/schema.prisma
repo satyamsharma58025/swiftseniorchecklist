@@ -65,8 +65,32 @@ enum NotificationStatus {
   SKIPPED_OUTSIDE_WINDOW
 }
 
+model Organization {
+  id        String   @id @default(cuid())
+  name      String   @default("Default Organization")
+  createdAt DateTime @default(now())
+
+  users         User[]
+  employees     Employee[]
+  taskMasters   TaskMaster[]
+  queueSequences QueueCodeSequence[]
+  queueItems    AssignmentQueueItem[]
+  checklistItems DailyChecklistItem[]
+  escalations   EscalationLog[]
+  notifications NotificationLog[]
+  activityLogs  ActivityLog[]
+  webhookEvents WebhookEvent[]
+  cronRuns      CronRunLog[]
+  holidays      Holiday[]
+  taskPauses    TaskPause[]
+  reassignments Reassignment[]
+  settings      Settings[]
+}
+
 model User {
   id           String   @id @default(cuid())
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
   name         String
   email        String   @unique
   phone        String?
@@ -78,6 +102,8 @@ model User {
 
 model Employee {
   id                 String     @id @default(cuid())
+  organizationId     String?
+  organization       Organization? @relation(fields: [organizationId], references: [id])
   name               String
   phone              String?
   designation        String
@@ -98,6 +124,8 @@ model Employee {
 
 model TaskMaster {
   id                  String    @id @default(cuid())
+  organizationId      String?
+  organization        Organization? @relation(fields: [organizationId], references: [id])
   taskCode            String    @unique
   employeeId          String
   employee            Employee  @relation(fields: [employeeId], references: [id])
@@ -124,6 +152,8 @@ model TaskMaster {
 
 model QueueCodeSequence {
   id        String    @id @default(cuid())
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
   date      DateTime  @db.Date @unique
   nextValue Int       @default(1)
   createdAt DateTime  @default(now())
@@ -131,6 +161,8 @@ model QueueCodeSequence {
 
 model AssignmentQueueItem {
   id              String      @id @default(cuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
   queueCode       String      @unique
   date            DateTime    @db.Date
   employeeId      String
@@ -151,6 +183,8 @@ model AssignmentQueueItem {
 
 model DailyChecklistItem {
   id                        String          @id @default(cuid())
+  organizationId             String?
+  organization               Organization?    @relation(fields: [organizationId], references: [id])
   checklistCode             String          @unique
   date                      DateTime        @db.Date
   taskMasterId              String
@@ -193,6 +227,8 @@ model DailyChecklistItem {
 
 model EscalationLog {
   id                        String             @id @default(cuid())
+  organizationId             String?
+  organization               Organization?      @relation(fields: [organizationId], references: [id])
   checklistItemId           String
   checklistItem             DailyChecklistItem @relation(fields: [checklistItemId], references: [id])
   escalationTier            Int                @default(1)
@@ -205,6 +241,8 @@ model EscalationLog {
 
 model NotificationLog {
   id                 String              @id @default(cuid())
+  organizationId     String?
+  organization       Organization?       @relation(fields: [organizationId], references: [id])
   checklistItemId    String?
   checklistItem      DailyChecklistItem? @relation(fields: [checklistItemId], references: [id])
   channel            NotificationChannel @default(WHATSAPP)
@@ -218,6 +256,8 @@ model NotificationLog {
 
 model ActivityLog {
   id              String             @id @default(cuid())
+  organizationId   String?
+  organization     Organization?      @relation(fields: [organizationId], references: [id])
   checklistItemId String
   checklistItem   DailyChecklistItem @relation(fields: [checklistItemId], references: [id])
   actorUserId     String
@@ -229,6 +269,8 @@ model ActivityLog {
 
 model WebhookEvent {
   id           String   @id @default(cuid())
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
   eventId      String   @unique
   source       String
   kind         String
@@ -238,8 +280,10 @@ model WebhookEvent {
 }
 
 model Holiday {
-  id        String   @id @default(cuid())
-  date      DateTime @db.Date
+  id            String   @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  date          DateTime @db.Date
   name      String
   appliesTo String   @default("All")
   notes     String?
@@ -247,6 +291,8 @@ model Holiday {
 
 model TaskPause {
   id             String     @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
   taskMasterId   String
   taskMaster     TaskMaster @relation(fields: [taskMasterId], references: [id])
   startDate      DateTime   @db.Date
@@ -258,6 +304,8 @@ model TaskPause {
 
 model Reassignment {
   id                 String     @id @default(cuid())
+  organizationId     String?
+  organization       Organization? @relation(fields: [organizationId], references: [id])
   taskMasterId       String
   taskMaster         TaskMaster @relation(fields: [taskMasterId], references: [id])
   previousEmployeeId String
@@ -270,6 +318,8 @@ model Reassignment {
 
 model Settings {
   id                            Int      @id @default(1)
+  organizationId                String?
+  organization                  Organization? @relation(fields: [organizationId], references: [id])
   reminderIntervalHoursDefault  Int      @default(4)
   reminderIntervalHoursHigh     Int      @default(2)
   maxRemindersPerDayHigh        Int      @default(4)
@@ -286,6 +336,8 @@ model Settings {
 
 model CronRunLog {
   id           String    @id @default(cuid())
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
   jobName      String
   runDate      DateTime  @db.Date
   startedAt    DateTime  @default(now())

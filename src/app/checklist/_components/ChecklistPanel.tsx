@@ -76,7 +76,7 @@ export function ChecklistPanel({
 
   if (!localItems.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+      <div className="rounded-2xl border border-dashed border-brand-navy/30 bg-brand-cream p-8 text-center text-brand-navy/80">
         No tasks assigned to {employeeName} on this date.
       </div>
     );
@@ -95,17 +95,17 @@ export function ChecklistPanel({
         };
 
         return (
-          <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div key={item.id} className="rounded-2xl border border-brand-navy/10 bg-brand-cream p-4 shadow-sm ring-1 ring-brand-navy/5">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="flex items-start gap-3">
                 <span className={`mt-1 h-3 w-3 rounded-full ${colorClasses[color] ?? "bg-slate-400"}`} />
                 <div>
-                  <p className="font-semibold text-slate-900 dark:text-slate-100">{item.taskDescription}</p>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Priority: {item.priority}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Status: {item.status}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Reminders: {item.reminderCount}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">{item.escalated ? "Escalated" : "Active"}</span>
+                  <p className="font-semibold text-brand-navy">{item.taskDescription}</p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-brand-navy/70">
+                    <span className="rounded-full border border-brand-navy/10 bg-white/70 px-2 py-1">Priority: {item.priority}</span>
+                    <span className="rounded-full border border-brand-navy/10 bg-white/70 px-2 py-1">Status: {item.status}</span>
+                    <span className="rounded-full border border-brand-navy/10 bg-white/70 px-2 py-1">Reminders: {item.reminderCount}</span>
+                    <span className="rounded-full border border-brand-navy/10 bg-white/70 px-2 py-1">{item.escalated ? "Escalated" : "Active"}</span>
                   </div>
 
                   {(item.seniorRemarks || item.employeeResponse) && (

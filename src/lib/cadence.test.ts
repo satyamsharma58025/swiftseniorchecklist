@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { colorFor, formatSummaryEntries, reserveNextQueueCode } from "@/lib/cadence";
+import { cadenceMatches, colorFor, formatSummaryEntries, reserveNextQueueCode, validateScheduleDetail } from "@/lib/cadence";
 
 describe("colorFor", () => {
   it("marks EOD cutoff items as red even when still pending", () => {
@@ -52,5 +52,13 @@ describe("reserveNextQueueCode", () => {
       data: { nextValue: 4 },
     });
     expect(result).toBe("Q-20260918-0003");
+  });
+});
+
+describe("yearly biannual cadence", () => {
+  it("accepts and matches DD-Mon / DD-Mon values", () => {
+    expect(validateScheduleDetail("YEARLY", "15-Aug / 15-Feb")).toMatchObject({ valid: true });
+    expect(cadenceMatches({ cadence: "YEARLY", scheduleDetail: "15-Aug / 15-Feb" }, new Date("2026-08-15T00:00:00.000Z"))).toMatchObject({ matches: true });
+    expect(cadenceMatches({ cadence: "YEARLY", scheduleDetail: "15-Aug / 15-Feb" }, new Date("2026-02-15T00:00:00.000Z"))).toMatchObject({ matches: true });
   });
 });

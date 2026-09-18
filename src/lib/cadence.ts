@@ -54,6 +54,30 @@ function isHoliday(date: string): boolean {
   return holidaySheet.includes(date);
 }
 
+function parseYearlyScheduleDetail(value: string): Array<{ day: number; month: number }> | null {
+  const parts = value.split("/").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return null;
+
+  const matches: Array<{ day: number; month: number }> = [];
+
+  for (const part of parts) {
+    const matched = part.match(/^(\d{1,2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/i);
+    if (!matched) {
+      return null;
+    }
+
+    const day = Number.parseInt(matched[1], 10);
+    const month = DateTime.fromFormat(matched[2], "MMM", { zone: "Asia/Kolkata" }).month;
+    if (!Number.isInteger(day) || day < 1 || day > 31 || !month) {
+      return null;
+    }
+
+    matches.push({ day, month });
+  }
+
+  return matches;
+}
+
 export function validateScheduleDetail(cadence: Cadence, scheduleDetail?: string | null): { valid: boolean; message?: string } {
   const value = String(scheduleDetail ?? "").trim();
 
@@ -77,8 +101,8 @@ export function validateScheduleDetail(cadence: Cadence, scheduleDetail?: string
       return { valid: true };
     }
     case "YEARLY": {
-      if (!/^\d{1,2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/i.test(value)) {
-        return { valid: false, message: "Yearly cadence requires a value like 15-Aug or 1-Jan." };
+      if (!parseYearlyScheduleDetail(value)) {
+        return { valid: false, message: "Yearly cadence requires a value like 15-Aug or 15-Aug / 15-Feb." };
       }
       return { valid: true };
     }
@@ -131,18 +155,18 @@ export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string
       if (!value) {
         return { matches: false, warning: "Missing yearly schedule detail" };
       }
-      const matches = value.match(/^(\d{1,2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/i);
-      if (!matches) {
+
+      const parts = parseYearlyScheduleDetail(value);
+      if (!parts || !parts.length) {
         return { matches: false, warning: `Invalid yearly schedule detail: ${value}` };
       }
-      const requestedDay = Number.parseInt(matches[1], 10);
-      const requestedMonth = DateTime.fromFormat(matches[2], "MMM", { zone: "Asia/Kolkata" }).month;
-      if (!requestedMonth) {
-        return { matches: false, warning: `Invalid month in yearly schedule detail: ${value}` };
-      }
-      const monthInfo = DateTime.fromObject({ year: date.year, month: requestedMonth }, { zone: "Asia/Kolkata" });
-      const lastDay = monthInfo.daysInMonth ?? 31;
-      const result = date.month === requestedMonth && (requestedDay === day || (requestedDay > lastDay && day === lastDay));
+
+      const result = parts.some(({ day: requestedDay, month: requestedMonth }) => {
+        const monthInfo = DateTime.fromObject({ year: date.year, month: requestedMonth }, { zone: "Asia/Kolkata" });
+        const lastDay = monthInfo.daysInMonth ?? 31;
+        return date.month === requestedMonth && (requestedDay === day || (requestedDay > lastDay && day === lastDay));
+      });
+
       return { matches: result, warning: result ? undefined : `Yearly schedule does not match today` };
     }
     default:

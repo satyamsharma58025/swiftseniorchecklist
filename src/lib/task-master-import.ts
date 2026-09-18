@@ -38,7 +38,7 @@ export const WEEKDAY_ALIASES = {
 const TASK_MASTER_SCHEMA = z.object({
   taskCode: z.string().min(1),
   employeeName: z.string().min(1),
-  employeePhone: z.string().min(1),
+  employeePhone: z.string().nullable().optional(),
   taskDescription: z.string().min(1),
   cadence: z.enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]),
   scheduleDetail: z.string().nullable(),
@@ -46,7 +46,7 @@ const TASK_MASTER_SCHEMA = z.object({
   startDate: z.string().nullable(),
   endDate: z.string().nullable(),
   supervisorName: z.string().min(1),
-  supervisorPhone: z.string().min(1),
+  supervisorPhone: z.string().nullable().optional(),
   escalationThreshold: z.number().int().min(1).default(2),
 });
 
@@ -106,11 +106,27 @@ export function normalizeScheduleDetail(cadence: string, raw: unknown): string |
   }
 
   if (cadence === "YEARLY") {
-    const normalized = value.replace(/\//g, "-");
-    if (/^\d{1,2}-\d{1,2}$/.test(normalized)) {
-      const [day, month] = normalized.split("-").map((segment) => Number.parseInt(segment, 10));
-      if (Number.isInteger(day) && Number.isInteger(month) && day >= 1 && day <= 31 && month >= 1 && month <= 12) {
-        return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}`;
+    const candidates = value.split("/").map((item) => item.trim()).filter(Boolean);
+    const normalizedCandidates = candidates.map((candidate) => candidate.replace(/\s+/g, " ").replace(/-/g, "/"));
+
+    for (const candidate of normalizedCandidates) {
+      const existingPattern = /^\d{1,2}[-/ ]\d{1,2}$/.test(candidate) || /^\d{1,2}[-/ ](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/i.test(candidate);
+      if (existingPattern) {
+        const direct = candidate.replace(/\s+/g, " ").replace(/\//g, "-");
+        const [day, month] = direct.split(/[-/ ]+/).map((segment) => Number.parseInt(segment, 10));
+        if (Number.isInteger(day) && Number.isInteger(month) && day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+          return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}`;
+        }
+
+        const monthText = direct.split(/[-/ ]+/).slice(1).join("-");
+        const monthNumber = DateTime.fromFormat(monthText, "MMM", { zone: "utc" }).month;
+        if (monthNumber) {
+          return `${String(day).padStart(2, "0")}-${String(monthNumber).padStart(2, "0")}`;
+        }
+      }
+
+      if (/^\d{1,2}$/.test(candidate)) {
+        return candidate;
       }
     }
     throw new Error(`yearly schedule detail "${value}" is not a valid DD-MM value`);
@@ -190,6 +206,19 @@ export type ImportRowResult = {
   };
 };
 
+function normalizeOptionalPhone(raw: unknown): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value || /tbd|add phone number/i.test(value)) {
+    return null;
+  }
+
+  try {
+    return normalizePhone(value);
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeTaskMasterRow(raw: Record<string, unknown>, rowNumber: number): ImportRowResult {
   const mapped = Object.fromEntries(
     Object.entries(raw).map(([key, value]) => [normalizeHeader(key), value]),
@@ -214,8 +243,8 @@ export function normalizeTaskMasterRow(raw: Record<string, unknown>, rowNumber: 
   const cadence = normalizeCadence(resolved.cadence ?? "");
   const scheduleDetail = normalizeScheduleDetail(cadence, resolved.scheduleDetail ?? null) ?? null;
   const active = parseBooleanAsYorN(resolved.active ?? false);
-  const employeePhone = normalizePhone(String(resolved.employeePhone ?? ""));
-  const supervisorPhone = normalizePhone(String(resolved.supervisorPhone ?? ""));
+  const employeePhone = normalizeOptionalPhone(resolved.employeePhone ?? null);
+  const supervisorPhone = normalizeOptionalPhone(resolved.supervisorPhone ?? null);
   const startDate = resolved.startDate ? parseDateValue(resolved.startDate) : null;
   const endDate = resolved.endDate ? parseDateValue(resolved.endDate) : null;
 

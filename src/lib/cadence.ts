@@ -24,10 +24,10 @@ function isHoliday(date: string): boolean {
   return holidaySheet.includes(date);
 }
 
-export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string | null }, dateValue: Date | string): boolean {
+export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string | null }, dateValue: Date | string): { matches: boolean; warning?: string } {
   const date = typeof dateValue === "string" ? DateTime.fromISO(dateValue, { zone: "Asia/Kolkata" }) : DateTime.fromJSDate(dateValue, { zone: "Asia/Kolkata" });
   if (!date.isValid) {
-    return false;
+    return { matches: false, warning: "Invalid date" };
   }
 
   const day = date.day;
@@ -36,46 +36,62 @@ export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string
 
   switch (task.cadence) {
     case "DAILY": {
-      if (date.weekday === 7) return false;
-      return !isHoliday(date.toISODate() ?? "");
+      if (date.weekday === 7) {
+        return { matches: false, warning: "Sunday is excluded for daily cadence" };
+      }
+      return { matches: !isHoliday(date.toISODate() ?? "") };
     }
     case "WEEKLY": {
-      return (task.scheduleDetail ?? "").toLowerCase() === dayOfWeek.toLowerCase();
+      const matches = (task.scheduleDetail ?? "").toLowerCase() === dayOfWeek.toLowerCase();
+      return { matches, warning: matches ? undefined : `Not scheduled for ${dayOfWeek}` };
     }
     case "MONTHLY": {
       const requested = Number.parseInt(String(task.scheduleDetail ?? ""), 10);
-      if (!Number.isInteger(requested)) return false;
+      if (!Number.isInteger(requested)) {
+        return { matches: false, warning: `Invalid monthly schedule detail: ${task.scheduleDetail ?? ""}` };
+      }
       const lastDay = date.daysInMonth;
-      return requested === day || (requested > lastDay && day === lastDay);
+      const matches = requested === day || (requested > lastDay && day === lastDay);
+      return { matches, warning: matches ? undefined : `Month schedule does not match day ${day}` };
     }
     case "QUARTERLY": {
       const requested = Number.parseInt(String(task.scheduleDetail ?? ""), 10);
-      if (!Number.isInteger(requested)) return false;
+      if (!Number.isInteger(requested)) {
+        return { matches: false, warning: `Invalid quarterly schedule detail: ${task.scheduleDetail ?? ""}` };
+      }
       const validQuarterMonths = [3, 6, 9, 12];
-      return validQuarterMonths.includes(month) && (requested === day || (requested > date.daysInMonth && day === date.daysInMonth));
+      const matches = validQuarterMonths.includes(month) && (requested === day || (requested > date.daysInMonth && day === date.daysInMonth));
+      return { matches, warning: matches ? undefined : `Quarterly schedule does not match today` };
     }
     case "YEARLY": {
       const value = String(task.scheduleDetail ?? "").trim();
-      if (!value) return false;
+      if (!value) {
+        return { matches: false, warning: "Missing yearly schedule detail" };
+      }
       const matches = value.match(/^(\d{1,2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/i);
       if (!matches) {
-        return false;
+        return { matches: false, warning: `Invalid yearly schedule detail: ${value}` };
       }
       const requestedDay = Number.parseInt(matches[1], 10);
       const requestedMonth = DateTime.fromFormat(matches[2], "MMM", { zone: "Asia/Kolkata" }).month;
       if (!requestedMonth) {
-        return false;
+        return { matches: false, warning: `Invalid month in yearly schedule detail: ${value}` };
       }
       const monthInfo = DateTime.fromObject({ year: date.year, month: requestedMonth }, { zone: "Asia/Kolkata" });
       const lastDay = monthInfo.daysInMonth ?? 31;
-      return date.month === requestedMonth && (requestedDay === day || (requestedDay > lastDay && day === lastDay));
+      const result = date.month === requestedMonth && (requestedDay === day || (requestedDay > lastDay && day === lastDay));
+      return { matches: result, warning: result ? undefined : `Yearly schedule does not match today` };
     }
     default:
-      return false;
+      return { matches: false, warning: `Unsupported cadence: ${task.cadence}` };
   }
 }
 
-export function colorFor(item: { status?: ChecklistStatus; escalated?: boolean; reminderCount?: number; }): ColorStatus {
+export function colorFor(item: { status?: ChecklistStatus; escalated?: boolean; reminderCount?: number; eodCutoffPassed?: boolean; }): ColorStatus {
+  if (item.eodCutoffPassed) {
+    return "RED";
+  }
+
   switch (item.status) {
     case "DONE":
       return "GREEN";
@@ -86,6 +102,20 @@ export function colorFor(item: { status?: ChecklistStatus; escalated?: boolean; 
     default:
       return "YELLOW";
   }
+}
+
+export function formatSummaryEntries(entries: Array<{ employeeName: string; taskDescription: string }>, maxEntries = 3): string {
+  const clipped = entries.slice(0, maxEntries).map((entry) => {
+    const value = `${entry.employeeName} — ${entry.taskDescription}`.trim();
+    return value.length > 300 ? `${value.slice(0, 297)}...` : value;
+  });
+
+  const overflow = entries.length - maxEntries;
+  if (overflow > 0) {
+    clipped.push(`+${overflow} more`);
+  }
+
+  return clipped.join("\n");
 }
 
 export function isDueForReminder(lastRemindedAt: Date | string | null | undefined, reminderIntervalHours: number, now = new Date()): boolean {

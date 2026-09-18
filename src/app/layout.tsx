@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+
+import { AppNav } from "@/components/AppNav";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,7 +26,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full bg-brand-cream text-brand-navy dark:bg-slate-950 dark:text-slate-50">{children}</body>
+      <body className="min-h-full bg-brand-cream text-brand-navy">
+        <AppNav />
+        {children}
+      </body>
     </html>
   );
 }

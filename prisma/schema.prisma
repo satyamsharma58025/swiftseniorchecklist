@@ -11,6 +11,7 @@ enum Cadence {
   DAILY
   WEEKLY
   MONTHLY
+  QUARTERLY
   YEARLY
 }
 
@@ -121,6 +122,13 @@ model TaskMaster {
   @@index([active])
 }
 
+model QueueCodeSequence {
+  id        String    @id @default(cuid())
+  date      DateTime  @db.Date @unique
+  nextValue Int       @default(1)
+  createdAt DateTime  @default(now())
+}
+
 model AssignmentQueueItem {
   id              String      @id @default(cuid())
   queueCode       String      @unique
@@ -197,8 +205,8 @@ model EscalationLog {
 
 model NotificationLog {
   id                 String              @id @default(cuid())
-  checklistItemId    String
-  checklistItem      DailyChecklistItem  @relation(fields: [checklistItemId], references: [id])
+  checklistItemId    String?
+  checklistItem      DailyChecklistItem? @relation(fields: [checklistItemId], references: [id])
   channel            NotificationChannel @default(WHATSAPP)
   templateName       String
   recipientPhone     String
@@ -261,6 +269,8 @@ model Settings {
   dailyFormSendTimeIst          String   @default("09:00")
   eodCutoffTimeIst              String   @default("19:00")
   timezone                      String   @default("Asia/Kolkata")
+  seniorAuthorityName           String?
+  seniorAuthorityPhone          String?
   updatedAt                     DateTime @updatedAt
 }
 

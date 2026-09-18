@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { checklistByDate } from "@/lib/sample-data";
+import { prisma } from "@/lib/prisma";
 
 export async function PATCH(
   request: Request,
@@ -9,25 +9,25 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  let currentItem: { id: string; status: string; updatedAt: string; seniorRemarks: string | null } | undefined;
+  const existing = await prisma.dailyChecklistItem.findUnique({
+    where: { id },
+    select: { id: true, status: true, seniorRemarks: true, updatedAt: true },
+  });
 
-  for (const items of Object.values(checklistByDate)) {
-    const found = items.find((item) => item.id === id);
-    if (found) {
-      currentItem = found;
-      break;
-    }
-  }
-
-  if (!currentItem) {
+  if (!existing) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
-  if (body.expectedUpdatedAt && body.expectedUpdatedAt !== currentItem.updatedAt) {
+  if (body.expectedUpdatedAt && body.expectedUpdatedAt !== existing.updatedAt.toISOString()) {
     return NextResponse.json(
       {
         error: "STALE_UPDATE",
-        current: currentItem,
+        current: {
+          id: existing.id,
+          status: existing.status,
+          seniorRemarks: existing.seniorRemarks,
+          updatedAt: existing.updatedAt.toISOString(),
+        },
       },
       { status: 409 },
     );
@@ -40,9 +40,22 @@ export async function PATCH(
     );
   }
 
-  currentItem.status = body.status ?? currentItem.status;
-  currentItem.seniorRemarks = body.seniorRemarks ?? currentItem.seniorRemarks;
-  currentItem.updatedAt = new Date().toISOString();
+  const updated = await prisma.dailyChecklistItem.update({
+    where: { id },
+    data: {
+      status: body.status ?? existing.status,
+      seniorRemarks: body.seniorRemarks ?? existing.seniorRemarks,
+    },
+    select: {
+      id: true,
+      status: true,
+      seniorRemarks: true,
+      updatedAt: true,
+    },
+  });
 
-  return NextResponse.json(currentItem);
+  return NextResponse.json({
+    ...updated,
+    updatedAt: updated.updatedAt.toISOString(),
+  });
 }

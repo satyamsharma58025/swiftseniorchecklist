@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function AddTaskForm({
@@ -9,6 +10,7 @@ export function AddTaskForm({
   date: string;
   employees: Array<{ id: string; name: string }>;
 }) {
+  const router = useRouter();
   const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? "");
   const [taskDescription, setTaskDescription] = useState("");
   const [priority, setPriority] = useState<"HIGH" | "MEDIUM" | "LOW">("MEDIUM");
@@ -45,7 +47,7 @@ export function AddTaskForm({
       setStatus({ type: "success", message: "Task added to today’s queue." });
       setTaskDescription("");
       setEmployeeId(employees[0]?.id ?? "");
-      window.location.reload();
+      router.refresh();
     } catch (error) {
       setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to add the task." });
     } finally {

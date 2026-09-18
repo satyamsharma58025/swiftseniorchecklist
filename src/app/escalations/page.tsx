@@ -46,7 +46,7 @@ export default async function EscalationsPage() {
                     <td className="px-4 py-3">{log.reminderCountAtEscalation}</td>
                     <td className="px-4 py-3">{log.escalationTier}</td>
                     <td className="px-4 py-3">
-                      <span className={log.resolved ? "rounded-full bg-brand-green/10 px-2.5 py-1 text-xs font-semibold text-brand-green" : "rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700"}>
+                      <span className={log.resolved ? "rounded-full bg-brand-green/10 px-2.5 py-1 text-xs font-semibold text-brand-green" : "rounded-full bg-brand-saffron/10 px-2.5 py-1 text-xs font-semibold text-brand-saffron"}>
                         {log.resolved ? "Resolved" : "Open"}
                       </span>
                     </td>

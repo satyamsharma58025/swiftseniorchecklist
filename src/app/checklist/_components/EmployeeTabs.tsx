@@ -11,6 +11,14 @@ export type EmployeeSummary = {
   escalated: number;
 };
 
+function statusColorClasses(employee: EmployeeSummary) {
+  if (employee.escalated > 0) return "bg-slate-500";
+  if (employee.notDone > 0) return "bg-red-600";
+  if (employee.pending > 0) return "bg-brand-saffron";
+  if (employee.done === employee.total && employee.total > 0) return "bg-brand-green";
+  return "bg-brand-navy/30";
+}
+
 export function EmployeeTabs({
   date,
   employees,
@@ -23,27 +31,33 @@ export function EmployeeTabs({
   const activeId = selectedEmployeeId ?? employees[0]?.id;
 
   return (
-    <div className="overflow-x-auto pb-2">
+    <div className="snap-x snap-mandatory overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch]">
       <div className="flex min-w-max gap-2">
         {employees.map((employee) => {
           const isActive = employee.id === activeId;
-          const dotClass = employee.notDone > 0 ? "bg-red-500" : employee.pending > 0 ? "bg-amber-500" : employee.done === employee.total ? "bg-emerald-500" : "bg-slate-400";
 
           return (
             <Link
               key={employee.id}
               href={`/checklist/${date}?employeeId=${employee.id}`}
+              aria-current={isActive ? "true" : undefined}
               className={[
-                "rounded-full border px-3 py-2 text-sm font-medium whitespace-nowrap transition",
+                "snap-start rounded-full border px-3 py-2 text-sm font-medium whitespace-nowrap transition",
                 isActive
-                  ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800",
+                  ? "border-brand-navy bg-brand-navy text-white shadow-sm"
+                  : "border-brand-navy/10 bg-white text-brand-navy hover:bg-brand-cream",
               ].join(" ")}
             >
               <span className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${dotClass}`} />
+                <span className={`h-2.5 w-2.5 rounded-full ${statusColorClasses(employee)}`} />
                 <span>{employee.name}</span>
-                <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
+                <span
+                  className={
+                    isActive
+                      ? "rounded-full bg-white/15 px-1.5 py-0.5 text-[10px]"
+                      : "rounded-full bg-brand-navy/5 px-1.5 py-0.5 text-[10px] text-brand-navy/70"
+                  }
+                >
                   {employee.done}/{employee.total}
                 </span>
               </span>

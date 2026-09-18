@@ -20,6 +20,19 @@ export async function POST(request: Request) {
       escalated: true,
       status: true,
       supervisorName: true,
+      taskMaster: {
+        select: {
+          employee: {
+            select: {
+              plantHead: {
+                select: {
+                  phone: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -46,12 +59,21 @@ export async function POST(request: Request) {
 
   const nextReminderCount = item.reminderCount + 1;
   const shouldEscalate = !item.escalated && nextReminderCount >= item.escalationThreshold;
+  const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+  const plantHeadPhone = item.taskMaster?.employee?.plantHead?.phone ?? null;
+  const plantHeadHasValidPhone = Boolean(plantHeadPhone && !/tbd|add phone number/i.test(plantHeadPhone));
+  const escalationTier = shouldEscalate
+    ? settings?.escalationTier2Enabled && plantHeadHasValidPhone
+      ? 2
+      : 1
+    : 1;
 
   await prisma.dailyChecklistItem.update({
     where: { id: item.id },
     data: {
       reminderCount: nextReminderCount,
       escalated: item.escalated || shouldEscalate,
+      escalationTier,
     },
   });
 
@@ -59,7 +81,7 @@ export async function POST(request: Request) {
     await prisma.escalationLog.create({
       data: {
         checklistItemId: item.id,
-        escalationTier: 2,
+        escalationTier,
         reminderCountAtEscalation: nextReminderCount,
         supervisorNotified: item.supervisorName ?? "Supervisor",
       },
@@ -70,6 +92,7 @@ export async function POST(request: Request) {
     itemId: item.id,
     reminderCount: nextReminderCount,
     escalated: item.escalated || shouldEscalate,
+    escalationTier,
     updated: true,
   });
 }

@@ -1,15 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getServerSession } from "next-auth/next";
 
-import { auth, signOut } from "@/auth";
+import { authOptions } from "@/auth";
 import logo from "@/lib/logo.png";
 
 const today = new Date().toISOString().slice(0, 10);
-
-async function handleSignOut() {
-  "use server";
-  await signOut({ redirectTo: "/login" });
-}
 
 const navGroups = [
   {
@@ -37,7 +33,7 @@ const navGroups = [
 ];
 
 export async function AppNav() {
-  const session = await auth();
+  const session = await getServerSession(authOptions);
 
   return (
     <nav className="sticky top-0 z-20 border-b border-brand-navy/10 bg-brand-cream/90 backdrop-blur-sm">
@@ -68,14 +64,12 @@ export async function AppNav() {
           ))}
 
           {session ? (
-            <form action={handleSignOut}>
-              <button
-                type="submit"
-                className="rounded-full border border-brand-navy/10 bg-brand-navy px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-brand-navy/90"
-              >
-                Sign out
-              </button>
-            </form>
+            <a
+              href="/api/auth/signout"
+              className="rounded-full border border-brand-navy/10 bg-brand-navy px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-brand-navy/90"
+            >
+              Sign out
+            </a>
           ) : (
             <Link
               href="/login"

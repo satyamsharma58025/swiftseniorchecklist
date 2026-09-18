@@ -15,6 +15,7 @@ export type ChecklistTaskRow = {
   reminderCount: number;
   escalated: boolean;
   seniorRemarks?: string | null;
+  employeeResponse?: string | null;
 };
 
 export function ChecklistPanel({
@@ -28,23 +29,49 @@ export function ChecklistPanel({
 
   async function updateStatus(itemId: string, nextStatus: "DONE" | "NOT_DONE") {
     const previous = localItems.find((item) => item.id === itemId);
-    const response = await fetch(`/api/checklist/item/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status: nextStatus,
-        seniorRemarks: previous?.seniorRemarks ?? "Manual update",
-      }),
-    });
 
-    if (!response.ok) {
-      return;
-    }
-
-    const updated = await response.json();
     setLocalItems((current) =>
-      current.map((item) => (item.id === updated.id ? { ...item, ...updated, status: updated.status } : item)),
+      current.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              status: nextStatus,
+            }
+          : item,
+      ),
     );
+
+    try {
+      const response = await fetch(`/api/checklist/item/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: nextStatus,
+          seniorRemarks: previous?.seniorRemarks ?? "Manual update",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save task status");
+      }
+
+      const updated = await response.json();
+      setLocalItems((current) =>
+        current.map((item) => (item.id === updated.id ? { ...item, ...updated, status: updated.status } : item)),
+      );
+    } catch (error) {
+      setLocalItems((current) =>
+        current.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                status: previous?.status ?? item.status,
+              }
+            : item,
+        ),
+      );
+      console.error(error);
+    }
   }
 
   if (!localItems.length) {
@@ -75,11 +102,32 @@ export function ChecklistPanel({
                 <div>
                   <p className="font-semibold text-slate-900 dark:text-slate-100">{item.taskDescription}</p>
                   <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">{item.priority}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">{item.status}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Priority: {item.priority}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Status: {item.status}</span>
                     <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Reminders: {item.reminderCount}</span>
                     <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">{item.escalated ? "Escalated" : "Active"}</span>
                   </div>
+
+                  {(item.seniorRemarks || item.employeeResponse) && (
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {item.seniorRemarks ? (
+                        <div className="rounded-xl border border-brand-saffron/30 bg-brand-saffron/5 p-3 text-sm text-brand-navy">
+                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-navy/60">
+                            Senior remarks
+                          </p>
+                          <p>{item.seniorRemarks}</p>
+                        </div>
+                      ) : null}
+                      {item.employeeResponse ? (
+                        <div className="rounded-xl border border-brand-green/30 bg-brand-green/5 p-3 text-sm text-brand-navy">
+                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-navy/60">
+                            Employee response
+                          </p>
+                          <p>{item.employeeResponse}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </div>
 

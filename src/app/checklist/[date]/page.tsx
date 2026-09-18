@@ -125,6 +125,7 @@ export default async function ChecklistDatePage({
               reminderCount: row.reminderCount,
               escalated: row.escalated,
               seniorRemarks: row.seniorRemarks,
+              employeeResponse: row.employeeResponse,
               colorStatus: row.colorStatus,
             }))}
           />

@@ -24,6 +24,39 @@ function isHoliday(date: string): boolean {
   return holidaySheet.includes(date);
 }
 
+export function validateScheduleDetail(cadence: Cadence, scheduleDetail?: string | null): { valid: boolean; message?: string } {
+  const value = String(scheduleDetail ?? "").trim();
+
+  switch (cadence) {
+    case "DAILY":
+      return { valid: true };
+    case "WEEKLY": {
+      const normalized = value.toLowerCase();
+      const validWeekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+      if (!validWeekdays.includes(normalized)) {
+        return { valid: false, message: "Weekly cadence requires a weekday name such as Monday or Friday." };
+      }
+      return { valid: true };
+    }
+    case "MONTHLY":
+    case "QUARTERLY": {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) {
+        return { valid: false, message: `${cadence === "MONTHLY" ? "Monthly" : "Quarterly"} cadence requires a day-of-month from 1 to 31.` };
+      }
+      return { valid: true };
+    }
+    case "YEARLY": {
+      if (!/^\d{1,2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/i.test(value)) {
+        return { valid: false, message: "Yearly cadence requires a value like 15-Aug or 1-Jan." };
+      }
+      return { valid: true };
+    }
+    default:
+      return { valid: false, message: `Unsupported cadence: ${cadence}` };
+  }
+}
+
 export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string | null }, dateValue: Date | string): { matches: boolean; warning?: string } {
   const date = typeof dateValue === "string" ? DateTime.fromISO(dateValue, { zone: "Asia/Kolkata" }) : DateTime.fromJSDate(dateValue, { zone: "Asia/Kolkata" });
   if (!date.isValid) {

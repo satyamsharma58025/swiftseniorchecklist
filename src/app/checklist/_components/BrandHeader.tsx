@@ -1,11 +1,22 @@
+import Image from "next/image";
+
+import logo from "@/lib/logo.png";
+
 export function BrandHeader() {
   return (
     <header className="rounded-[2rem] border border-brand-navy/10 bg-brand-navy px-5 py-6 text-white shadow-[0_18px_45px_rgba(22,48,92,0.2)] md:px-7">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
-              <span className="brand-display text-xl font-bold text-brand-saffron">S</span>
+            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1 ring-white/20">
+              <Image
+                src={logo}
+                alt="Swift Strips India logo"
+                width={56}
+                height={56}
+                priority
+                className="h-full w-full object-cover"
+              />
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-brand-saffron/90">Swift Strips India</p>

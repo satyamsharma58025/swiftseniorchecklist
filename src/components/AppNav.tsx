@@ -1,4 +1,7 @@
+import Image from "next/image";
 import Link from "next/link";
+
+import logo from "@/lib/logo.png";
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -32,8 +35,8 @@ export function AppNav() {
     <nav className="sticky top-0 z-20 border-b border-brand-navy/10 bg-brand-cream/90 backdrop-blur-sm">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-3 py-3 md:flex-row md:items-center md:justify-between md:px-6">
         <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-navy text-lg font-bold text-brand-saffron shadow-sm">
-            S
+          <div className="flex h-10 w-10 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-brand-navy/10">
+            <Image src={logo} alt="Swift Strips India logo" width={40} height={40} priority className="h-full w-full object-cover" />
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-navy/60">Swift Strips India</p>

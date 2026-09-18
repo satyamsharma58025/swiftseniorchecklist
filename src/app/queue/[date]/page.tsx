@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AddTaskForm } from "@/app/queue/_components/AddTaskForm";
 import { prisma } from "@/lib/prisma";
 
 export default async function QueuePage({
@@ -10,11 +11,18 @@ export default async function QueuePage({
   const { date } = await params;
   const targetDate = new Date(`${date}T00:00:00.000Z`);
 
-  const items = await prisma.assignmentQueueItem.findMany({
-    where: { date: targetDate },
-    orderBy: [{ employeeId: "asc" }, { createdAt: "asc" }],
-    include: { employee: { select: { name: true } } },
-  });
+  const [items, employees] = await Promise.all([
+    prisma.assignmentQueueItem.findMany({
+      where: { date: targetDate },
+      orderBy: [{ employeeId: "asc" }, { createdAt: "asc" }],
+      include: { employee: { select: { name: true } } },
+    }),
+    prisma.employee.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   const queue = {
     date,
@@ -63,8 +71,10 @@ export default async function QueuePage({
           </div>
         </section>
 
+        <AddTaskForm date={date} employees={employees} />
+
         <section className="rounded-[2rem] border border-brand-navy/10 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-xl font-semibold">Queue items</h2>
             <button className="rounded-full bg-brand-saffron px-4 py-2 text-sm font-semibold text-brand-navy hover:brightness-95">
               Lock queue
@@ -73,7 +83,10 @@ export default async function QueuePage({
 
           <div className="space-y-3">
             {queue.items.length === 0 ? (
-              <p className="text-sm text-brand-navy/70">No queue items found for this date.</p>
+              <div className="rounded-2xl border border-dashed border-brand-navy/20 bg-brand-cream p-8 text-center">
+                <p className="text-base font-semibold text-brand-navy">No tasks generated for this date yet.</p>
+                <p className="mt-2 text-sm text-brand-navy/70">Use the add-task form above to create a one-off item for this queue.</p>
+              </div>
             ) : (
               queue.items.map((item) => (
                 <div key={item.id} className="rounded-xl border border-brand-navy/10 bg-brand-cream/60 p-4">

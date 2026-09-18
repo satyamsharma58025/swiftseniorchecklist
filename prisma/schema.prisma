@@ -227,6 +227,16 @@ model ActivityLog {
   createdAt       DateTime           @default(now())
 }
 
+model WebhookEvent {
+  id           String   @id @default(cuid())
+  eventId      String   @unique
+  source       String
+  kind         String
+  payload      Json
+  createdAt    DateTime @default(now())
+  processedAt  DateTime?
+}
+
 model Holiday {
   id        String   @id @default(cuid())
   date      DateTime @db.Date

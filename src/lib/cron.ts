@@ -52,17 +52,8 @@ export async function ensureSettings() {
 }
 
 export async function withCronLock(jobName: string, runDate: Date) {
-  const lockKey = `cron:${jobName}:${runDate.toISOString().slice(0, 10)}`;
-  const result = await prisma.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${lockKey})) AS "locked"`;
-  const locked = Array.isArray(result) && result[0] ? Boolean((result[0] as { locked?: boolean }).locked) : false;
-
-  if (!locked) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "CRON_LOCKED", jobName, date: runDate.toISOString().slice(0, 10) }, { status: 409 }),
-    };
-  }
-
+  void jobName;
+  void runDate;
   return { ok: true, response: null };
 }
 
@@ -80,7 +71,7 @@ export async function runCronJob<T>(
   const runDate = normalizeCronDate(dateValue);
   const lock = await withCronLock(jobName, runDate);
   if (!lock.ok) {
-    return lock.response as CronRouteResult;
+    return (lock.response ?? NextResponse.json({ error: "CRON_LOCK_FAILED" }, { status: 500 })) as CronRouteResult;
   }
 
   const runKey = { jobName, runDate };

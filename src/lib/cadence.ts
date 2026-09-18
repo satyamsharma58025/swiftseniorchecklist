@@ -11,7 +11,9 @@ export function dateKey(value: Date | string): string {
 
 export function checklistCode(taskCode: string, date: Date | string): string {
   const key = dateKey(date).replace(/-/g, "");
-  return `CL-${key}-${String(taskCode).replace(/[^a-zA-Z0-9]/g, "").slice(-3).padStart(3, "0")}`;
+  const normalized = String(taskCode).replace(/[^a-zA-Z0-9]/g, "");
+  const suffix = normalized.length > 8 ? normalized.slice(-8) : normalized || "00000000";
+  return `CL-${key}-${suffix}`;
 }
 
 export function queueCode(date: Date | string, index: number): string {
@@ -21,7 +23,8 @@ export function queueCode(date: Date | string, index: number): string {
 
 export async function reserveNextQueueCode(
   tx: {
-    $queryRaw: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+    $executeRaw?: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+    $queryRaw?: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
     queueCodeSequence: {
       upsert: (args: { where: { date: Date }; update: Record<string, unknown>; create: { date: Date; nextValue: number } }) => Promise<{ id: string; nextValue: number }>;
       update: (args: { where: { id: string }; data: { nextValue: number } }) => Promise<unknown>;
@@ -32,7 +35,11 @@ export async function reserveNextQueueCode(
   const normalizedDate = typeof date === "string" ? new Date(`${date}T00:00:00.000Z`) : new Date(date);
   const dateKeyValue = dateKey(normalizedDate);
 
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${dateKeyValue}`}))`;
+  if (tx.$executeRaw) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${dateKeyValue}`}))`;
+  } else if (tx.$queryRaw) {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${dateKeyValue}`}))`;
+  }
 
   const sequence = await tx.queueCodeSequence.upsert({
     where: { date: normalizedDate },

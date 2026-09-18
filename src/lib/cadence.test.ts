@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { cadenceMatches, colorFor, formatSummaryEntries, reserveNextQueueCode, validateScheduleDetail } from "@/lib/cadence";
+import { cadenceMatches, checklistCode, colorFor, formatSummaryEntries, reserveNextQueueCode, validateScheduleDetail } from "@/lib/cadence";
 
 describe("colorFor", () => {
   it("marks EOD cutoff items as red even when still pending", () => {
@@ -29,19 +29,19 @@ describe("formatSummaryEntries", () => {
 
 describe("reserveNextQueueCode", () => {
   it("locks the queue and reserves the next sequence value atomically", async () => {
-    const raw = vi.fn().mockResolvedValue(undefined);
+    const execute = vi.fn().mockResolvedValue(undefined);
     const upsert = vi.fn().mockResolvedValue({ id: "seq_1", nextValue: 3 });
     const update = vi.fn().mockResolvedValue({ id: "seq_1", nextValue: 4 });
 
     const result = await reserveNextQueueCode(
       {
-        $queryRaw: raw,
+        $executeRaw: execute,
         queueCodeSequence: { upsert, update },
       } as any,
       "2026-09-18",
     );
 
-    expect(raw).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledTimes(1);
     expect(upsert).toHaveBeenCalledWith({
       where: { date: new Date("2026-09-18T00:00:00.000Z") },
       update: {},
@@ -52,6 +52,14 @@ describe("reserveNextQueueCode", () => {
       data: { nextValue: 4 },
     });
     expect(result).toBe("Q-20260918-0003");
+  });
+});
+
+describe("checklistCode", () => {
+  it("keeps task-code suffixes unique across different tasks on the same date", () => {
+    expect(checklistCode("ABC-123", "2026-09-18")).not.toBe(checklistCode("XYZ-123", "2026-09-18"));
+    expect(checklistCode("ABC-123", "2026-09-18")).toBe("CL-20260918-ABC123");
+    expect(checklistCode("XYZ-123", "2026-09-18")).toBe("CL-20260918-XYZ123");
   });
 });
 

@@ -1,0 +1,128 @@
+services:
+  - type: web
+    name: swift-senior-checklist
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: swift-senior-checklist-db
+          property: connectionString
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+      - key: DEFAULT_TIMEZONE
+        value: Asia/Kolkata
+      - key: NODE_ENV
+        value: production
+      - key: WHATSAPP_INTEGRATION_MODE
+        sync: false
+      - key: N8N_WEBHOOK_URL
+        sync: false
+      - key: N8N_WEBHOOK_SECRET
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+
+  - type: cron
+    name: cron-generate-queue
+    runtime: node
+    plan: starter
+    region: singapore
+    schedule: "30 0 * * *" # 06:00 IST
+    buildCommand: npm install
+    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/generate-queue" -H "x-cron-secret: $CRON_SECRET"'
+    envVars:
+      - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-reminder-sweep
+    runtime: node
+    plan: starter
+    region: singapore
+    schedule: "0 */2 * * *"
+    buildCommand: npm install
+    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/reminder-sweep" -H "x-cron-secret: $CRON_SECRET"'
+    envVars:
+      - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-lock-queue
+    runtime: node
+    plan: starter
+    region: singapore
+    schedule: "30 13 * * *" # 19:00 IST
+    buildCommand: npm install
+    startCommand: 'curl -sf -X POST "$APP_BASE_URL/api/cron/lock-queue" -H "x-cron-secret: $CRON_SECRET"'
+    envVars:
+      - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-eod-cutoff
+    runtime: node
+    plan: starter
+    region: singapore
+    schedule: "30 14 * * *" # 20:00 IST
+    buildCommand: npm install
+    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/eod-cutoff" -H "x-cron-secret: $CRON_SECRET"'
+    envVars:
+      - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-overall-summary
+    runtime: node
+    plan: starter
+    region: singapore
+    schedule: "0 15 * * *" # 20:30 IST
+    buildCommand: npm install
+    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/overall-summary" -H "x-cron-secret: $CRON_SECRET"'
+    envVars:
+      - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-daily-form-link
+    runtime: node
+    plan: starter
+    region: singapore
+    schedule: "0 1 * * *" # 06:30 IST
+    buildCommand: npm install
+    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/daily-form-link" -H "x-cron-secret: $CRON_SECRET"'
+    envVars:
+      - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+databases:
+  - name: swift-senior-checklist-db
+    plan: starter
+    region: singapore

@@ -54,11 +54,6 @@ body {
   letter-spacing: -0.02em;
 }
 
-[class*="text-ink/"] {
-  color: var(--ink) !important;
-  opacity: 1 !important;
-}
-
 * {
   box-sizing: border-box;
 }

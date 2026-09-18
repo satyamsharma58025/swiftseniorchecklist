@@ -20,10 +20,8 @@ export function DateControl({
               key={day}
               href={href}
               className={[
-                "rounded-full border px-3 py-2 text-sm font-medium whitespace-nowrap transition",
-                isActive
-                  ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800",
+                "neo-press border-[3px] border-ink px-3 py-2 text-xs font-black uppercase tracking-[0.16em] whitespace-nowrap",
+                isActive ? "bg-electric-lime text-ink neo-shadow-sm" : "bg-white text-ink/80",
               ].join(" ")}
             >
               {day}

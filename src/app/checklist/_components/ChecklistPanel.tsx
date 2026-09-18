@@ -76,8 +76,9 @@ export function ChecklistPanel({
 
   if (!localItems.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-brand-navy/30 bg-brand-cream p-8 text-center text-brand-navy/80">
-        No tasks assigned to {employeeName} on this date.
+      <div className="neo-border bg-paper p-8 text-center text-ink neo-shadow-sm">
+        <p className="brand-display text-3xl text-ink">No tasks assigned</p>
+        <p className="mt-3 text-sm text-ink/75">No tasks assigned to {employeeName} on this date.</p>
       </div>
     );
   }
@@ -87,42 +88,40 @@ export function ChecklistPanel({
       {localItems.map((item) => {
         const color = (item.colorStatus ?? colorFor({ status: item.status, escalated: item.escalated, reminderCount: item.reminderCount })) as string;
         const colorClasses: Record<string, string> = {
-          YELLOW: "bg-yellow-500",
-          GREEN: "bg-emerald-500",
-          RED: "bg-red-500",
-          ORANGE: "bg-orange-500",
-          GREY: "bg-slate-500",
+          YELLOW: "bg-sun-yellow",
+          GREEN: "bg-brand-green",
+          RED: "bg-hot-pink",
+          ORANGE: "bg-brand-saffron",
+          GREY: "bg-ink",
         };
 
         return (
-          <div key={item.id} className="rounded-2xl border border-brand-navy/10 bg-brand-cream p-4 shadow-sm ring-1 ring-brand-navy/5">
+          <div key={item.id} className="neo-border bg-white p-4 neo-shadow-sm">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="flex items-start gap-3">
-                <span className={`mt-1 h-3 w-3 rounded-full ${colorClasses[color] ?? "bg-slate-400"}`} />
+                <span className={`mt-1 h-4 w-4 border-[3px] border-ink ${colorClasses[color] ?? "bg-ink"}`} />
                 <div>
-                  <p className="font-semibold text-brand-navy">{item.taskDescription}</p>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-brand-navy/70">
-                    <span className="rounded-full border border-brand-navy/10 bg-white/70 px-2 py-1">Priority: {item.priority}</span>
-                    <span className="rounded-full border border-brand-navy/10 bg-white/70 px-2 py-1">Status: {item.status}</span>
-                    <span className="rounded-full border border-brand-navy/10 bg-white/70 px-2 py-1">Reminders: {item.reminderCount}</span>
-                    <span className="rounded-full border border-brand-navy/10 bg-white/70 px-2 py-1">{item.escalated ? "Escalated" : "Active"}</span>
+                  <p className="text-lg font-black uppercase tracking-[0.04em] text-ink">{item.taskDescription}</p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
+                    <span className="sticker bg-paper text-ink">Priority: {item.priority}</span>
+                    <span className={item.status === "DONE" ? "sticker bg-electric-lime text-ink" : item.status === "NOT_DONE" ? "sticker bg-hot-pink text-ink" : "sticker bg-sun-yellow text-ink"}>
+                      Status: {item.status}
+                    </span>
+                    <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span>
+                    <span className={item.escalated ? "sticker bg-ink text-paper" : "sticker bg-paper text-ink"}>{item.escalated ? "Escalated" : "Active"}</span>
                   </div>
 
                   {(item.seniorRemarks || item.employeeResponse) && (
                     <div className="mt-3 grid gap-2 md:grid-cols-2">
                       {item.seniorRemarks ? (
-                        <div className="rounded-xl border border-brand-saffron/30 bg-brand-saffron/5 p-3 text-sm text-brand-navy">
-                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-navy/60">
-                            Senior remarks
-                          </p>
+                        <div className="neo-border bg-sun-yellow p-3 text-sm text-ink">
+                          <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-ink/80">Senior remarks</p>
                           <p>{item.seniorRemarks}</p>
                         </div>
                       ) : null}
                       {item.employeeResponse ? (
-                        <div className="rounded-xl border border-brand-green/30 bg-brand-green/5 p-3 text-sm text-brand-navy">
-                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-navy/60">
-                            Employee response
-                          </p>
+                        <div className="neo-border bg-electric-lime p-3 text-sm text-ink">
+                          <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-ink/80">Employee response</p>
                           <p>{item.employeeResponse}</p>
                         </div>
                       ) : null}
@@ -135,14 +134,14 @@ export function ChecklistPanel({
                 <button
                   type="button"
                   onClick={() => updateStatus(item.id, "DONE")}
-                  className="rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+                  className="neo-press neo-border bg-brand-green px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink"
                 >
                   Done
                 </button>
                 <button
                   type="button"
                   onClick={() => updateStatus(item.id, "NOT_DONE")}
-                  className="rounded-full bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-500"
+                  className="neo-press neo-border bg-hot-pink px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink"
                 >
                   Not Done
                 </button>

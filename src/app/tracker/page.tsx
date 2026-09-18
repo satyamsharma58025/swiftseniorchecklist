@@ -48,45 +48,43 @@ export default async function TrackerPage({
   const nextMonth = addMonths(currentMonth, 1).toISOString().slice(0, 7);
 
   return (
-    <main className="min-h-screen bg-brand-cream p-4 text-brand-navy md:p-6">
+    <main className="min-h-screen bg-paper p-4 text-ink md:p-6">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-[2rem] border border-brand-navy/10 bg-brand-navy p-6 text-white shadow-[0_18px_45px_rgba(22,48,92,0.2)]">
+        <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-saffron">Daily overview</p>
-              <h1 className="mt-2 text-3xl font-bold">Employee tracker</h1>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Daily overview</p>
+              <h1 className="brand-display mt-2 text-4xl">Employee tracker</h1>
             </div>
             <div className="flex items-center gap-2">
-              <Link href={`/tracker?month=${prevMonth}`} className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-white hover:bg-white/10">Prev</Link>
-              <span className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold uppercase tracking-[0.16em] text-white/80">
+              <Link href={`/tracker?month=${prevMonth}`} className="neo-press border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">Prev</Link>
+              <span className="border-[3px] border-paper bg-ink px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-paper">
                 {currentMonth.toLocaleString("en-IN", { month: "long", year: "numeric" })}
               </span>
-              <Link href={`/tracker?month=${nextMonth}`} className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-white hover:bg-white/10">Next</Link>
+              <Link href={`/tracker?month=${nextMonth}`} className="neo-press border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">Next</Link>
             </div>
           </div>
         </header>
 
-        <section className="overflow-hidden rounded-[2rem] border border-brand-navy/10 bg-white shadow-sm">
+        <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-brand-cream text-brand-navy/70">
+            <table className="min-w-full border-collapse text-left text-sm">
+              <thead className="bg-ink text-paper">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Employee</th>
-                  <th className="px-4 py-3 font-medium">Done</th>
-                  <th className="px-4 py-3 font-medium">Total</th>
-                  <th className="px-4 py-3 font-medium">Completion</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Done</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Total</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Completion</th>
                 </tr>
               </thead>
               <tbody>
-                {summary.map((item) => (
-                  <tr key={item.employeeName} className="border-t border-brand-navy/10">
-                    <td className="px-4 py-3 font-medium">{item.employeeName}</td>
-                    <td className="px-4 py-3">{item.done}</td>
-                    <td className="px-4 py-3">{item.total}</td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full bg-brand-saffron/10 px-2.5 py-1 text-xs font-semibold text-brand-saffron">
-                        {item.completion}%
-                      </span>
+                {summary.map((item, index) => (
+                  <tr key={item.employeeName} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
+                    <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{item.employeeName}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{item.done}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{item.total}</td>
+                    <td className="border-[3px] border-ink px-4 py-3">
+                      <span className="sticker bg-electric-lime text-ink">{item.completion}%</span>
                     </td>
                   </tr>
                 ))}

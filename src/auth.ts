@@ -18,6 +18,7 @@ declare module "next-auth" {
   interface User {
     id: string;
     role: AppRole;
+    remember?: boolean;
   }
 }
 
@@ -25,6 +26,7 @@ declare module "next-auth/jwt" {
   interface JWT {
     id?: string;
     role?: AppRole;
+    remember?: boolean;
   }
 }
 
@@ -41,10 +43,12 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        remember: { label: "Remember me", type: "checkbox" },
       },
       async authorize(credentials) {
         const email = String(credentials?.email ?? "").trim().toLowerCase();
         const password = String(credentials?.password ?? "");
+        const remember = String(credentials?.remember ?? "false") === "true";
 
         if (!email || !password) {
           return null;
@@ -68,6 +72,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           email: user.email,
           role: user.role,
+          remember,
         };
       },
     }),
@@ -77,6 +82,10 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = user.role as AppRole;
+        token.remember = Boolean((user as typeof user & { remember?: boolean }).remember);
+
+        const now = Math.floor(Date.now() / 1000);
+        token.exp = token.remember ? now + 60 * 60 * 24 * 30 : now + 60 * 60 * 8;
       }
       return token;
     },

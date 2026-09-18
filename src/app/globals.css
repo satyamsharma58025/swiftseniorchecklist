@@ -1,21 +1,42 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fbf6ec;
-  --foreground: #16305c;
+  --ink: #0a0a0a;
+  --paper: #fff4d6;
+  --hot-pink: #ff3dad;
+  --electric-lime: #ccff33;
+  --cyber-cyan: #2fe8e8;
+  --sun-yellow: #ffe347;
+  --grape: #8b5cf6;
+  --brand-navy: #16305c;
+  --brand-saffron: #ff5c1a;
+  --brand-green: #16c172;
+  --shadow-sm: 2px 2px 0 0 var(--ink);
+  --shadow-md: 4px 4px 0 0 var(--ink);
+  --shadow-lg: 6px 6px 0 0 var(--ink);
+  --border-w: 3px;
+  --background: var(--paper);
+  --foreground: var(--ink);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
   --color-brand-navy: #16305c;
-  --color-brand-saffron: #f5871f;
-  --color-brand-green: #1e7a3d;
-  --color-brand-cream: #fbf6ec;
+  --color-brand-saffron: #ff5c1a;
+  --color-brand-green: #16c172;
+  --color-brand-cream: #fff4d6;
   --color-brand-gold: #c9a24b;
-  --font-sans: var(--font-geist-sans);
+  --color-ink: #0a0a0a;
+  --color-paper: #fff4d6;
+  --color-hot-pink: #ff3dad;
+  --color-electric-lime: #ccff33;
+  --color-cyber-cyan: #2fe8e8;
+  --color-sun-yellow: #ffe347;
+  --color-grape: #8b5cf6;
+  --font-sans: var(--font-grotesk);
   --font-mono: var(--font-geist-mono);
-  --font-display: "Georgia", "Times New Roman", serif;
+  --font-display: var(--font-display-black);
 }
 
 html {
@@ -27,15 +48,145 @@ html.dark {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-grotesk), Arial, Helvetica, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+[class*="text-ink/"] {
+  color: var(--ink) !important;
+  opacity: 1 !important;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea,
+a {
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
 }
 
 .brand-display {
-  font-family: var(--font-display);
+  font-family: var(--font-display-black), "Arial Black", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: -0.08em;
+  line-height: 0.9;
 }
 
 .brand-rule {
-  background: linear-gradient(90deg, #f5871f 0%, #16305c 50%, #1e7a3d 100%);
+  background: linear-gradient(90deg, #ff5c1a 0%, #ff3dad 25%, #2fe8e8 52%, #ccff33 75%, #16c172 100%);
+}
+
+.neo-border {
+  border: var(--border-w) solid var(--ink);
+}
+
+.neo-shadow,
+.neo-shadow-sm,
+.neo-shadow-lg {
+  box-shadow: var(--shadow-md);
+}
+
+.neo-shadow-sm {
+  box-shadow: var(--shadow-sm);
+}
+
+.neo-shadow-lg {
+  box-shadow: var(--shadow-lg);
+}
+
+.neo-press {
+  box-shadow: var(--shadow-sm);
+}
+
+.neo-press:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-md);
+}
+
+.neo-press:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 0 var(--ink);
+}
+
+.sticker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--border-w) solid var(--ink);
+  box-shadow: var(--shadow-sm);
+  padding: 0.45rem 0.8rem;
+  font-size: 0.62rem;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.sticker-r {
+  transform: rotate(2deg);
+}
+
+.marquee {
+  position: relative;
+  overflow: hidden;
+  border-top: 3px solid var(--ink);
+  border-bottom: 3px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.marquee__track {
+  display: flex;
+  width: max-content;
+  white-space: nowrap;
+  animation: marquee 22s linear infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.neo-wiggle {
+  animation: wiggle 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes wiggle {
+  0% {
+    transform: rotate(-1deg) translateY(0);
+  }
+  100% {
+    transform: rotate(2deg) translateY(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee__track,
+  .neo-wiggle,
+  .neo-press {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .neo-press:hover,
+  .neo-press:active {
+    transform: none;
+    box-shadow: var(--shadow-sm);
+  }
 }

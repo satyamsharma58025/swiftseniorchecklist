@@ -17,36 +17,36 @@ export default async function EscalationsPage() {
   });
 
   return (
-    <main className="min-h-screen bg-brand-cream p-4 text-brand-navy md:p-6">
+    <main className="min-h-screen bg-paper p-4 text-ink md:p-6">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-[2rem] border border-brand-navy/10 bg-brand-navy p-6 text-white shadow-[0_18px_45px_rgba(22,48,92,0.2)]">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-saffron">Audit trail</p>
-          <h1 className="mt-2 text-3xl font-bold">Escalation log</h1>
+        <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Audit trail</p>
+          <h1 className="brand-display mt-2 text-4xl">Escalation log</h1>
         </header>
 
-        <section className="overflow-hidden rounded-[2rem] border border-brand-navy/10 bg-white shadow-sm">
+        <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-brand-cream text-brand-navy/70">
+            <table className="min-w-full border-collapse text-left text-sm">
+              <thead className="bg-ink text-paper">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Employee</th>
-                  <th className="px-4 py-3 font-medium">Task</th>
-                  <th className="px-4 py-3 font-medium">Supervisor</th>
-                  <th className="px-4 py-3 font-medium">Reminder count</th>
-                  <th className="px-4 py-3 font-medium">Tier</th>
-                  <th className="px-4 py-3 font-medium">Resolved</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Task</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Supervisor</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Reminder count</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Tier</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Resolved</th>
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log) => (
-                  <tr key={log.id} className="border-t border-brand-navy/10">
-                    <td className="px-4 py-3">{log.checklistItem.employeeName}</td>
-                    <td className="px-4 py-3">{log.checklistItem.taskDescription}</td>
-                    <td className="px-4 py-3">{log.checklistItem.supervisorName}</td>
-                    <td className="px-4 py-3">{log.reminderCountAtEscalation}</td>
-                    <td className="px-4 py-3">{log.escalationTier}</td>
-                    <td className="px-4 py-3">
-                      <span className={log.resolved ? "rounded-full bg-brand-green/10 px-2.5 py-1 text-xs font-semibold text-brand-green" : "rounded-full bg-brand-saffron/10 px-2.5 py-1 text-xs font-semibold text-brand-saffron"}>
+                {logs.map((log, index) => (
+                  <tr key={log.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.employeeName}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.taskDescription}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.supervisorName}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.reminderCountAtEscalation}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.escalationTier}</td>
+                    <td className="border-[3px] border-ink px-4 py-3">
+                      <span className={log.resolved ? "sticker bg-brand-green text-ink" : "sticker bg-hot-pink text-ink"}>
                         {log.resolved ? "Resolved" : "Open"}
                       </span>
                     </td>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { validateScheduleDetail } from "@/lib/cadence";
+import { type Cadence, validateScheduleDetail } from "@/lib/cadence";
 
 export function TaskForm({ employees }: { employees: Array<{ id: string; name: string }> }) {
   const [taskCode, setTaskCode] = useState("");
@@ -34,7 +34,7 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
     setError(null);
     setSuccess(null);
 
-    const validation = validateScheduleDetail(cadence as any, scheduleDetail || null);
+    const validation = validateScheduleDetail(cadence as Cadence, scheduleDetail || null);
     if (!validation.valid) {
       setError(validation.message ?? "This cadence requires a valid schedule detail.");
       return;
@@ -72,26 +72,26 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-4 rounded-[2rem] border border-brand-navy/10 bg-white p-5 shadow-sm md:grid-cols-2 md:p-6">
+    <form onSubmit={handleSubmit} className="grid gap-4 border-[3px] border-ink bg-white p-5 neo-shadow-md md:grid-cols-2 md:p-6">
       <div className="space-y-2">
-        <label htmlFor="taskCode" className="text-sm font-medium text-brand-navy">Task code</label>
+        <label htmlFor="taskCode" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Task code</label>
         <input
           id="taskCode"
           value={taskCode}
           onChange={(event) => setTaskCode(event.target.value)}
           placeholder="T-Y-002"
-          className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+          className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
           required
         />
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="employeeId" className="text-sm font-medium text-brand-navy">Employee</label>
+        <label htmlFor="employeeId" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Employee</label>
         <select
           id="employeeId"
           value={employeeId}
           onChange={(event) => setEmployeeId(event.target.value)}
-          className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+          className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
         >
           {employees.map((employee) => (
             <option key={employee.id} value={employee.id}>
@@ -102,24 +102,24 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
       </div>
 
       <div className="space-y-2 md:col-span-2">
-        <label htmlFor="taskDescription" className="text-sm font-medium text-brand-navy">Task description</label>
+        <label htmlFor="taskDescription" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Task description</label>
         <input
           id="taskDescription"
           value={taskDescription}
           onChange={(event) => setTaskDescription(event.target.value)}
           placeholder="Daily line clearance check"
-          className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+          className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
           required
         />
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="cadence" className="text-sm font-medium text-brand-navy">Cadence</label>
+        <label htmlFor="cadence" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Cadence</label>
         <select
           id="cadence"
           value={cadence}
           onChange={(event) => setCadence(event.target.value)}
-          className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+          className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
         >
           <option value="DAILY">Daily</option>
           <option value="WEEKLY">Weekly</option>
@@ -130,12 +130,12 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="priority" className="text-sm font-medium text-brand-navy">Priority</label>
+        <label htmlFor="priority" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Priority</label>
         <select
           id="priority"
           value={priority}
           onChange={(event) => setPriority(event.target.value)}
-          className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+          className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
         >
           <option value="HIGH">HIGH — 2h reminders, rapid escalation</option>
           <option value="MEDIUM">MEDIUM — 4h reminders</option>
@@ -144,32 +144,30 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
       </div>
 
       <div className="space-y-2 md:col-span-2">
-        <label htmlFor="scheduleDetail" className="text-sm font-medium text-brand-navy">Schedule detail</label>
+        <label htmlFor="scheduleDetail" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Schedule detail</label>
         <input
           id="scheduleDetail"
           value={scheduleDetail}
           onChange={(event) => setScheduleDetail(event.target.value)}
           placeholder={scheduleHint}
-          className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+          className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
         />
-        <p className="text-xs text-brand-navy/70">{scheduleHint}</p>
+        <p className="text-xs text-ink/70">{scheduleHint}</p>
       </div>
 
       <div className="md:col-span-2 flex items-center justify-between gap-3">
-        <div className="text-sm text-brand-navy/70">
-          Recurrence must match the cadence rules before the task can be saved.
-        </div>
+        <div className="text-sm text-ink/75">Recurrence must match the cadence rules before the task can be saved.</div>
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-full bg-brand-saffron px-4 py-2.5 text-sm font-semibold text-brand-navy disabled:opacity-60"
+          className="neo-press neo-border bg-sun-yellow px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-ink disabled:opacity-60"
         >
           {submitting ? "Saving..." : "Create task"}
         </button>
       </div>
 
-      {error ? <div className="md:col-span-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      {success ? <div className="md:col-span-2 rounded-xl border border-brand-green/30 bg-brand-green/10 px-3 py-2 text-sm text-brand-green">{success}</div> : null}
+      {error ? <div className="md:col-span-2 border-[3px] border-ink bg-hot-pink px-3 py-2 text-sm font-semibold text-ink">{error}</div> : null}
+      {success ? <div className="md:col-span-2 border-[3px] border-ink bg-brand-green px-3 py-2 text-sm font-semibold text-ink">{success}</div> : null}
     </form>
   );
 }

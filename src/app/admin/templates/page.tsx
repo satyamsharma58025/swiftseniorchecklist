@@ -8,31 +8,31 @@ export default async function TemplatesPage() {
   });
 
   return (
-    <main className="min-h-screen bg-brand-cream p-4 text-brand-navy md:p-6">
+    <main className="min-h-screen bg-paper p-4 text-ink md:p-6">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-[2rem] border border-brand-navy/10 bg-brand-navy p-6 text-white shadow-[0_18px_45px_rgba(22,48,92,0.2)]">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-saffron">Admin</p>
-          <h1 className="mt-2 text-3xl font-bold">Checklist templates</h1>
+        <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Admin</p>
+          <h1 className="brand-display mt-2 text-4xl">Checklist templates</h1>
         </header>
 
-        <section className="overflow-hidden rounded-[2rem] border border-brand-navy/10 bg-white shadow-sm">
+        <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-brand-cream text-brand-navy/70">
+            <table className="min-w-full border-collapse text-left text-sm">
+              <thead className="bg-ink text-paper">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Employee</th>
-                  <th className="px-4 py-3 font-medium">Task</th>
-                  <th className="px-4 py-3 font-medium">Priority</th>
-                  <th className="px-4 py-3 font-medium">Queue source</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Task</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Priority</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Queue source</th>
                 </tr>
               </thead>
               <tbody>
-                {templates.map((template) => (
-                  <tr key={template.id} className="border-t border-brand-navy/10">
-                    <td className="px-4 py-3">{template.employee.name}</td>
-                    <td className="px-4 py-3">{template.taskDescription}</td>
-                    <td className="px-4 py-3">{template.priority}</td>
-                    <td className="px-4 py-3">{template.source}</td>
+                {templates.map((template, index) => (
+                  <tr key={template.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.employee.name}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.taskDescription}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.priority}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.source}</td>
                   </tr>
                 ))}
               </tbody>

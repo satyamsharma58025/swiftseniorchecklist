@@ -83,34 +83,30 @@ export default async function ChecklistDatePage({
   });
 
   return (
-    <main className="min-h-screen bg-brand-cream px-3 py-5 text-brand-navy md:px-6 md:py-8">
+    <main className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
       <div className="mx-auto max-w-6xl space-y-5">
         <BrandHeader />
 
-        <section className="rounded-[2rem] border border-brand-navy/10 bg-white/80 p-4 shadow-[0_18px_45px_rgba(22,48,92,0.08)] backdrop-blur-sm">
+        <section className="neo-border bg-white p-4 neo-shadow-sm">
           <DateControl date={selectedDate} dates={dayWindow} selectedEmployeeId={selectedEmployee.id} />
         </section>
 
-        <section className="rounded-[2rem] border border-brand-navy/10 bg-white/80 p-4 shadow-[0_18px_45px_rgba(22,48,92,0.08)] backdrop-blur-sm">
+        <section className="neo-border bg-white p-4 neo-shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-navy/60">Today</p>
-            <span className="rounded-full border border-brand-saffron/30 bg-brand-saffron/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-saffron">
-              {selectedDate}
-            </span>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Today</p>
+            <span className="sticker bg-hot-pink text-ink">{selectedDate}</span>
           </div>
           <EmployeeTabs date={selectedDate} employees={employeeSummaries} selectedEmployeeId={selectedEmployee.id} />
         </section>
 
-        <section className="rounded-[2rem] border border-brand-navy/10 bg-white/80 p-4 shadow-[0_18px_45px_rgba(22,48,92,0.08)] backdrop-blur-sm md:p-6">
+        <section className="neo-border bg-white p-4 neo-shadow-sm md:p-6">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-navy/60">Employee</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-brand-navy">{selectedEmployee.name}</h2>
-              <p className="mt-1 text-sm text-brand-navy/70">{selectedEmployee.designation}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Employee</p>
+              <h2 className="brand-display mt-2 text-3xl text-ink">{selectedEmployee.name}</h2>
+              <p className="mt-1 text-sm text-ink/75">{selectedEmployee.designation}</p>
             </div>
-            <span className="rounded-full bg-brand-cream px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-brand-navy">
-              {employeeRows.length} tasks
-            </span>
+            <span className="sticker bg-electric-lime text-ink">{employeeRows.length} tasks</span>
           </div>
 
           <ChecklistPanel
@@ -132,7 +128,7 @@ export default async function ChecklistDatePage({
         </section>
 
         <footer className="pt-2">
-          <div className="brand-rule h-1.5 rounded-full" />
+          <div className="brand-rule h-2 border-[3px] border-ink" />
         </footer>
       </div>
     </main>

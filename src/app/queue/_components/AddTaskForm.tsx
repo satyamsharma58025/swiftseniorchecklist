@@ -56,22 +56,22 @@ export function AddTaskForm({
   }
 
   return (
-    <section className="rounded-[2rem] border border-brand-navy/10 bg-white p-5 shadow-sm md:p-6">
+    <section className="neo-border bg-white p-5 neo-shadow-sm md:p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-navy/60">Queue action</p>
-          <h2 className="mt-2 text-xl font-semibold">Add task for today</h2>
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Queue action</p>
+          <h2 className="brand-display mt-2 text-3xl text-ink">Add task for today</h2>
         </div>
       </div>
 
       <form className="grid gap-4 md:grid-cols-3" onSubmit={handleSubmit}>
         <div className="space-y-2 md:col-span-1">
-          <label htmlFor="employee" className="text-sm font-medium text-brand-navy">Employee</label>
+          <label htmlFor="employee" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Employee</label>
           <select
             id="employee"
             value={employeeId}
             onChange={(event) => setEmployeeId(event.target.value)}
-            className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+            className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
           >
             {employees.length === 0 ? (
               <option value="">No active employees</option>
@@ -86,12 +86,12 @@ export function AddTaskForm({
         </div>
 
         <div className="space-y-2 md:col-span-1">
-          <label htmlFor="priority" className="text-sm font-medium text-brand-navy">Priority</label>
+          <label htmlFor="priority" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Priority</label>
           <select
             id="priority"
             value={priority}
             onChange={(event) => setPriority(event.target.value as "HIGH" | "MEDIUM" | "LOW")}
-            className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+            className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
           >
             <option value="HIGH">HIGH — 2h reminders, fast escalation</option>
             <option value="MEDIUM">MEDIUM — 4h reminders</option>
@@ -100,24 +100,22 @@ export function AddTaskForm({
         </div>
 
         <div className="space-y-2 md:col-span-1">
-          <label htmlFor="task" className="text-sm font-medium text-brand-navy">Task description</label>
+          <label htmlFor="task" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Task description</label>
           <input
             id="task"
             value={taskDescription}
             onChange={(event) => setTaskDescription(event.target.value)}
             placeholder="Example: Check packaging line clearance"
-            className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-sm text-brand-navy outline-none focus:border-brand-saffron"
+            className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
           />
         </div>
 
         <div className="md:col-span-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="text-sm text-brand-navy/70">
-            This creates a one-off manual assignment for {date} only.
-          </div>
+          <div className="text-sm text-ink/75">This creates a one-off manual assignment for {date} only.</div>
           <button
             type="submit"
             disabled={submitting || !employeeId || !taskDescription.trim()}
-            className="rounded-full bg-brand-saffron px-4 py-2.5 text-sm font-semibold text-brand-navy disabled:cursor-not-allowed disabled:opacity-60"
+            className="neo-press neo-border bg-electric-lime px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-ink disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? "Adding..." : "Add task"}
           </button>
@@ -127,8 +125,8 @@ export function AddTaskForm({
       {status ? (
         <div
           className={[
-            "mt-4 rounded-xl border px-3 py-2 text-sm",
-            status.type === "success" ? "border-brand-green/30 bg-brand-green/10 text-brand-green" : "border-red-200 bg-red-50 text-red-700",
+            "mt-4 border-[3px] border-ink px-3 py-2 text-sm font-semibold",
+            status.type === "success" ? "bg-brand-green text-ink" : "bg-hot-pink text-ink",
           ].join(" ")}
         >
           {status.message}

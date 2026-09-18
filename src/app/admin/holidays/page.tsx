@@ -6,31 +6,31 @@ export default async function HolidaysPage() {
   });
 
   return (
-    <main className="min-h-screen bg-brand-cream p-4 text-brand-navy md:p-6">
+    <main className="min-h-screen bg-paper p-4 text-ink md:p-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="rounded-[2rem] border border-brand-navy/10 bg-brand-navy p-6 text-white shadow-[0_18px_45px_rgba(22,48,92,0.2)]">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-saffron">Admin</p>
-          <h1 className="mt-2 text-3xl font-bold">Holiday calendar</h1>
+        <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Admin</p>
+          <h1 className="brand-display mt-2 text-4xl">Holiday calendar</h1>
         </header>
 
-        <section className="overflow-hidden rounded-[2rem] border border-brand-navy/10 bg-white shadow-sm">
+        <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-brand-cream text-brand-navy/70">
+            <table className="min-w-full border-collapse text-left text-sm">
+              <thead className="bg-ink text-paper">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Date</th>
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Applies to</th>
-                  <th className="px-4 py-3 font-medium">Notes</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Date</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Name</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Applies to</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Notes</th>
                 </tr>
               </thead>
               <tbody>
-                {holidays.map((holiday) => (
-                  <tr key={holiday.id} className="border-t border-brand-navy/10">
-                    <td className="px-4 py-3">{holiday.date.toISOString().slice(0, 10)}</td>
-                    <td className="px-4 py-3 font-medium">{holiday.name}</td>
-                    <td className="px-4 py-3">{holiday.appliesTo}</td>
-                    <td className="px-4 py-3">{holiday.notes ?? "—"}</td>
+                {holidays.map((holiday, index) => (
+                  <tr key={holiday.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.date.toISOString().slice(0, 10)}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{holiday.name}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.appliesTo}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.notes ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

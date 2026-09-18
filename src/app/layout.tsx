@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo_Black, Geist_Mono, Space_Grotesk } from "next/font/google";
 
 import { AppNav } from "@/components/AppNav";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const grotesk = Space_Grotesk({
+  variable: "--font-grotesk",
   subsets: ["latin"],
+});
+
+const displayBlack = Archivo_Black({
+  variable: "--font-display-black",
+  subsets: ["latin"],
+  weight: "400",
 });
 
 const geistMono = Geist_Mono({
@@ -23,10 +29,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${grotesk.variable} ${displayBlack.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full bg-brand-cream text-brand-navy">
+      <body className="min-h-full bg-paper text-ink">
         <AppNav />
         {children}
       </body>

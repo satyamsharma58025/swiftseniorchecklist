@@ -9,6 +9,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -22,6 +23,8 @@ function LoginForm() {
     const result = await signIn("credentials", {
       email,
       password,
+      remember: String(remember),
+      callbackUrl,
       redirect: false,
     });
 
@@ -32,21 +35,24 @@ function LoginForm() {
       return;
     }
 
-    router.push(callbackUrl);
+    const destination = result?.url ?? callbackUrl;
+    const safeDestination = destination.startsWith("http") ? destination : `${window.location.origin}${destination}`;
+
+    window.location.assign(safeDestination);
     router.refresh();
   }
 
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-md items-center justify-center px-4 py-12">
-      <div className="w-full rounded-3xl border border-brand-navy/10 bg-white p-8 shadow-sm ring-1 ring-brand-navy/5">
+      <div className="w-full border-[3px] border-ink bg-white p-7 neo-shadow-lg">
         <div className="mb-8 text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-navy/60">Swift Strips India</p>
-          <h1 className="brand-display mt-2 text-3xl font-semibold text-brand-navy">Senior Checklist</h1>
+          <span className="sticker bg-hot-pink text-ink">Swift Strips India</span>
+          <h1 className="brand-display mt-4 text-4xl text-ink">Senior Checklist</h1>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-5">
           <div>
-            <label htmlFor="email" className="mb-2 block text-sm font-medium text-brand-navy">
+            <label htmlFor="email" className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">
               Email
             </label>
             <input
@@ -55,13 +61,13 @@ function LoginForm() {
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-brand-navy outline-none transition focus:border-brand-navy"
+              className="neo-border w-full bg-paper px-3 py-3 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
               required
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-2 block text-sm font-medium text-brand-navy">
+            <label htmlFor="password" className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">
               Password
             </label>
             <input
@@ -70,19 +76,29 @@ function LoginForm() {
               autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-xl border border-brand-navy/15 bg-brand-cream px-3 py-2.5 text-brand-navy outline-none transition focus:border-brand-navy"
+              className="neo-border w-full bg-paper px-3 py-3 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
               required
             />
           </div>
 
+          <label className="flex items-center gap-3 text-sm font-semibold text-ink">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(event) => setRemember(event.target.checked)}
+              className="h-4 w-4 border-[3px] border-ink bg-paper accent-electric-lime"
+            />
+            Remember me
+          </label>
+
           {error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+            <div className="border-[3px] border-ink bg-hot-pink px-3 py-2 text-sm font-semibold text-ink">{error}</div>
           ) : null}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-brand-navy px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-brand-navy/90 disabled:cursor-not-allowed disabled:opacity-70"
+            className="neo-press neo-border w-full bg-electric-lime px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-ink disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? "Signing in..." : "Sign in"}
           </button>

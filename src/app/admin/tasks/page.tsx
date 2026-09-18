@@ -15,15 +15,15 @@ export default async function AdminTasksPage() {
   ]);
 
   return (
-    <main className="min-h-screen bg-brand-cream p-4 text-brand-navy md:p-6">
+    <main className="min-h-screen bg-paper p-4 text-ink md:p-6">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-[2rem] border border-brand-navy/10 bg-brand-navy p-6 text-white shadow-[0_18px_45px_rgba(22,48,92,0.2)]">
+        <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-saffron">Admin</p>
-              <h1 className="mt-2 text-3xl font-bold">Task Master</h1>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Admin</p>
+              <h1 className="brand-display mt-2 text-4xl">Task Master</h1>
             </div>
-            <div className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
+            <div className="border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">
               {tasks.length} active tasks
             </div>
           </div>
@@ -31,41 +31,34 @@ export default async function AdminTasksPage() {
 
         <TaskForm employees={employees} />
 
-        <section className="overflow-hidden rounded-[2rem] border border-brand-navy/10 bg-white shadow-sm">
+        <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-brand-cream text-brand-navy/70">
+            <table className="min-w-full border-collapse text-left text-sm">
+              <thead className="bg-ink text-paper">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Code</th>
-                  <th className="px-4 py-3 font-medium">Employee</th>
-                  <th className="px-4 py-3 font-medium">Cadence</th>
-                  <th className="px-4 py-3 font-medium">Priority</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Code</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Cadence</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Priority</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {tasks.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-brand-navy/70">
+                    <td colSpan={5} className="border-[3px] border-ink px-4 py-10 text-center text-ink/75">
                       No recurring tasks are configured yet. Use the form above to add the first task.
                     </td>
                   </tr>
                 ) : (
-                  tasks.map((task) => (
-                    <tr key={task.id} className="border-t border-brand-navy/10">
-                      <td className="px-4 py-3 font-medium">{task.taskCode}</td>
-                      <td className="px-4 py-3">{task.employee.name}</td>
-                      <td className="px-4 py-3">{task.cadence}</td>
-                      <td className="px-4 py-3">{task.priority}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={[
-                            "rounded-full px-2.5 py-1 text-xs font-semibold",
-                            task.active
-                              ? "bg-brand-green/10 text-brand-green"
-                              : "bg-brand-navy/5 text-brand-navy",
-                          ].join(" ")}
-                        >
+                  tasks.map((task, index) => (
+                    <tr key={task.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
+                      <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{task.taskCode}</td>
+                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{task.employee.name}</td>
+                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{task.cadence}</td>
+                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{task.priority}</td>
+                      <td className="border-[3px] border-ink px-4 py-3">
+                        <span className={task.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>
                           {task.active ? "Active" : "Inactive"}
                         </span>
                       </td>

@@ -15,9 +15,11 @@ describe("task-master import helpers", () => {
 
   it("normalizes cadence and schedule details", () => {
     expect(normalizeCadence("weekly")).toBe("WEEKLY");
+    expect(normalizeCadence("quarterly")).toBe("QUARTERLY");
     expect(normalizeCadence("yearly")).toBe("YEARLY");
     expect(normalizeScheduleDetail("WEEKLY", "MON")).toBe("Monday");
     expect(normalizeScheduleDetail("MONTHLY", "31")).toBe("31");
+    expect(normalizeScheduleDetail("QUARTERLY", "15")).toBe("15");
     expect(normalizeScheduleDetail("YEARLY", "15-06")).toBe("15-06");
   });
 

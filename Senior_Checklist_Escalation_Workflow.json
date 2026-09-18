@@ -1,0 +1,412 @@
+{
+  "meta": {
+    "instanceId": "senior-checklist-escalation-system-v1",
+    "notes": "INDEPENDENT SYSTEM — separate Google Sheet ID, separate Google Form, separate n8n workflow. Only the WhatsApp Business API credential is shared with the existing Task Delegation system. Replace SHEET_ID_PLACEHOLDER and FORM_ID_PLACEHOLDER before import."
+  },
+  "nodes": [
+    {
+      "id": "trigger-generate-checklist",
+      "name": "00:05 IST - Generate Today's Checklist",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1600, -400],
+      "parameters": {
+        "rule": { "interval": [ { "field": "cronExpression", "expression": "35 18 * * *" } ] }
+      },
+      "notes": "18:35 UTC = 00:05 IST. Adjust if workflow timezone is already set to Asia/Kolkata (then use 05 0 * * *)."
+    },
+    {
+      "id": "read-task-master",
+      "name": "Read Task Master",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-1376, -400],
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Task Master", "mode": "name" },
+        "options": { "dataLocationOnSheet": { "values": { "rangeDefinition": "specifyRange", "headerRow": 1, "firstDataRow": 2 } } }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_CRED_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "id": "code-expand-cadence",
+      "name": "Expand Cadence -> Today's Instances",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1152, -400],
+      "parameters": {
+        "jsCode": "// Expands Task Master rows into today's Daily Checklist instances based on Cadence.\nconst ZONE = 'Asia/Kolkata';\nconst today = DateTime.now().setZone(ZONE);\nconst todayStr = today.toFormat('yyyy-MM-dd');\nconst weekday = today.toFormat('cccc'); // 'Monday' etc.\nconst dayOfMonth = today.day;\n\nfunction isActive(row) {\n  const active = String(row['Active (Y/N)'] || '').trim().toUpperCase() === 'Y';\n  if (!active) return false;\n  const start = row['Start Date'] ? DateTime.fromISO(String(row['Start Date']), { zone: ZONE }) : null;\n  const end = row['End Date'] ? DateTime.fromISO(String(row['End Date']), { zone: ZONE }) : null;\n  if (start && start.isValid && today.startOf('day') < start.startOf('day')) return false;\n  if (end && end.isValid && today.startOf('day') > end.startOf('day')) return false;\n  return true;\n}\n\nfunction isDueToday(row) {\n  const cadence = String(row['Cadence (Daily/Weekly/Monthly)'] || '').trim().toLowerCase();\n  const detail = String(row['Schedule Detail (Weekday / Day-of-Month)'] || '').trim().toLowerCase();\n  if (cadence === 'daily') return true;\n  if (cadence === 'weekly') return detail.includes(weekday.toLowerCase());\n  if (cadence === 'monthly') {\n    const n = parseInt(detail, 10);\n    return Number.isFinite(n) && n === dayOfMonth;\n  }\n  return false;\n}\n\nconst rows = $input.all().map(i => i.json);\nconst out = [];\nlet seq = 1;\n\nfor (const row of rows) {\n  const taskId = String(row['Task ID'] || '').trim();\n  if (!taskId) continue;\n  if (!isActive(row)) continue;\n  if (!isDueToday(row)) continue;\n\n  const checklistId = `CL-${todayStr.replace(/-/g,'')}-${String(seq).padStart(3,'0')}`;\n  seq++;\n\n  out.push({\n    json: {\n      'Checklist ID': checklistId,\n      'Date': todayStr,\n      'Task ID': taskId,\n      'Employee Name': row['Employee Name'] || '',\n      'Employee Phone': row['Employee Phone'] || '',\n      'Task Description': row['Task Description'] || '',\n      'Status': 'Pending',\n      'Senior Remarks': '',\n      'Reminder Count': '0',\n      'Last Reminded': '',\n      'Escalated (Y/N)': 'N',\n      'Escalated At': '',\n      'Supervisor Name': row['Supervisor Name'] || '',\n      'Supervisor Phone': row['Supervisor Phone'] || '',\n      'Escalation Threshold': row['Escalation Threshold'] || 2\n    }\n  });\n}\n\nreturn out;"
+      }
+    },
+    {
+      "id": "append-daily-checklist",
+      "name": "Append to Daily Checklist",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-928, -400],
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Daily Checklist", "mode": "name" },
+        "columns": { "mappingMode": "autoMapInputData" },
+        "options": {}
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_CRED_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "id": "call-apps-script-refresh-form",
+      "name": "Refresh Google Form Checklist Options",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-704, -400],
+      "parameters": {
+        "method": "POST",
+        "url": "APPS_SCRIPT_WEBAPP_URL_PLACEHOLDER",
+        "sendBody": true,
+        "bodyParameters": { "parameters": [ { "name": "date", "value": "={{ $now.setZone('Asia/Kolkata').toFormat('yyyy-MM-dd') }}" } ] }
+      },
+      "notes": "Calls an Apps Script Web App bound to the Form. The script reads today's Daily Checklist rows and rewrites the checkbox question's choices (one per Employee + Task) before the form is sent out."
+    },
+    {
+      "id": "send-checklist-link-senior",
+      "name": "WhatsApp: Send Checklist Form to Senior",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [-480, -400],
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "SENIOR_AUTHORITY_PHONE_PLACEHOLDER",
+        "template": "senior_daily_checklist|en",
+        "components": { "component": [ { "bodyParameters": { "parameter": [
+          { "text": "={{ $now.setZone('Asia/Kolkata').toFormat('dd-LLL-yyyy') }}" },
+          { "text": "FORM_LINK_PLACEHOLDER" }
+        ] } } ] }
+      },
+      "credentials": { "whatsAppApi": { "id": "WHATSAPP_CRED_ID", "name": "WhatsApp account" } },
+      "onError": "continueErrorOutput"
+    },
+
+    {
+      "id": "trigger-form-submitted",
+      "name": "Trigger: Senior Submits Form",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [-1600, 0],
+      "parameters": {
+        "pollTimes": { "item": [ { "mode": "everyX", "unit": "minutes", "value": 2 } ] },
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Form Responses", "mode": "name" }
+      },
+      "credentials": { "googleSheetsTriggerOAuth2Api": { "id": "GOOGLE_SHEETS_TRIGGER_CRED_ID", "name": "Google Sheets Trigger account" } }
+    },
+    {
+      "id": "code-process-response",
+      "name": "Parse Done / Not-Done + Remarks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1376, 0],
+      "parameters": {
+        "jsCode": "// Expects the form's checkbox answer as comma-separated Checklist IDs marked Done,\n// and remarks as lines of \"CL-xxxx: reason\".\nconst row = $input.first().json;\nconst doneRaw = String(row['Checklist IDs Marked Done (raw)'] || '');\nconst doneIds = new Set(doneRaw.split(',').map(s => s.trim()).filter(Boolean));\n\nconst remarksRaw = String(row['Remarks for Not Done Tasks (raw)'] || '');\nconst remarksMap = {};\nfor (const line of remarksRaw.split('\\n')) {\n  const m = line.match(/^(CL-[0-9A-Za-z-]+)\\s*:\\s*(.+)$/);\n  if (m) remarksMap[m[1].trim()] = m[2].trim();\n}\n\nreturn [{ json: { doneIds: Array.from(doneIds), remarksMap, submittedAt: row['Timestamp'] || '' } }];"
+      }
+    },
+    {
+      "id": "read-todays-checklist",
+      "name": "Read Today's Checklist Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-1152, 0],
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Daily Checklist", "mode": "name" },
+        "filtersUI": { "values": [ { "lookupColumn": "Date", "lookupValue": "={{ $now.setZone('Asia/Kolkata').toFormat('yyyy-MM-dd') }}" } ] },
+        "options": { "dataLocationOnSheet": { "values": { "rangeDefinition": "specifyRange", "headerRow": 1, "firstDataRow": 2 } } }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_CRED_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "id": "code-build-updates-and-not-done",
+      "name": "Build Row Updates + Not-Done List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-928, 0],
+      "parameters": {
+        "jsCode": "const parsed = $('Parse Done / Not-Done + Remarks').first().json;\nconst rows = $input.all().map(i => i.json);\n\nconst updates = [];\nconst notDoneForRipple = [];\n\nfor (const r of rows) {\n  const id = r['Checklist ID'];\n  const isDone = parsed.doneIds.includes(id);\n  const remark = parsed.remarksMap[id] || '';\n\n  const updated = {\n    ...r,\n    'Status': isDone ? 'Done' : 'Not Done',\n    'Senior Remarks': remark\n  };\n  updates.push({ json: updated });\n\n  if (!isDone) notDoneForRipple.push({ json: updated });\n}\n\n// Output both streams tagged so downstream nodes can branch\nreturn [\n  ...updates.map(u => ({ json: { ...u.json, _stream: 'update' } })),\n  ...notDoneForRipple.map(u => ({ json: { ...u.json, _stream: 'ripple' } }))\n];"
+      }
+    },
+    {
+      "id": "switch-stream",
+      "name": "Route: Update vs Ripple",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [-704, 0],
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "conditions": [ { "leftValue": "={{ $json._stream }}", "rightValue": "update", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "update" },
+            { "conditions": { "conditions": [ { "leftValue": "={{ $json._stream }}", "rightValue": "ripple", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "ripple" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "update-checklist-row",
+      "name": "Update Daily Checklist Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-480, -80],
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Daily Checklist", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Checklist ID": "={{ $json['Checklist ID'] }}",
+            "Status": "={{ $json['Status'] }}",
+            "Senior Remarks": "={{ $json['Senior Remarks'] }}"
+          },
+          "matchingColumns": ["Checklist ID"]
+        }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_CRED_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "id": "ripple-notify-employee",
+      "name": "RIPPLE 1: WhatsApp Employee Immediately",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [-480, 80],
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "={{ ($json['Employee Phone']||'').toString().replace(/\\D/g,'').replace(/^(?!91)/,'91') }}",
+        "template": "not_done_reminder|en",
+        "components": { "component": [ { "bodyParameters": { "parameter": [
+          { "text": "={{ $json['Employee Name'] }}" },
+          { "text": "={{ $json['Task Description'] }}" },
+          { "text": "={{ $json['Senior Remarks'] || 'No remarks' }}" },
+          { "text": "={{ $json['Checklist ID'] }}" }
+        ] } } ] }
+      },
+      "credentials": { "whatsAppApi": { "id": "WHATSAPP_CRED_ID", "name": "WhatsApp account" } },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "increment-reminder-count",
+      "name": "Increment Reminder Count",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-256, 80],
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map(i => {\n  const row = i.json;\n  const oldCount = parseInt(row['Reminder Count'] || '0', 10) || 0;\n  const newCount = oldCount + 1;\n  const threshold = parseInt(row['Escalation Threshold'] || '2', 10) || 2;\n  return {\n    json: {\n      ...row,\n      'Reminder Count': String(newCount),\n      'Last Reminded': DateTime.now().setZone('Asia/Kolkata').toFormat('yyyy-MM-dd HH:mm'),\n      '_shouldEscalate': newCount >= threshold\n    }\n  };\n});"
+      }
+    },
+    {
+      "id": "update-checklist-reminder",
+      "name": "Update Reminder Count on Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-32, 80],
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Daily Checklist", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Checklist ID": "={{ $json['Checklist ID'] }}",
+            "Reminder Count": "={{ $json['Reminder Count'] }}",
+            "Last Reminded": "={{ $json['Last Reminded'] }}"
+          },
+          "matchingColumns": ["Checklist ID"]
+        }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_CRED_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "id": "if-should-escalate",
+      "name": "IF Reminder Count >= Threshold",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [192, 80],
+      "parameters": {
+        "conditions": { "conditions": [ { "leftValue": "={{ $json._shouldEscalate }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } } ] }
+      }
+    },
+    {
+      "id": "ripple-escalate-supervisor",
+      "name": "RIPPLE 2: WhatsApp Supervisor (Escalation)",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [416, 32],
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "={{ ($json['Supervisor Phone']||'').toString().replace(/\\D/g,'').replace(/^(?!91)/,'91') }}",
+        "template": "escalation_alert|en",
+        "components": { "component": [ { "bodyParameters": { "parameter": [
+          { "text": "={{ $json['Supervisor Name'] }}" },
+          { "text": "={{ $json['Employee Name'] }}" },
+          { "text": "={{ $json['Task Description'] }}" },
+          { "text": "={{ $json['Reminder Count'] }}" },
+          { "text": "={{ $json['Checklist ID'] }}" }
+        ] } } ] }
+      },
+      "credentials": { "whatsAppApi": { "id": "WHATSAPP_CRED_ID", "name": "WhatsApp account" } },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "mark-escalated-checklist",
+      "name": "Mark Escalated on Daily Checklist",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [640, 32],
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Daily Checklist", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Checklist ID": "={{ $json['Checklist ID'] }}",
+            "Escalated (Y/N)": "Y",
+            "Escalated At": "={{ DateTime.now().setZone('Asia/Kolkata').toFormat('yyyy-MM-dd HH:mm') }}"
+          },
+          "matchingColumns": ["Checklist ID"]
+        }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_CRED_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "id": "append-escalation-log",
+      "name": "Append to Escalation Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [864, 32],
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Escalation Log", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Escalation ID": "={{ 'ESC-' + $json['Checklist ID'] + '-' + Date.now() }}",
+            "Checklist ID": "={{ $json['Checklist ID'] }}",
+            "Date": "={{ $json['Date'] }}",
+            "Employee Name": "={{ $json['Employee Name'] }}",
+            "Task Description": "={{ $json['Task Description'] }}",
+            "Supervisor Notified": "={{ $json['Supervisor Name'] }}",
+            "Reminder Count At Escalation": "={{ $json['Reminder Count'] }}",
+            "Escalated At": "={{ DateTime.now().setZone('Asia/Kolkata').toFormat('yyyy-MM-dd HH:mm') }}",
+            "Resolved (Y/N)": "N",
+            "Resolved At": ""
+          }
+        }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_CRED_ID", "name": "Google Sheets account" } }
+    },
+
+    {
+      "id": "trigger-reminder-sweep",
+      "name": "Every 4h - Reminder Sweep (Still Pending/Not Done)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1600, 400],
+      "parameters": {
+        "rule": { "interval": [ { "field": "hours", "hoursInterval": 4 } ] }
+      },
+      "notes": "Independent sweep so ripple reminders continue even without a new form submission that day. Uses REMINDER_INTERVAL_HOURS and ESCALATION_THRESHOLD_DEFAULT from README & Settings."
+    },
+    {
+      "id": "read-open-checklist-rows",
+      "name": "Read Open Checklist Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-1376, 400],
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SHEET_ID_PLACEHOLDER", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Daily Checklist", "mode": "name" },
+        "options": { "dataLocationOnSheet": { "values": { "rangeDefinition": "specifyRange", "headerRow": 1, "firstDataRow": 2 } } }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "GOOGLE_SHEETS_CRED_ID", "name": "Google Sheets account" } }
+    },
+    {
+      "id": "code-filter-sweep-due",
+      "name": "Filter: Not Done + Interval Elapsed + Not Escalated",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1152, 400],
+      "parameters": {
+        "jsCode": "const ZONE = 'Asia/Kolkata';\nconst now = DateTime.now().setZone(ZONE);\nconst todayStr = now.toFormat('yyyy-MM-dd');\nconst REMINDER_INTERVAL_HOURS = 4; // mirrors README & Settings!B9 -- keep in sync or fetch dynamically\n\nconst rows = $input.all().map(i => i.json);\nconst out = [];\n\nfor (const r of rows) {\n  if (String(r['Date']) !== todayStr) continue;\n  if (String(r['Escalated (Y/N)']).toUpperCase() === 'Y') continue;\n  if (String(r['Status']) === 'Done') continue;\n  if (String(r['Status']) !== 'Not Done') continue; // only chase tasks the senior already flagged Not Done\n\n  const last = r['Last Reminded'] ? DateTime.fromFormat(String(r['Last Reminded']), 'yyyy-MM-dd HH:mm', { zone: ZONE }) : null;\n  const dueForReminder = !last || !last.isValid || now.diff(last, 'hours').hours >= REMINDER_INTERVAL_HOURS;\n  if (!dueForReminder) continue;\n\n  out.push({ json: r });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "sweep-note",
+      "name": "Sticky: Sweep feeds same Increment/IF/Ripple chain",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-928, 320],
+      "parameters": {
+        "content": "Connect this node's output into 'Increment Reminder Count' above to reuse the same ripple + escalation chain (RIPPLE 1 -> IF threshold -> RIPPLE 2 -> log). Not duplicated here to keep the JSON readable — wire the connection in the n8n canvas.",
+        "height": 200,
+        "width": 400
+      }
+    },
+
+    {
+      "id": "sticky-generate",
+      "name": "Sticky: Checklist Generation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1632, -480],
+      "parameters": { "content": "## 1. Generate Today's Checklist (00:05 IST)\nExpands Task Master (Daily/Weekly/Monthly) into today's Daily Checklist rows, refreshes the Form's checkbox list via Apps Script, sends the form link to the Senior Authority.", "height": 220, "width": 1200, "color": 4 }
+    },
+    {
+      "id": "sticky-submission",
+      "name": "Sticky: Form Submission Processing",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1632, -80],
+      "parameters": { "content": "## 2. Process Senior's Submission -> Ripple\nParses Done/Not-Done + remarks, updates Daily Checklist, and for every Not-Done task: (a) notifies the employee immediately, (b) escalates to the supervisor once Reminder Count hits the task's Escalation Threshold, logging every escalation.", "height": 700, "width": 1200, "color": 6 }
+    },
+    {
+      "id": "sticky-sweep",
+      "name": "Sticky: Standing Reminder Sweep",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1632, 320],
+      "parameters": { "content": "## 3. Reminder Sweep (every 4h)\nKeeps chasing Not-Done tasks and escalating even on days with no new form activity, using REMINDER_INTERVAL_HOURS from Settings.", "height": 200, "width": 1200, "color": 3 }
+    }
+  ],
+  "connections": {
+    "00:05 IST - Generate Today's Checklist": { "main": [[ { "node": "Read Task Master", "type": "main", "index": 0 } ]] },
+    "Read Task Master": { "main": [[ { "node": "Expand Cadence -> Today's Instances", "type": "main", "index": 0 } ]] },
+    "Expand Cadence -> Today's Instances": { "main": [[ { "node": "Append to Daily Checklist", "type": "main", "index": 0 } ]] },
+    "Append to Daily Checklist": { "main": [[ { "node": "Refresh Google Form Checklist Options", "type": "main", "index": 0 } ]] },
+    "Refresh Google Form Checklist Options": { "main": [[ { "node": "WhatsApp: Send Checklist Form to Senior", "type": "main", "index": 0 } ]] },
+
+    "Trigger: Senior Submits Form": { "main": [[ { "node": "Parse Done / Not-Done + Remarks", "type": "main", "index": 0 } ]] },
+    "Parse Done / Not-Done + Remarks": { "main": [[ { "node": "Read Today's Checklist Rows", "type": "main", "index": 0 } ]] },
+    "Read Today's Checklist Rows": { "main": [[ { "node": "Build Row Updates + Not-Done List", "type": "main", "index": 0 } ]] },
+    "Build Row Updates + Not-Done List": { "main": [[ { "node": "Route: Update vs Ripple", "type": "main", "index": 0 } ]] },
+    "Route: Update vs Ripple": {
+      "main": [
+        [ { "node": "Update Daily Checklist Row", "type": "main", "index": 0 } ],
+        [ { "node": "RIPPLE 1: WhatsApp Employee Immediately", "type": "main", "index": 0 } ]
+      ]
+    },
+    "RIPPLE 1: WhatsApp Employee Immediately": { "main": [[ { "node": "Increment Reminder Count", "type": "main", "index": 0 } ]] },
+    "Increment Reminder Count": { "main": [[ { "node": "Update Reminder Count on Sheet", "type": "main", "index": 0 } ]] },
+    "Update Reminder Count on Sheet": { "main": [[ { "node": "IF Reminder Count >= Threshold", "type": "main", "index": 0 } ]] },
+    "IF Reminder Count >= Threshold": {
+      "main": [
+        [ { "node": "RIPPLE 2: WhatsApp Supervisor (Escalation)", "type": "main", "index": 0 } ],
+        []
+      ]
+    },
+    "RIPPLE 2: WhatsApp Supervisor (Escalation)": { "main": [[ { "node": "Mark Escalated on Daily Checklist", "type": "main", "index": 0 } ]] },
+    "Mark Escalated on Daily Checklist": { "main": [[ { "node": "Append to Escalation Log", "type": "main", "index": 0 } ]] },
+
+    "Every 4h - Reminder Sweep (Still Pending/Not Done)": { "main": [[ { "node": "Read Open Checklist Rows", "type": "main", "index": 0 } ]] },
+    "Read Open Checklist Rows": { "main": [[ { "node": "Filter: Not Done + Interval Elapsed + Not Escalated", "type": "main", "index": 0 } ]] },
+    "Filter: Not Done + Interval Elapsed + Not Escalated": { "main": [[ { "node": "Increment Reminder Count", "type": "main", "index": 0 } ]] }
+  }
+}

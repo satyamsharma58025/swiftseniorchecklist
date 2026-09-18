@@ -8,8 +8,8 @@ export const HEADER_MAP = {
   employeeName: ["employee name", "employee", "employee_name"],
   employeePhone: ["employee phone", "employeephone", "phone", "employee_mobile"],
   taskDescription: ["task description", "taskdesc", "description", "job description"],
-  cadence: ["cadence", "cadence (daily/weekly/monthly)", "task cadence"],
-  scheduleDetail: ["schedule detail", "schedule detail (weekday / day-of-month)", "schedule_detail", "weekday / day-of-month"],
+  cadence: ["cadence", "cadence (daily/weekly/monthly)", "cadence (daily/weekly/monthly/yearly/quarterly)", "task cadence"],
+  scheduleDetail: ["schedule detail", "schedule detail (weekday / day-of-month)", "schedule detail (weekday / day-of-month / dd-mon)", "schedule_detail", "weekday / day-of-month"],
   active: ["active", "active (y/n)", "active_yn"],
   startDate: ["start date", "start_date", "from date"],
   endDate: ["end date", "end_date", "to date"],
@@ -40,7 +40,7 @@ const TASK_MASTER_SCHEMA = z.object({
   employeeName: z.string().min(1),
   employeePhone: z.string().min(1),
   taskDescription: z.string().min(1),
-  cadence: z.enum(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"]),
+  cadence: z.enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]),
   scheduleDetail: z.string().nullable(),
   active: z.boolean(),
   startDate: z.string().nullable(),
@@ -69,14 +69,15 @@ export function findHeaderKey(headerName: string): keyof typeof HEADER_MAP | nul
   return null;
 }
 
-export function normalizeCadence(raw: unknown): "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY" {
+export function normalizeCadence(raw: unknown): "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" {
   const text = String(raw ?? "").trim().toUpperCase();
   if (text === "DAILY" || text === "D") return "DAILY";
   if (text === "WEEKLY" || text === "W") return "WEEKLY";
   if (text === "MONTHLY" || text === "M") return "MONTHLY";
+  if (text === "QUARTERLY" || text === "Q") return "QUARTERLY";
   if (text === "YEARLY" || text === "Y") return "YEARLY";
 
-  throw new Error(`cadence "${raw}" not in DAILY/WEEKLY/MONTHLY/YEARLY`);
+  throw new Error(`cadence "${raw}" not in DAILY/WEEKLY/MONTHLY/QUARTERLY/YEARLY`);
 }
 
 export function normalizeScheduleDetail(cadence: string, raw: unknown): string | null {
@@ -96,10 +97,10 @@ export function normalizeScheduleDetail(cadence: string, raw: unknown): string |
     return resolved;
   }
 
-  if (cadence === "MONTHLY") {
+  if (cadence === "MONTHLY" || cadence === "QUARTERLY") {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) {
-      throw new Error(`monthly schedule detail "${value}" is not a valid day-of-month`);
+      throw new Error(`schedule detail "${value}" is not a valid day-of-month for ${cadence.toLowerCase()}`);
     }
     return String(parsed);
   }
@@ -178,7 +179,7 @@ export type ImportRowResult = {
     employeeName: string;
     employeePhone: string;
     taskDescription: string;
-    cadence: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+    cadence: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
     scheduleDetail: string | null;
     active: boolean;
     startDate: string | null;

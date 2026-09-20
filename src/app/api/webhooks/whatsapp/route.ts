@@ -1,9 +1,7 @@
-import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 
-import { normalizePhone } from "@/lib/business-logic";
-import { prisma } from "@/lib/prisma";
-import { extractMessageFromWhatsAppPayload, verifyWebhookSignature } from "@/lib/whatsapp-webhook";
+import { processInboundWhatsAppPayload } from "@/lib/whatsapp-inbound";
+import { verifyWebhookSignature } from "@/lib/whatsapp-webhook";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -34,80 +32,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "INVALID_JSON" }, { status: 400 });
   }
 
-  const message = extractMessageFromWhatsAppPayload(payload);
-
-  const payloadValue: Prisma.InputJsonValue = payload as Prisma.InputJsonValue;
-
-  if (!message) {
-    await prisma.webhookEvent.upsert({
-      where: { eventId: `meta:unparsed:${Date.now()}` },
-      update: { source: "whatsapp", kind: "unknown", payload: payloadValue, processedAt: new Date() },
-      create: { eventId: `meta:unparsed:${Date.now()}`, source: "whatsapp", kind: "unknown", payload: payloadValue },
-    });
-    return NextResponse.json({ ok: true });
-  }
-
-  const dedupeKey = message.id;
-  const existing = await prisma.webhookEvent.findUnique({ where: { eventId: dedupeKey } });
-  if (existing) {
-    return NextResponse.json({ ok: true, duplicate: true });
-  }
-
-  await prisma.webhookEvent.create({
-    data: {
-      eventId: dedupeKey,
-      source: "whatsapp",
-      kind: "inbound_message",
-      payload: payloadValue,
-    },
-  });
-
-  const normalizedSender = normalizePhone(message.from);
-  const employee = await prisma.employee.findFirst({
-    where: { active: true, phone: { not: null } },
-    orderBy: { name: "asc" },
-  });
-
-  const matchedEmployee = employee
-    ? await prisma.employee.findMany({
-        where: { active: true },
-        select: { id: true, name: true, phone: true },
-      }).then((employees) => employees.find((entry) => entry.phone && normalizePhone(entry.phone) === normalizedSender) ?? null)
-    : null;
-
-  if (!matchedEmployee) {
-    return NextResponse.json({ ok: true, matched: false });
-  }
-
-  const today = new Date();
-  const dateStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-  const dateEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-
-  const openItems = await prisma.dailyChecklistItem.findMany({
-    where: {
-      employeeName: matchedEmployee.name,
-      date: { gte: dateStart, lte: dateEnd },
-      status: { not: "DONE" },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  if (openItems.length === 1) {
-    await prisma.dailyChecklistItem.update({
-      where: { id: openItems[0].id },
-      data: {
-        employeeResponse: message.text,
-        employeeRespondedAt: new Date(),
-      },
-    });
-  } else if (openItems.length > 1) {
-    await prisma.dailyChecklistItem.updateMany({
-      where: { id: { in: openItems.map((item) => item.id) } },
-      data: {
-        needsManualReconciliation: true,
-      },
-    });
-  }
-
-  return NextResponse.json({ ok: true, matched: true, itemsUpdated: openItems.length });
+  const result = await processInboundWhatsAppPayload(payload);
+  return NextResponse.json(result);
 }

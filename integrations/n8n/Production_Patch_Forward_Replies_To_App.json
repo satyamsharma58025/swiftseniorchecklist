@@ -1,0 +1,101 @@
+{
+  "nodes": [
+    {
+      "id": "00000000-0000-0000-0000-00000000f001",
+      "name": "Forward To Swift App?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2512,
+        -2600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-00000000f101",
+              "leftValue": "={{ $json.is_message === true && $json.message_type === 'text' && !['menu', 'report'].includes($json.text_body) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "Only plain TEXT messages that are not the 'menu'/'report' keywords go to the Swift Senior Checklist app. Voice notes, list replies and status callbacks are untouched."
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000f002",
+      "name": "App: Forward Inbound Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2736,
+        -2600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://swiftseniorchecklist.onrender.com/api/integrations/whatsapp/inbound",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Meta Webhook Receive (POST)').first().json.body) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "notes": "Sends Meta's original payload untouched (n8n's own Extract node lowercases the text). Runs in parallel with 'Respond 200 OK', so Meta is never kept waiting."
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000f003",
+      "name": "Sticky Note - Swift App Forward",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        -2760
+      ],
+      "parameters": {
+        "content": "## Swift Senior Checklist: employee replies\nWIRE ONE CONNECTION: `Extract Message Data` -> `Forward To Swift App?` (keep its existing outputs to `Respond 200 OK` and `Is Menu Keyword?`).\nThen attach the 'Swift App Secret (x-cron-secret)' credential to the HTTP node.",
+        "height": 150,
+        "width": 520,
+        "color": 6
+      }
+    }
+  ],
+  "connections": {
+    "Forward To Swift App?": {
+      "main": [
+        [
+          {
+            "node": "App: Forward Inbound Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  }
+}

@@ -288,11 +288,57 @@
     },
     {
       "id": "00000000-0000-0000-0000-0000000c9b69",
+      "name": "Shorten Form Link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        -30
+      ],
+      "parameters": {
+        "url": "=https://tinyurl.com/api-create.php?url={{ encodeURIComponent($('App: Get Todays Checklist').first().json.formUrl) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Same TinyURL shortener the production workflows use. If it fails, the full Google Form link is sent instead."
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000cd947",
+      "name": "Form Link",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        -30
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00000000-0000-0000-0000-0000000cba58",
+              "name": "formLink",
+              "value": "={{ (typeof $json.data === 'string' && $json.data.indexOf('http') === 0) ? $json.data : $('App: Get Todays Checklist').first().json.formUrl }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000cf836",
       "name": "WhatsApp: Send Form Link to Senior",
       "type": "n8n-nodes-base.whatsApp",
       "typeVersion": 1.1,
       "position": [
-        540,
+        900,
         -30
       ],
       "parameters": {
@@ -308,7 +354,7 @@
                     "text": "={{ $now.setZone('Asia/Kolkata').toFormat('dd-LLL-yyyy') }}"
                   },
                   {
-                    "text": "={{ $('App: Get Todays Checklist').first().json.formUrl }}"
+                    "text": "={{ $json.formLink }}"
                   }
                 ]
               }
@@ -318,19 +364,19 @@
       },
       "credentials": {
         "whatsAppApi": {
-          "id": "WHATSAPP_CRED_ID",
+          "id": "gnD3am3fj5pbwlEX",
           "name": "WhatsApp account"
         }
       },
       "onError": "continueErrorOutput"
     },
     {
-      "id": "00000000-0000-0000-0000-0000000cba58",
+      "id": "00000000-0000-0000-0000-0000000d1725",
       "name": "App: Log Form Link Sent",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        780,
+        1140,
         -110
       ],
       "parameters": {
@@ -356,12 +402,12 @@
       "waitBetweenTries": 8000
     },
     {
-      "id": "00000000-0000-0000-0000-0000000cd947",
+      "id": "00000000-0000-0000-0000-0000000d3614",
       "name": "App: Log Form Link Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        780,
+        1140,
         70
       ],
       "parameters": {
@@ -387,7 +433,7 @@
       "waitBetweenTries": 8000
     },
     {
-      "id": "00000000-0000-0000-0000-0000000cf836",
+      "id": "00000000-0000-0000-0000-0000000d5503",
       "name": "Note: Flow B",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -403,7 +449,7 @@
       }
     },
     {
-      "id": "00000000-0000-0000-0000-0000000d1725",
+      "id": "00000000-0000-0000-0000-0000000d73f2",
       "name": "Webhook: Form Submitted",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -428,7 +474,7 @@
       "notes": "Use the PRODUCTION URL (workflow must be active) as N8N_WEBHOOK_URL in the Apps Script properties."
     },
     {
-      "id": "00000000-0000-0000-0000-0000000d73f2",
+      "id": "00000000-0000-0000-0000-0000000dd0bf",
       "name": "Config (Form Submit)",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -440,13 +486,13 @@
         "assignments": {
           "assignments": [
             {
-              "id": "00000000-0000-0000-0000-0000000d3614",
+              "id": "00000000-0000-0000-0000-0000000d92e1",
               "name": "APP_BASE_URL",
               "value": "https://swiftseniorchecklist.onrender.com",
               "type": "string"
             },
             {
-              "id": "00000000-0000-0000-0000-0000000d5503",
+              "id": "00000000-0000-0000-0000-0000000db1d0",
               "name": "NOTIFY_EMPLOYEES",
               "value": false,
               "type": "boolean"
@@ -458,7 +504,7 @@
       }
     },
     {
-      "id": "00000000-0000-0000-0000-0000000d92e1",
+      "id": "00000000-0000-0000-0000-0000000defae",
       "name": "App: Submit Form Response",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -489,7 +535,7 @@
       "waitBetweenTries": 8000
     },
     {
-      "id": "00000000-0000-0000-0000-0000000db1d0",
+      "id": "00000000-0000-0000-0000-0000000e0e9d",
       "name": "Respond to Apps Script",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
@@ -504,7 +550,7 @@
       }
     },
     {
-      "id": "00000000-0000-0000-0000-0000000defae",
+      "id": "00000000-0000-0000-0000-0000000e4c7b",
       "name": "Notify Employees?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -521,7 +567,7 @@
           },
           "conditions": [
             {
-              "id": "00000000-0000-0000-0000-0000000dd0bf",
+              "id": "00000000-0000-0000-0000-0000000e2d8c",
               "leftValue": "={{ $('Config (Form Submit)').first().json.NOTIFY_EMPLOYEES === true && ($json.newlyNotDone || []).length > 0 }}",
               "rightValue": "",
               "operator": {
@@ -537,7 +583,7 @@
       }
     },
     {
-      "id": "00000000-0000-0000-0000-0000000e0e9d",
+      "id": "00000000-0000-0000-0000-0000000e6b6a",
       "name": "Split Not-Done Tasks",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
@@ -551,7 +597,7 @@
       }
     },
     {
-      "id": "00000000-0000-0000-0000-0000000e4c7b",
+      "id": "00000000-0000-0000-0000-0000000ea948",
       "name": "Has Employee Phone?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -568,7 +614,7 @@
           },
           "conditions": [
             {
-              "id": "00000000-0000-0000-0000-0000000e2d8c",
+              "id": "00000000-0000-0000-0000-0000000e8a59",
               "leftValue": "={{ !!$json.employeePhoneWhatsapp }}",
               "rightValue": "",
               "operator": {
@@ -584,7 +630,7 @@
       }
     },
     {
-      "id": "00000000-0000-0000-0000-0000000e6b6a",
+      "id": "00000000-0000-0000-0000-0000000ec837",
       "name": "App: Log No Phone",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -615,7 +661,7 @@
       "waitBetweenTries": 8000
     },
     {
-      "id": "00000000-0000-0000-0000-0000000e8a59",
+      "id": "00000000-0000-0000-0000-0000000ee726",
       "name": "WhatsApp: Employee Not-Done",
       "type": "n8n-nodes-base.whatsApp",
       "typeVersion": 1.1,
@@ -652,14 +698,14 @@
       },
       "credentials": {
         "whatsAppApi": {
-          "id": "WHATSAPP_CRED_ID",
+          "id": "gnD3am3fj5pbwlEX",
           "name": "WhatsApp account"
         }
       },
       "onError": "continueRegularOutput"
     },
     {
-      "id": "00000000-0000-0000-0000-0000000ea948",
+      "id": "00000000-0000-0000-0000-0000000f0615",
       "name": "App: Log Employee Message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -690,7 +736,7 @@
       "waitBetweenTries": 8000
     },
     {
-      "id": "00000000-0000-0000-0000-0000000ec837",
+      "id": "00000000-0000-0000-0000-0000000f2504",
       "name": "App: Ack Reminder",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -721,7 +767,7 @@
       "waitBetweenTries": 8000
     },
     {
-      "id": "00000000-0000-0000-0000-0000000f0615",
+      "id": "00000000-0000-0000-0000-0000000f62e2",
       "name": "Newly Escalated?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -738,7 +784,7 @@
           },
           "conditions": [
             {
-              "id": "00000000-0000-0000-0000-0000000ee726",
+              "id": "00000000-0000-0000-0000-0000000f43f3",
               "leftValue": "={{ $json.newlyEscalated === true && !!$json.supervisorPhoneWhatsapp }}",
               "rightValue": "",
               "operator": {
@@ -754,7 +800,7 @@
       }
     },
     {
-      "id": "00000000-0000-0000-0000-0000000f2504",
+      "id": "00000000-0000-0000-0000-0000000f81d1",
       "name": "WhatsApp: Supervisor Escalation",
       "type": "n8n-nodes-base.whatsApp",
       "typeVersion": 1.1,
@@ -794,14 +840,14 @@
       },
       "credentials": {
         "whatsAppApi": {
-          "id": "WHATSAPP_CRED_ID",
+          "id": "gnD3am3fj5pbwlEX",
           "name": "WhatsApp account"
         }
       },
       "onError": "continueRegularOutput"
     },
     {
-      "id": "00000000-0000-0000-0000-0000000f43f3",
+      "id": "00000000-0000-0000-0000-0000000fa0c0",
       "name": "App: Log Supervisor Message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -832,7 +878,7 @@
       "waitBetweenTries": 8000
     },
     {
-      "id": "00000000-0000-0000-0000-0000000f62e2",
+      "id": "00000000-0000-0000-0000-0000000fbfaf",
       "name": "Note: Setup",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -944,7 +990,7 @@
       "main": [
         [
           {
-            "node": "WhatsApp: Send Form Link to Senior",
+            "node": "Shorten Form Link",
             "type": "main",
             "index": 0
           }
@@ -952,6 +998,28 @@
         [
           {
             "node": "Stop: Form Not Rebuilt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shorten Form Link": {
+      "main": [
+        [
+          {
+            "node": "Form Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Link": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Send Form Link to Senior",
             "type": "main",
             "index": 0
           }

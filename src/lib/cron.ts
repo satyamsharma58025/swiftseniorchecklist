@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { NextResponse } from "next/server";
 
 import { getBusinessToday } from "@/lib/business-logic";
@@ -8,7 +9,7 @@ export type CronRouteResult = NextResponse | Response;
 
 export function normalizeCronDate(dateValue?: string | null, fallbackDate = getBusinessToday()): Date {
   const raw = (dateValue ?? fallbackDate).trim();
-  const parsed = new Date(`${raw}T00:00:00.000Z`);
+  const parsed = DateTime.fromISO(raw, { zone: "Asia/Kolkata" }).startOf("day").toJSDate();
 
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(`Invalid cron date: ${raw}`);

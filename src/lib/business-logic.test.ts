@@ -5,6 +5,7 @@ import {
   handleNotDone,
   matchesMonthly,
   normalizePhone,
+  parseBusinessDate,
 } from "@/lib/business-logic";
 
 describe("normalizePhone", () => {
@@ -36,6 +37,15 @@ describe("getBusinessToday", () => {
   it("returns an ISO-like business date in Asia/Kolkata", () => {
     const value = getBusinessToday();
     expect(value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("moves to the next business day after midnight in Asia/Kolkata", () => {
+    const value = getBusinessToday(new Date("2026-09-20T18:30:00.000Z"));
+    expect(value).toBe("2026-09-21");
+  });
+
+  it("parses a business date at the start of the Asia/Kolkata day", () => {
+    expect(parseBusinessDate("2026-09-21").toISOString().slice(0, 10)).toBe("2026-09-20");
   });
 });
 

@@ -31,8 +31,12 @@ export function normalizePhone(input: string): string {
   return `+91${compact}`;
 }
 
-export function getBusinessToday(): string {
-  return DateTime.now().setZone("Asia/Kolkata").toFormat("yyyy-MM-dd");
+export function getBusinessToday(date = new Date()): string {
+  return DateTime.fromJSDate(date, { zone: "Asia/Kolkata" }).toFormat("yyyy-MM-dd");
+}
+
+export function parseBusinessDate(dateString: string): Date {
+  return DateTime.fromISO(dateString, { zone: "Asia/Kolkata" }).startOf("day").toJSDate();
 }
 
 export function matchesMonthly(

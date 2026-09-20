@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AddTaskForm } from "@/app/queue/_components/AddTaskForm";
+import { LockQueueButton } from "@/app/queue/_components/LockQueueButton";
 import { prisma } from "@/lib/prisma";
 
 export default async function QueuePage({
@@ -73,9 +74,7 @@ export default async function QueuePage({
         <section className="neo-border bg-white p-6 neo-shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="brand-display text-3xl text-ink">Queue items</h2>
-            <button className="neo-press neo-border bg-hot-pink px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-ink">
-              Lock queue
-            </button>
+            <LockQueueButton date={date} />
           </div>
 
           <div className="space-y-3">

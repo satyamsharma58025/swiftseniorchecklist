@@ -5,6 +5,7 @@ import { BrandHeader } from "@/app/checklist/_components/BrandHeader";
 import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
 import { DateControl } from "@/app/checklist/_components/DateControl";
 import { EmployeeTabs } from "@/app/checklist/_components/EmployeeTabs";
+import { getBusinessToday, parseBusinessDate } from "@/lib/business-logic";
 import { prisma } from "@/lib/prisma";
 
 const EMPLOYEE_NAMES = [
@@ -32,7 +33,7 @@ export default async function ChecklistDatePage({
 }) {
   const { date } = await params;
   const resolvedParams = (await searchParams) ?? {};
-  const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : new Date().toISOString().slice(0, 10);
+  const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getBusinessToday();
 
   const employees = await prisma.employee.findMany({
     where: { active: true },
@@ -57,7 +58,7 @@ export default async function ChecklistDatePage({
 
   const rows = await prisma.dailyChecklistItem.findMany({
     where: {
-      date: new Date(`${selectedDate}T00:00:00.000Z`),
+      date: parseBusinessDate(selectedDate),
     },
     orderBy: { taskDescription: "asc" },
   });
@@ -91,9 +92,9 @@ export default async function ChecklistDatePage({
     pending: rows.filter((row) => row.status === "PENDING").length,
   };
   const dayWindow = Array.from({ length: 14 }, (_, index) => {
-    const target = new Date(`${selectedDate}T00:00:00.000Z`);
+    const target = new Date(parseBusinessDate(selectedDate));
     target.setDate(target.getDate() - 6 + index);
-    return target.toISOString().slice(0, 10);
+    return getBusinessToday(target);
   });
 
   return (

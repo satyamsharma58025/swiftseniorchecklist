@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { getBusinessToday } from "@/lib/business-logic";
 import { prisma } from "@/lib/prisma";
 
 export default async function HomePage() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getBusinessToday();
 
   const [employees, tasks, done, escalated] = await Promise.all([
     prisma.employee.count({ where: { active: true } }),

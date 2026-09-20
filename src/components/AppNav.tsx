@@ -3,9 +3,10 @@ import Link from "next/link";
 import { getServerSession } from "next-auth/next";
 
 import { authOptions } from "@/auth";
+import { getBusinessToday } from "@/lib/business-logic";
 import logo from "@/lib/logo.png";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = getBusinessToday();
 
 const navGroups = [
   {

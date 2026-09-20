@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { normalizePhone } from "@/lib/business-logic";
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
 
   const message = extractMessageFromWhatsAppPayload(payload);
 
-  const payloadValue: unknown = payload;
+  const payloadValue: Prisma.InputJsonValue = payload as Prisma.InputJsonValue;
 
   if (!message) {
     await prisma.webhookEvent.upsert({

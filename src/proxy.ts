@@ -5,7 +5,7 @@ import { getToken } from "next-auth/jwt";
 
 import { classifyRoute, requireRole } from "@/lib/route-access";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const policy = classifyRoute(pathname, request.method);
 

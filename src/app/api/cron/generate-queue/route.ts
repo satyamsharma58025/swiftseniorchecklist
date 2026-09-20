@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { cadenceMatches, reserveNextQueueCode } from "@/lib/cadence";
 import { prisma } from "@/lib/prisma";
-import { normalizeCronDate, runCronJob } from "@/lib/cron";
+import { runCronJob } from "@/lib/cron";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);

@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "TASK_CODE_EMPLOYEE_DESCRIPTION_REQUIRED" }, { status: 400 });
   }
 
-  const validation = validateScheduleDetail(cadence as any, scheduleDetail || null);
+  const validation = validateScheduleDetail(cadence as "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY", scheduleDetail || null);
   if (!validation.valid) {
     return NextResponse.json({ error: validation.message }, { status: 400 });
   }
@@ -40,9 +40,9 @@ export async function POST(request: Request) {
       taskCode,
       employeeId,
       taskDescription,
-      cadence: cadence as any,
+      cadence: cadence as "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY",
       scheduleDetail: scheduleDetail || null,
-      priority: priority as any,
+      priority: priority as "HIGH" | "MEDIUM" | "LOW",
       active: true,
       escalationThreshold: 2,
     },
@@ -56,6 +56,6 @@ export async function POST(request: Request) {
     cadence: task.cadence,
     scheduleDetail: task.scheduleDetail,
     priority: task.priority,
-    valid: cadenceMatches({ cadence: task.cadence as any, scheduleDetail: task.scheduleDetail }, new Date()),
+    valid: cadenceMatches({ cadence: task.cadence as "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY", scheduleDetail: task.scheduleDetail }, new Date()),
   }, { status: 201 });
 }

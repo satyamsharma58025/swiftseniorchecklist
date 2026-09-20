@@ -40,7 +40,7 @@ describe("extractMessageFromWhatsAppPayload", () => {
       ],
     };
 
-    expect(extractMessageFromWhatsAppPayload(payload as any)).toEqual({
+    expect(extractMessageFromWhatsAppPayload(payload as Record<string, unknown>)).toEqual({
       id: "wamid.test-1",
       from: "919876543210",
       text: "I have updated this task",

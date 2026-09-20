@@ -156,3 +156,19 @@ export async function handleNotDone(
     supervisorMessageSent,
   };
 }
+
+/**
+ * Returns a WhatsApp Cloud API recipient (country code + number, digits only,
+ * e.g. "919876543210") or null when the stored value is blank / "TBD" / invalid.
+ */
+export function toWhatsAppNumber(input: string | null | undefined): string | null {
+  if (!input) {
+    return null;
+  }
+
+  try {
+    return normalizePhone(input).replace(/^\+/, "");
+  } catch {
+    return null;
+  }
+}

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { AutoRefresh } from "@/app/checklist/_components/AutoRefresh";
 import { BrandHeader } from "@/app/checklist/_components/BrandHeader";
 import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
 import { DateControl } from "@/app/checklist/_components/DateControl";
@@ -76,6 +77,19 @@ export default async function ChecklistDatePage({
   });
 
   const employeeRows = rows.filter((row) => row.employeeName === selectedEmployee.name);
+
+  const submissionTimes = rows
+    .map((row) => row.formSubmissionTimestamp)
+    .filter((value): value is Date => value instanceof Date);
+  const lastFormSubmission = submissionTimes.length
+    ? new Date(Math.max(...submissionTimes.map((value) => value.getTime())))
+    : null;
+  const dayTotals = {
+    total: rows.length,
+    done: rows.filter((row) => row.status === "DONE").length,
+    notDone: rows.filter((row) => row.status === "NOT_DONE").length,
+    pending: rows.filter((row) => row.status === "PENDING").length,
+  };
   const dayWindow = Array.from({ length: 14 }, (_, index) => {
     const target = new Date(`${selectedDate}T00:00:00.000Z`);
     target.setDate(target.getDate() - 6 + index);
@@ -85,7 +99,31 @@ export default async function ChecklistDatePage({
   return (
     <main className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
       <div className="mx-auto max-w-6xl space-y-5">
+        <AutoRefresh intervalSeconds={30} />
         <BrandHeader />
+
+        <section className="neo-border bg-white p-4 neo-shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Senior form (WhatsApp + Google Form)</p>
+              <p className="mt-1 text-sm text-ink/80">
+                {lastFormSubmission
+                  ? `Last submitted ${lastFormSubmission.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })} IST`
+                  : dayTotals.total
+                    ? "Waiting for the Senior Authority to submit the form."
+                    : "No checklist has been published for this date yet."}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
+              <span className={lastFormSubmission ? "sticker bg-electric-lime text-ink" : "sticker bg-sun-yellow text-ink"}>
+                {lastFormSubmission ? "Form received" : "Awaiting form"}
+              </span>
+              <span className="sticker bg-paper text-ink">Done {dayTotals.done}</span>
+              <span className="sticker bg-hot-pink text-ink">Not done {dayTotals.notDone}</span>
+              <span className="sticker bg-paper text-ink">Pending {dayTotals.pending}</span>
+            </div>
+          </div>
+        </section>
 
         <section className="neo-border bg-white p-4 neo-shadow-sm">
           <DateControl date={selectedDate} dates={dayWindow} selectedEmployeeId={selectedEmployee.id} />
@@ -110,6 +148,7 @@ export default async function ChecklistDatePage({
           </div>
 
           <ChecklistPanel
+            key={employeeRows.map((row) => `${row.id}:${row.updatedAt.getTime()}`).join("|")}
             employeeName={selectedEmployee.name}
             items={employeeRows.map((row) => ({
               id: row.id,
@@ -123,6 +162,7 @@ export default async function ChecklistDatePage({
               seniorRemarks: row.seniorRemarks,
               employeeResponse: row.employeeResponse,
               colorStatus: row.colorStatus,
+              formSubmittedAt: row.formSubmissionTimestamp ? row.formSubmissionTimestamp.toISOString() : null,
             }))}
           />
         </section>

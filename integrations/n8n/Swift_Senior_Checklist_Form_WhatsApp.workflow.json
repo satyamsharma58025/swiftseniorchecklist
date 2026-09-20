@@ -1,0 +1,1123 @@
+{
+  "name": "Swift Senior Checklist - Google Form + WhatsApp",
+  "nodes": [
+    {
+      "id": "00000000-0000-0000-0000-0000000a30bd",
+      "name": "Note: Flow A",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1180,
+        -330
+      ],
+      "parameters": {
+        "content": "## A. 09:00 IST - build the form and WhatsApp it\nApp -> today's tasks -> Apps Script rebuilds the Google Form -> WhatsApp link to the Senior Authority.\nSkips if no tasks, or if the link was already sent today (set FORCE_RESEND = true to override).",
+        "height": 190,
+        "width": 1900,
+        "color": 4
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000a4fac",
+      "name": "09:00 IST - Send Form",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1140,
+        -120
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "notes": "Workflow timezone is Asia/Kolkata (see settings), so this is 09:00 IST. Must be AFTER the app's 08:30 lock-queue cron."
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000a6e9b",
+      "name": "Manual: Send Form Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1140,
+        60
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000b2835",
+      "name": "Config (Send Form)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -900,
+        -30
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00000000-0000-0000-0000-0000000a8d8a",
+              "name": "APP_BASE_URL",
+              "value": "https://swiftseniorchecklist.onrender.com",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000aac79",
+              "name": "APPS_SCRIPT_WEBAPP_URL",
+              "value": "PASTE_APPS_SCRIPT_WEB_APP_EXEC_URL",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000acb68",
+              "name": "FORM_BRIDGE_SECRET",
+              "value": "PASTE_SAME_VALUE_AS_BRIDGE_SECRET",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000aea57",
+              "name": "FALLBACK_SENIOR_PHONE",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000b0946",
+              "name": "FORCE_RESEND",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000b4724",
+      "name": "App: Get Todays Checklist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -660,
+        -30
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/integrations/form/today",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000b8502",
+      "name": "Should Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -420,
+        -30
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000b6613",
+              "leftValue": "={{ $json.taskCount > 0 && (!$json.formLinkSentToday || $('Config (Send Form)').first().json.FORCE_RESEND === true) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000ba3f1",
+      "name": "Skip: Nothing To Send",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        150
+      ],
+      "parameters": {},
+      "notes": "No tasks published for today, or the form link was already sent."
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000be1cf",
+      "name": "Config OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -180,
+        -30
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000bc2e0",
+              "leftValue": "={{ $('App: Get Todays Checklist').first().json.formConfigured && !!($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000c00be",
+      "name": "Stop: Missing Config",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        60,
+        150
+      ],
+      "parameters": {
+        "errorMessage": "={{ [ !$('App: Get Todays Checklist').first().json.formConfigured ? 'GOOGLE_FORM_URL is not set on the app (Render env)' : '', !($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE) ? 'Senior Authority phone is missing (Settings.seniorAuthorityPhone, SENIOR_AUTHORITY_PHONE env, or FALLBACK_SENIOR_PHONE here)' : '' ].filter(Boolean).join('; ') }}"
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000c1fad",
+      "name": "Apps Script: Rebuild Form",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        60,
+        -30
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Send Form)').first().json.APPS_SCRIPT_WEBAPP_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ secret: $('Config (Send Form)').first().json.FORM_BRIDGE_SECRET, action: 'refresh', date: $('App: Get Todays Checklist').first().json.date, choices: $('App: Get Todays Checklist').first().json.choices }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "notes": "Apps Script web apps answer with a 302 redirect; n8n follows it by default."
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000c5d8b",
+      "name": "Form Rebuilt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        300,
+        -30
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000c3e9c",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000c7c7a",
+      "name": "Stop: Form Not Rebuilt",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        540,
+        150
+      ],
+      "parameters": {
+        "errorMessage": "=Apps Script did not confirm the form rebuild. Response: {{ JSON.stringify($json).slice(0, 300) }}"
+      },
+      "notes": "Usual causes: wrong /exec URL, deployment access not 'Anyone', or FORM_BRIDGE_SECRET does not match BRIDGE_SECRET."
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000c9b69",
+      "name": "WhatsApp: Send Form Link to Senior",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        540,
+        -30
+      ],
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "={{ $('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE }}",
+        "template": "senior_daily_checklist|en",
+        "components": {
+          "component": [
+            {
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "text": "={{ $now.setZone('Asia/Kolkata').toFormat('dd-LLL-yyyy') }}"
+                  },
+                  {
+                    "text": "={{ $('App: Get Todays Checklist').first().json.formUrl }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "whatsAppApi": {
+          "id": "WHATSAPP_CRED_ID",
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000cba58",
+      "name": "App: Log Form Link Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        -110
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'SENT', providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null) }) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000cd947",
+      "name": "App: Log Form Link Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        70
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'FAILED', errorMessage: ($json.error ? String($json.error.message || $json.error) : 'WhatsApp send failed') }) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000cf836",
+      "name": "Note: Flow B",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1180,
+        310
+      ],
+      "parameters": {
+        "content": "## B. Form submitted -> update the app -> (optional) WhatsApp the employees\nGoogle Form -> Apps Script -> this webhook -> app updates the checklist (the app now shows the answers).\nWe answer the webhook as soon as the app is updated, so Apps Script only retries if the app update failed.\nNOTIFY_EMPLOYEES = false by default: flip it to true when you are ready for real not-done WhatsApps + escalations.",
+        "height": 200,
+        "width": 2500,
+        "color": 3
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000d1725",
+      "name": "Webhook: Form Submitted",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1140,
+        560
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "swift-form-submitted",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WEBHOOK_SECRET_CRED",
+          "name": "Swift Form Webhook Secret"
+        }
+      },
+      "webhookId": "00000000-0000-0000-0000-000000c0ffee",
+      "notes": "Use the PRODUCTION URL (workflow must be active) as N8N_WEBHOOK_URL in the Apps Script properties."
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000d73f2",
+      "name": "Config (Form Submit)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -900,
+        560
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00000000-0000-0000-0000-0000000d3614",
+              "name": "APP_BASE_URL",
+              "value": "https://swiftseniorchecklist.onrender.com",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000d5503",
+              "name": "NOTIFY_EMPLOYEES",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {},
+        "includeOtherFields": true
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000d92e1",
+      "name": "App: Submit Form Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -660,
+        560
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/integrations/form/submit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000db1d0",
+      "name": "Respond to Apps Script",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -420,
+        430
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, duplicate: $json.duplicate === true, counts: $json.counts || null }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000defae",
+      "name": "Notify Employees?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -420,
+        600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000dd0bf",
+              "leftValue": "={{ $('Config (Form Submit)').first().json.NOTIFY_EMPLOYEES === true && ($json.newlyNotDone || []).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000e0e9d",
+      "name": "Split Not-Done Tasks",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        590
+      ],
+      "parameters": {
+        "fieldToSplitOut": "newlyNotDone",
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000e4c7b",
+      "name": "Has Employee Phone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        590
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000e2d8c",
+              "leftValue": "={{ !!$json.employeePhoneWhatsapp }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000e6b6a",
+      "name": "App: Log No Phone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        770
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ itemId: $json.id, templateName: 'not_done_reminder', recipientPhone: 'N/A', status: 'SKIPPED_NO_PHONE' }) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000e8a59",
+      "name": "WhatsApp: Employee Not-Done",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        300,
+        550
+      ],
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "={{ $json.employeePhoneWhatsapp }}",
+        "template": "not_done_reminder|en",
+        "components": {
+          "component": [
+            {
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "text": "={{ $json.employeeName }}"
+                  },
+                  {
+                    "text": "={{ $json.taskDescription }}"
+                  },
+                  {
+                    "text": "={{ $json.seniorRemarks || 'No remarks' }}"
+                  },
+                  {
+                    "text": "={{ $json.checklistCode }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "whatsAppApi": {
+          "id": "WHATSAPP_CRED_ID",
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000ea948",
+      "name": "App: Log Employee Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        550
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ itemId: $('Split Not-Done Tasks').item.json.id, templateName: 'not_done_reminder', recipientPhone: $('Split Not-Done Tasks').item.json.employeePhoneWhatsapp, status: ($json.error ? 'FAILED' : 'SENT'), providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null), errorMessage: ($json.error ? String($json.error.message || $json.error) : null) }) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000ec837",
+      "name": "App: Ack Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        550
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/cron/reminder-sweep/ack",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ itemId: $('Split Not-Done Tasks').item.json.id, outcome: ($('WhatsApp: Employee Not-Done').item.json.error ? 'FAILED' : 'SENT') }) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000f0615",
+      "name": "Newly Escalated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1020,
+        550
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000ee726",
+              "leftValue": "={{ $json.newlyEscalated === true && !!$json.supervisorPhoneWhatsapp }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000f2504",
+      "name": "WhatsApp: Supervisor Escalation",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1260,
+        550
+      ],
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "={{ $json.supervisorPhoneWhatsapp }}",
+        "template": "escalation_alert|en",
+        "components": {
+          "component": [
+            {
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "text": "={{ $json.supervisorName }}"
+                  },
+                  {
+                    "text": "={{ $json.employeeName }}"
+                  },
+                  {
+                    "text": "={{ $json.taskDescription }}"
+                  },
+                  {
+                    "text": "={{ String($json.reminderCount) }}"
+                  },
+                  {
+                    "text": "={{ $json.checklistCode }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "whatsAppApi": {
+          "id": "WHATSAPP_CRED_ID",
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000f43f3",
+      "name": "App: Log Supervisor Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1500,
+        550
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ itemId: $('Newly Escalated?').item.json.itemId, templateName: 'escalation_alert', recipientPhone: $('Newly Escalated?').item.json.supervisorPhoneWhatsapp, status: ($json.error ? 'FAILED' : 'SENT'), providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null), errorMessage: ($json.error ? String($json.error.message || $json.error) : null) }) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_APP_SECRET_CRED",
+          "name": "Swift App Secret (x-cron-secret)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000f62e2",
+      "name": "Note: Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1180,
+        330
+      ],
+      "parameters": {
+        "content": "## Before activating\n1. Create 2 credentials -> Header Auth:\n   - 'Swift App Secret (x-cron-secret)': name x-cron-secret, value = your app's CRON_SECRET\n   - 'Swift Form Webhook Secret': name x-webhook-secret, value = same as Apps Script N8N_WEBHOOK_SECRET\n2. Pick your existing WhatsApp credential on the 4 WhatsApp nodes.\n3. Fill the two Config nodes (Apps Script URL + bridge secret, app URL).\n4. Run 'Manual: Send Form Now', submit the form, check the app. Then Activate.\nFull guide: integrations/README.md",
+        "height": 260,
+        "width": 700,
+        "color": 6
+      }
+    }
+  ],
+  "connections": {
+    "09:00 IST - Send Form": {
+      "main": [
+        [
+          {
+            "node": "Config (Send Form)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual: Send Form Now": {
+      "main": [
+        [
+          {
+            "node": "Config (Send Form)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Send Form)": {
+      "main": [
+        [
+          {
+            "node": "App: Get Todays Checklist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App: Get Todays Checklist": {
+      "main": [
+        [
+          {
+            "node": "Should Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send?": {
+      "main": [
+        [
+          {
+            "node": "Config OK?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip: Nothing To Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config OK?": {
+      "main": [
+        [
+          {
+            "node": "Apps Script: Rebuild Form",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: Missing Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apps Script: Rebuild Form": {
+      "main": [
+        [
+          {
+            "node": "Form Rebuilt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Rebuilt?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Send Form Link to Senior",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: Form Not Rebuilt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: Send Form Link to Senior": {
+      "main": [
+        [
+          {
+            "node": "App: Log Form Link Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "App: Log Form Link Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Form Submitted": {
+      "main": [
+        [
+          {
+            "node": "Config (Form Submit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Form Submit)": {
+      "main": [
+        [
+          {
+            "node": "App: Submit Form Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App: Submit Form Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Apps Script",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Employees?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Employees?": {
+      "main": [
+        [
+          {
+            "node": "Split Not-Done Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Not-Done Tasks": {
+      "main": [
+        [
+          {
+            "node": "Has Employee Phone?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Employee Phone?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Employee Not-Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "App: Log No Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: Employee Not-Done": {
+      "main": [
+        [
+          {
+            "node": "App: Log Employee Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App: Log Employee Message": {
+      "main": [
+        [
+          {
+            "node": "App: Ack Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App: Ack Reminder": {
+      "main": [
+        [
+          {
+            "node": "Newly Escalated?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Newly Escalated?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Supervisor Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: Supervisor Escalation": {
+      "main": [
+        [
+          {
+            "node": "App: Log Supervisor Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "notes": "The Swift app (Postgres) is the source of truth. This workflow replaces the Google-Sheets based Senior_Checklist_Escalation_Workflow.json."
+  }
+}

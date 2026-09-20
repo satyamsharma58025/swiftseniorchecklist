@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:integration": "tsx scripts/check-integration-readiness.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

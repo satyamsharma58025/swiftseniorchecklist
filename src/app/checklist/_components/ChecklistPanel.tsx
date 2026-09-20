@@ -16,6 +16,7 @@ export type ChecklistTaskRow = {
   escalated: boolean;
   seniorRemarks?: string | null;
   employeeResponse?: string | null;
+  formSubmittedAt?: string | null;
 };
 
 export function ChecklistPanel({
@@ -109,6 +110,11 @@ export function ChecklistPanel({
                     </span>
                     <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span>
                     <span className={item.escalated ? "sticker bg-ink text-paper" : "sticker bg-paper text-ink"}>{item.escalated ? "Escalated" : "Active"}</span>
+                    {item.formSubmittedAt ? (
+                      <span className="sticker bg-paper text-ink">
+                        Via form {new Date(item.formSubmittedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    ) : null}
                   </div>
 
                   {(item.seniorRemarks || item.employeeResponse) && (

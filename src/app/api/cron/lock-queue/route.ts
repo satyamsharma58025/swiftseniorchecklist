@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-
 import { checklistCode, colorFor } from "@/lib/cadence";
 import { prisma } from "@/lib/prisma";
 import { runCronJob } from "@/lib/cron";
@@ -11,7 +9,7 @@ export async function POST(request: Request) {
   return runCronJob(request, "lock-queue", date, async (runDate) => {
     const queueItems = await prisma.assignmentQueueItem.findMany({
       where: { date: runDate, includeToday: true, locked: false },
-      include: { employee: true, taskMaster: true },
+      include: { employee: { include: { supervisor: true } }, taskMaster: true },
     });
 
     let published = 0;
@@ -35,8 +33,8 @@ export async function POST(request: Request) {
             employeeName: item.employee?.name ?? "Unknown employee",
             employeePhone: item.employee?.phone ?? null,
             taskDescription: item.taskDescription,
-            supervisorName: item.employee?.name ?? "Unknown supervisor",
-            supervisorPhone: item.employee?.phone ?? null,
+            supervisorName: item.employee?.supervisor?.name ?? "Unassigned supervisor",
+            supervisorPhone: item.employee?.supervisor?.phone ?? null,
             escalationThreshold: taskMaster.escalationThreshold,
             priority: taskMaster.priority,
             status: "PENDING",

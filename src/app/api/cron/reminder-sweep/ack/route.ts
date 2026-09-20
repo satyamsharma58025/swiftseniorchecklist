@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 
+import { toWhatsAppNumber } from "@/lib/business-logic";
+import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
+  const denied = rejectUnlessIntegrationSecret(request);
+  if (denied) {
+    return denied;
+  }
+
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const itemId = String(body.itemId ?? "").trim();
   const outcome = String(body.outcome ?? "").trim().toUpperCase();
@@ -15,6 +22,10 @@ export async function POST(request: Request) {
     where: { id: itemId },
     select: {
       id: true,
+      checklistCode: true,
+      employeeName: true,
+      taskDescription: true,
+      supervisorPhone: true,
       reminderCount: true,
       escalationThreshold: true,
       escalated: true,
@@ -72,7 +83,9 @@ export async function POST(request: Request) {
     where: { id: item.id },
     data: {
       reminderCount: nextReminderCount,
+      lastRemindedAt: new Date(),
       escalated: item.escalated || shouldEscalate,
+      ...(shouldEscalate ? { escalatedAt: new Date() } : {}),
       escalationTier,
     },
   });
@@ -90,8 +103,14 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     itemId: item.id,
+    checklistCode: item.checklistCode,
+    employeeName: item.employeeName,
+    taskDescription: item.taskDescription,
+    supervisorName: item.supervisorName ?? "Supervisor",
+    supervisorPhoneWhatsapp: toWhatsAppNumber(item.supervisorPhone),
     reminderCount: nextReminderCount,
     escalated: item.escalated || shouldEscalate,
+    newlyEscalated: shouldEscalate,
     escalationTier,
     updated: true,
   });

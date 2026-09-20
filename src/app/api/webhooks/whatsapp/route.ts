@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   const message = extractMessageFromWhatsAppPayload(payload);
 
-  const payloadValue = payload as any;
+  const payloadValue: unknown = payload;
 
   if (!message) {
     await prisma.webhookEvent.upsert({

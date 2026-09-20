@@ -37,7 +37,13 @@ describe("reserveNextQueueCode", () => {
       {
         $executeRaw: execute,
         queueCodeSequence: { upsert, update },
-      } as any,
+      } as {
+        $executeRaw: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+        queueCodeSequence: {
+          upsert: (args: { where: { date: Date }; update: Record<string, unknown>; create: { date: Date; nextValue: number } }) => Promise<{ id: string; nextValue: number }>;
+          update: (args: { where: { id: string }; data: { nextValue: number } }) => Promise<unknown>;
+        };
+      },
       "2026-09-18",
     );
 

@@ -106,8 +106,11 @@ export function normalizeScheduleDetail(cadence: string, raw: unknown): string |
   }
 
   if (cadence === "YEARLY") {
-    const candidates = value.split("/").map((item) => item.trim()).filter(Boolean);
-    const normalizedCandidates = candidates.map((candidate) => candidate.replace(/\s+/g, " ").replace(/-/g, "/"));
+    const normalizedCandidates = value
+      .split("/")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((candidate) => candidate.replace(/\s+/g, " ").replace(/-/g, "/"));
 
     for (const candidate of normalizedCandidates) {
       const existingPattern = /^\d{1,2}[-/ ]\d{1,2}$/.test(candidate) || /^\d{1,2}[-/ ](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/i.test(candidate);
@@ -154,11 +157,6 @@ export function parseDateValue(raw: unknown): string | null {
   }
 
   const value = String(raw).trim();
-
-  const candidates = [
-    value,
-    DateTime.fromFormat(value, "dd/MM/yyyy").isValid ? value : null,
-  ].filter(Boolean) as string[];
 
   const patterns = [
     "yyyy-MM-dd",

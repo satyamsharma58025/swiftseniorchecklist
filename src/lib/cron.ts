@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getBusinessToday } from "@/lib/business-logic";
+import { secretsMatch } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
 
 export type CronRouteResult = NextResponse | Response;
@@ -20,7 +21,7 @@ export async function requireCronAuth(request: Request) {
   const provided = request.headers.get("x-cron-secret");
   const expected = process.env.CRON_SECRET;
 
-  if (!expected || provided !== expected) {
+  if (!expected || !secretsMatch(provided, expected)) {
     return {
       ok: false,
       response: NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }),

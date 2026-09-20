@@ -54,7 +54,7 @@ async function main() {
     process.exit(1);
   }
 
-  const validRows: Array<{ rowNumber: number; data: any }> = [];
+  const validRows: Array<{ rowNumber: number; data: { taskCode: string; employeeName: string; taskDescription: string; cadence: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY"; scheduleDetail: string | null; active: boolean; startDate: string | null; endDate: string | null; escalationThreshold: number } }> = [];
   const errors: Array<string> = [];
   const seenTaskCodes = new Map<string, number>();
 

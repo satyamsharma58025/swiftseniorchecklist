@@ -37,6 +37,13 @@ services:
         sync: false
       - key: WHATSAPP_ACCESS_TOKEN
         sync: false
+      # Google Form / n8n integration (see integrations/README.md)
+      - key: GOOGLE_FORM_URL
+        sync: false
+      - key: SENIOR_AUTHORITY_PHONE
+        sync: false
+      - key: SENIOR_AUTHORITY_NAME
+        sync: false
 
   - type: cron
     name: cron-generate-queue
@@ -71,7 +78,7 @@ services:
     runtime: node
     plan: starter
     region: singapore
-    schedule: "30 13 * * *" # 19:00 IST
+    schedule: "0 3 * * *" # 08:30 IST - must run BEFORE the 09:00 IST form send, it is what creates the day's checklist rows
     buildCommand: npm install
     startCommand: 'curl -sf -X POST "$APP_BASE_URL/api/cron/lock-queue" -H "x-cron-secret: $CRON_SECRET"'
     envVars:

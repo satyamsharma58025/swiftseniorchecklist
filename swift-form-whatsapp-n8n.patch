@@ -1,0 +1,2482 @@
+From 1481d134fed15408bfd39af826befb0ca5b82877 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 20 Sep 2026 15:52:14 +0000
+Subject: [PATCH] feat: Google Form + WhatsApp + n8n integration; form answers
+ update the app
+
+- add /api/integrations/form/today and /submit (shared-secret protected, idempotent)
+- add pure form-submission parsing with tests
+- add n8n workflow (send form, handle submission, optional employee/supervisor WhatsApp)
+- add Apps Script FormBridge for the Google Form
+- checklist page: form-received status card, per-task badge, 30s auto refresh
+- secure /api/cron/reminder-sweep/ack and /api/notifications/log (were unauthenticated)
+- fix lock-queue setting the employee as their own supervisor
+- run lock-queue at 08:30 IST so the checklist exists before the 09:00 form send
+---
+ .env.example                                  |    5 +
+ integrations/README.md                        |  116 ++
+ integrations/google-form/FormBridge.gs        |  205 +++
+ ...nior_Checklist_Form_WhatsApp.workflow.json | 1123 +++++++++++++++++
+ render.yaml                                   |    9 +-
+ src/app/api/cron/lock-queue/route.ts          |    6 +-
+ src/app/api/cron/reminder-sweep/ack/route.ts  |   19 +
+ src/app/api/integrations/form/submit/route.ts |  170 +++
+ src/app/api/integrations/form/today/route.ts  |   72 ++
+ src/app/api/notifications/log/route.ts        |    6 +
+ src/app/checklist/[date]/page.tsx             |   40 +
+ src/app/checklist/_components/AutoRefresh.tsx |   24 +
+ .../checklist/_components/ChecklistPanel.tsx  |    6 +
+ src/lib/business-logic.ts                     |   16 +
+ src/lib/cron.ts                               |    3 +-
+ src/lib/form-submission.test.ts               |  135 ++
+ src/lib/form-submission.ts                    |  164 +++
+ src/lib/integration-auth.test.ts              |   34 +
+ src/lib/integration-auth.ts                   |   37 +
+ 19 files changed, 2185 insertions(+), 5 deletions(-)
+ create mode 100644 integrations/README.md
+ create mode 100644 integrations/google-form/FormBridge.gs
+ create mode 100644 integrations/n8n/Swift_Senior_Checklist_Form_WhatsApp.workflow.json
+ create mode 100644 src/app/api/integrations/form/submit/route.ts
+ create mode 100644 src/app/api/integrations/form/today/route.ts
+ create mode 100644 src/app/checklist/_components/AutoRefresh.tsx
+ create mode 100644 src/lib/form-submission.test.ts
+ create mode 100644 src/lib/form-submission.ts
+ create mode 100644 src/lib/integration-auth.test.ts
+ create mode 100644 src/lib/integration-auth.ts
+
+diff --git a/.env.example b/.env.example
+index c9ba4bb..ffbcb97 100644
+--- a/.env.example
++++ b/.env.example
+@@ -13,6 +13,11 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN="change-me"
+ WHATSAPP_PHONE_NUMBER_ID=""
+ WHATSAPP_ACCESS_TOKEN=""
+ 
++# Google Form / n8n integration
++GOOGLE_FORM_URL="https://docs.google.com/forms/d/e/REPLACE_ME/viewform"
++SENIOR_AUTHORITY_NAME="Senior Authority"
++SENIOR_AUTHORITY_PHONE="" # used when Settings.seniorAuthorityPhone is empty
++
+ NODE_ENV="development"
+ SESSION_SECRET="change-me"
+ 
+diff --git a/integrations/README.md b/integrations/README.md
+new file mode 100644
+index 0000000..c25f47d
+--- /dev/null
++++ b/integrations/README.md
+@@ -0,0 +1,116 @@
++# Google Form + WhatsApp + n8n integration
++
++The **app (Postgres) is the source of truth**. The Google Form is just the input
++screen for the Senior Authority, WhatsApp is the delivery channel, and n8n glues
++them together. This replaces the old Google-Sheets based workflow
++(`Senior_Checklist_Escalation_Workflow.json` + `AppsScript.zip`).
++
++```
++                 08:30 IST  Render cron: generate-queue (06:00) + lock-queue (08:30)
++                            -> DailyChecklistItem rows exist for today
++                                         |
++ 09:00 IST  n8n  ---- GET /api/integrations/form/today ---->  App
++            |                                                  (tasks + senior phone + form URL)
++            |---- POST {choices} ----> Apps Script (on the Form)  rebuilds the checkbox list
++            |---- WhatsApp template senior_daily_checklist ----> Senior Authority  (form link)
++
++ Senior fills the form
++    Form --onFormSubmit--> Apps Script --POST--> n8n webhook
++    n8n --POST /api/integrations/form/submit--> App   (statuses updated: the checklist page shows them within 30s)
++    n8n --(optional)--> WhatsApp each employee whose task is Not Done
++                        --> POST /api/cron/reminder-sweep/ack  (counts reminder, escalates at threshold)
++                        --> WhatsApp supervisor  (escalation_alert)
++```
++
++## Files
++
++| File | What it is |
++|---|---|
++| `n8n/Swift_Senior_Checklist_Form_WhatsApp.workflow.json` | Import into n8n. Flow A = send form, Flow B = handle submission. |
++| `google-form/FormBridge.gs` | Paste into the Apps Script project attached to the Google Form. |
++| `src/app/api/integrations/form/today` | App endpoint n8n reads each morning. |
++| `src/app/api/integrations/form/submit` | App endpoint n8n writes the form answers to. |
++
++## One-time setup
++
++### 1. Deploy the app changes
++Push to GitHub; Render redeploys. In Render -> Environment set:
++
++| Variable | Value |
++|---|---|
++| `GOOGLE_FORM_URL` | the form's **responder link** (Form -> Send -> link icon), `https://docs.google.com/forms/d/e/.../viewform` |
++| `SENIOR_AUTHORITY_PHONE` | e.g. `9876543210` (used when `Settings.seniorAuthorityPhone` is empty) |
++| `CRON_SECRET` | already generated by `render.yaml`. Copy the value, you need it for n8n. |
++
++`render.yaml` now runs **lock-queue at 08:30 IST** (it used to say 19:00 IST). Lock-queue is what creates the
++day's checklist rows, so it has to run before the 09:00 form send. If you manage the cron jobs in the Render
++dashboard rather than through the blueprint, change the schedule of `cron-lock-queue` to `0 3 * * *` (UTC) there.
++
++No database migration is needed.
++
++### 2. Create the Google Form
++1. New blank form, title anything (the script renames it daily). **Do not** add questions; the script builds them.
++2. Settings -> Responses: turn off "Collect email addresses" and "Limit to 1 response" (that one forces a Google sign-in) so the WhatsApp link opens straight away.
++3. Copy the responder link into `GOOGLE_FORM_URL` (step 1).
++
++### 3. Add the Apps Script to the form
++1. In the form: three-dot menu -> **Script editor**. Paste `FormBridge.gs`.
++2. Project Settings -> **Script Properties**, add:
++   - `BRIDGE_SECRET` - any long random string
++   - `N8N_WEBHOOK_SECRET` - a different long random string
++   - `N8N_WEBHOOK_URL` - fill in after step 4, the **production** URL, `https://<your-n8n>/webhook/swift-form-submitted`
++3. Select `setup` in the toolbar -> Run -> approve permissions. This installs the on-submit trigger.
++4. Deploy -> New deployment -> type **Web app** -> Execute as **Me**, Who has access **Anyone** -> Deploy. Copy the `/exec` URL.
++
++### 4. Import the workflow into n8n
++1. Workflows -> Import from file -> `Swift_Senior_Checklist_Form_WhatsApp.workflow.json`.
++2. Create two **Header Auth** credentials and attach them where the nodes show a red warning:
++   - `Swift App Secret (x-cron-secret)`: header name `x-cron-secret`, value = the app's `CRON_SECRET`
++   - `Swift Form Webhook Secret`: header name `x-webhook-secret`, value = `N8N_WEBHOOK_SECRET` from step 3
++3. On the four WhatsApp nodes, pick your existing WhatsApp credential.
++4. Open **Config (Send Form)**: paste the Apps Script `/exec` URL and `BRIDGE_SECRET`.
++5. Open **Config (Form Submit)**: check the app URL. Leave `NOTIFY_EMPLOYEES` = `false` for now.
++6. Copy the webhook's **Production URL** from the *Webhook: Form Submitted* node into `N8N_WEBHOOK_URL` (step 3.2).
++7. Save. **Activate** the workflow (the production webhook only listens while active).
++
++### 5. WhatsApp templates
++These must already be approved in Meta (they are the ones from your existing workflow):
++`senior_daily_checklist` (2 variables: date, form link), `not_done_reminder` (4: employee, task, remarks, code),
++`escalation_alert` (5: supervisor, employee, task, reminder count, code).
++
++## Test it (in this order)
++
++1. **Publish today's checklist**: in the app, make sure lock-queue has run (or trigger it) so `/checklist/<today>` shows tasks.
++2. In n8n run **Manual: Send Form Now**. Expect: form title changes to today's date, and the Senior Authority gets the WhatsApp link.
++   Re-running the same day does nothing (already sent). Set `FORCE_RESEND` = `true` to override while testing.
++3. Open the form link, tick two tasks, add a remark line like `CL-20260920-XXXX: waiting on HR`, submit.
++4. Within ~30 seconds `/checklist/<today>` shows: ticked tasks **Done**, remarked task **Not done** with the remark, the
++   "Senior form" card says **Form received**, and each updated task has a "Via form HH:MM" badge.
++5. Only after all of that works, set `NOTIFY_EMPLOYEES` = `true` in **Config (Form Submit)**. Test with one employee whose
++   phone is your own first.
++
++## How a submission is interpreted
++- Ticked -> **Done**.
++- Unticked with a remark line (`CODE: reason`) -> **Not done** + that remark.
++- Unticked, no remark, still Pending -> **Not done** ("Not marked done in senior form").
++- Unticked, no remark, already Done/Not done -> left alone. A partial re-submission never downgrades earlier work.
++- Submitting the same form response twice is safe (deduplicated by Google's response id).
++
++## Troubleshooting
++
++| Symptom | Likely cause |
++|---|---|
++| n8n stops with "Missing Config" | `GOOGLE_FORM_URL` not set on Render, or no senior phone anywhere. The error text says which. |
++| "Apps Script did not confirm the form rebuild" | Wrong `/exec` URL, web app access is not "Anyone", `FORM_BRIDGE_SECRET` != `BRIDGE_SECRET`, or you edited the script and did not create a **new deployment version**. |
++| Form updates but the app does not | `N8N_WEBHOOK_URL` is the *test* URL or the workflow is inactive; secret mismatch (webhook returns 403); check Apps Script -> Executions. Failed sends retry every 15 min automatically. |
++| App returns 401 | The `x-cron-secret` credential does not match Render's `CRON_SECRET`. |
++| App returns 404 `NO_CHECKLIST_FOR_DATE` | lock-queue has not run for that date yet. |
++| First call each morning is slow / times out | Render free/starter instances can cold-start. The HTTP nodes have a 90 s timeout and 3 retries. |
++| Task marked Not done but nobody was messaged | `NOTIFY_EMPLOYEES` is `false` (default) or that employee has no valid phone (logged as `SKIPPED_NO_PHONE`). |
++| Escalation goes to the wrong person | Checklist rows created **before** this change have the employee as their own supervisor. New rows use the employee's `supervisor` record; make sure each Employee has a supervisor with a phone. |
++
++## Not covered here
++- Periodic "still not done" reminders every 2-4 hours. The app's `/api/cron/reminder-sweep` only *lists* items, and its
++  once-per-day cron lock means it cannot run repeatedly. Say if you want a Flow C for this.
++- Login protection for the app's pages and the `PATCH /api/checklist/item/[id]` / `POST /api/admin/tasks` routes.
++  These integration endpoints are protected by the shared secret, but the rest of the app still needs the middleware fix.
+diff --git a/integrations/google-form/FormBridge.gs b/integrations/google-form/FormBridge.gs
+new file mode 100644
+index 0000000..dfffe92
+--- /dev/null
++++ b/integrations/google-form/FormBridge.gs
+@@ -0,0 +1,205 @@
++/**
++ * FormBridge.gs - connects the Senior Authority Google Form to n8n.
++ *
++ * Install: open the Google Form -> three-dot menu -> Script editor -> paste this
++ * whole file -> set the Script Properties listed below -> run setup() once ->
++ * Deploy as a Web app (see integrations/README.md).
++ *
++ * Two jobs:
++ *   1. doPost()        n8n calls this every morning with today's task list; the
++ *                      form's checkbox question is rebuilt to match.
++ *   2. onFormSubmit_() fires when the Senior Authority submits the form and
++ *                      forwards the answers to the n8n webhook, which updates
++ *                      the Swift Senior Checklist app.
++ *
++ * Script Properties (Project Settings -> Script Properties):
++ *   BRIDGE_SECRET       any long random string. n8n sends it when rebuilding the form.
++ *   N8N_WEBHOOK_URL     n8n PRODUCTION URL, e.g. https://your-n8n/webhook/swift-form-submitted
++ *   N8N_WEBHOOK_SECRET  any long random string. Must equal the value in the n8n
++ *                       "Swift Form Webhook Secret" credential.
++ * Set automatically: FORM_ID, FORM_DATE.
++ */
++
++var DONE_TITLE = 'Tick every task that is DONE today';
++var REMARKS_TITLE = 'Remarks for anything NOT done';
++var CLEAR_RESPONSES_ON_REFRESH = true; // the app keeps the history, the form need not
++
++// ---------------------------------------------------------------- setup ----
++
++/** Run once from the editor (Run -> setup). Safe to run again. */
++function setup() {
++  var form = FormApp.getActiveForm();
++  if (!form) {
++    throw new Error('Open this script from the Google Form (Form editor -> three dots -> Script editor), then run setup again.');
++  }
++
++  var props = PropertiesService.getScriptProperties();
++  props.setProperty('FORM_ID', form.getId());
++
++  ScriptApp.getProjectTriggers().forEach(function (t) {
++    var fn = t.getHandlerFunction();
++    if (fn === 'onFormSubmit_' || fn === 'retryPending_') {
++      ScriptApp.deleteTrigger(t);
++    }
++  });
++  ScriptApp.newTrigger('onFormSubmit_').forForm(form).onFormSubmit().create();
++  ScriptApp.newTrigger('retryPending_').timeBased().everyMinutes(15).create();
++
++  form.setCollectEmail(false);
++
++  var missing = ['BRIDGE_SECRET', 'N8N_WEBHOOK_URL', 'N8N_WEBHOOK_SECRET'].filter(function (k) {
++    return !prop_(k);
++  });
++  Logger.log(missing.length
++    ? 'Setup done, but these Script Properties are still missing: ' + missing.join(', ')
++    : 'Setup done. Triggers installed. Now deploy as a Web app.');
++}
++
++// ------------------------------------------------- 1. n8n -> rebuild form ----
++
++/** Web app entry point. n8n POSTs JSON: { secret, action: 'refresh', date, choices: [...] } */
++function doPost(e) {
++  try {
++    var body = JSON.parse(e.postData.contents);
++    if (!prop_('BRIDGE_SECRET') || body.secret !== prop_('BRIDGE_SECRET')) {
++      return json_({ ok: false, error: 'unauthorized' });
++    }
++    if (body.action === 'refresh') {
++      return json_(refreshForm_(body));
++    }
++    return json_({ ok: false, error: 'unknown_action' });
++  } catch (err) {
++    return json_({ ok: false, error: String(err) });
++  }
++}
++
++function doGet() {
++  return json_({ ok: true, service: 'swift-form-bridge' });
++}
++
++function refreshForm_(body) {
++  var choices = body.choices;
++  if (!Array.isArray(choices) || !choices.length) {
++    return { ok: false, error: 'no_choices' };
++  }
++
++  var form = FormApp.openById(prop_('FORM_ID'));
++  form.setTitle('Senior Authority Daily Checklist - ' + body.date);
++  form.setDescription('Tick every task that is DONE. For anything not done, add a line in the remarks box: CHECKLIST-CODE: reason');
++
++  form.getItems().forEach(function (item) { form.deleteItem(item); });
++  if (CLEAR_RESPONSES_ON_REFRESH) {
++    form.deleteAllResponses();
++  }
++
++  form.addCheckboxItem()
++    .setTitle(DONE_TITLE)
++    .setChoiceValues(choices)
++    .setRequired(false);
++
++  form.addParagraphTextItem()
++    .setTitle(REMARKS_TITLE)
++    .setHelpText('One line per task, format:  CHECKLIST-CODE: your remark   (e.g.  CL-20260920-YT001: waiting on HR)')
++    .setRequired(false);
++
++  form.setAcceptingResponses(true);
++  PropertiesService.getScriptProperties().setProperty('FORM_DATE', String(body.date || ''));
++
++  return { ok: true, date: body.date, count: choices.length, formUrl: form.getPublishedUrl() };
++}
++
++// --------------------------------------------- 2. form submit -> n8n -> app ---
++
++function onFormSubmit_(e) {
++  var payload = buildPayload_(e.response);
++  if (!postToN8n_(payload)) {
++    // n8n or the network was down: keep it and retry every 15 minutes.
++    PropertiesService.getScriptProperties().setProperty('PENDING_' + payload.responseId, JSON.stringify(payload));
++  }
++}
++
++function buildPayload_(response) {
++  var doneCodes = [];
++  var remarks = '';
++
++  response.getItemResponses().forEach(function (ir) {
++    var type = ir.getItem().getType();
++    if (type === FormApp.ItemType.CHECKBOX) {
++      var v = ir.getResponse();
++      var list = Array.isArray(v) ? v : (v ? [String(v)] : []);
++      list.forEach(function (choice) {
++        var m = String(choice).match(/CL-\d{8}-[A-Za-z0-9]+/i);
++        if (m) { doneCodes.push(m[0]); }
++      });
++    } else if (type === FormApp.ItemType.PARAGRAPH_TEXT) {
++      remarks = String(ir.getResponse() || '');
++    }
++  });
++
++  var payload = {
++    responseId: response.getId(),
++    submittedAt: response.getTimestamp().toISOString(),
++    doneRaw: doneCodes,
++    remarksRaw: remarks
++  };
++  var date = prop_('FORM_DATE');
++  if (date) { payload.date = date; }
++  return payload;
++}
++
++function postToN8n_(payload) {
++  var url = prop_('N8N_WEBHOOK_URL');
++  if (!url) {
++    console.error('N8N_WEBHOOK_URL is not set.');
++    return false;
++  }
++  try {
++    var res = UrlFetchApp.fetch(url, {
++      method: 'post',
++      contentType: 'application/json',
++      headers: { 'x-webhook-secret': prop_('N8N_WEBHOOK_SECRET') || '' },
++      payload: JSON.stringify(payload),
++      muteHttpExceptions: true,
++      followRedirects: true
++    });
++    var code = res.getResponseCode();
++    if (code >= 200 && code < 300) { return true; }
++    console.error('n8n returned ' + code + ': ' + res.getContentText().slice(0, 300));
++    return false;
++  } catch (err) {
++    console.error('Could not reach n8n: ' + err);
++    return false;
++  }
++}
++
++/** Time-driven (every 15 min): re-send anything that failed. The app ignores duplicates. */
++function retryPending_() {
++  var props = PropertiesService.getScriptProperties();
++  var all = props.getProperties();
++  Object.keys(all).forEach(function (key) {
++    if (key.indexOf('PENDING_') !== 0) { return; }
++    if (postToN8n_(JSON.parse(all[key]))) {
++      props.deleteProperty(key);
++    }
++  });
++}
++
++// -------------------------------------------------------------- helpers ----
++
++/** Handy for testing: re-sends the most recent form response through n8n. */
++function resendLastResponse() {
++  var form = FormApp.openById(prop_('FORM_ID'));
++  var responses = form.getResponses();
++  if (!responses.length) { Logger.log('No responses yet.'); return; }
++  var ok = postToN8n_(buildPayload_(responses[responses.length - 1]));
++  Logger.log(ok ? 'Sent.' : 'Failed - see Executions log.');
++}
++
++function prop_(key) {
++  var v = PropertiesService.getScriptProperties().getProperty(key);
++  return v === null || v === undefined || v === '' ? '' : v;
++}
++
++function json_(obj) {
++  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
++}
+diff --git a/integrations/n8n/Swift_Senior_Checklist_Form_WhatsApp.workflow.json b/integrations/n8n/Swift_Senior_Checklist_Form_WhatsApp.workflow.json
+new file mode 100644
+index 0000000..4fcbceb
+--- /dev/null
++++ b/integrations/n8n/Swift_Senior_Checklist_Form_WhatsApp.workflow.json
+@@ -0,0 +1,1123 @@
++{
++  "name": "Swift Senior Checklist - Google Form + WhatsApp",
++  "nodes": [
++    {
++      "id": "00000000-0000-0000-0000-0000000a30bd",
++      "name": "Note: Flow A",
++      "type": "n8n-nodes-base.stickyNote",
++      "typeVersion": 1,
++      "position": [
++        -1180,
++        -330
++      ],
++      "parameters": {
++        "content": "## A. 09:00 IST - build the form and WhatsApp it\nApp -> today's tasks -> Apps Script rebuilds the Google Form -> WhatsApp link to the Senior Authority.\nSkips if no tasks, or if the link was already sent today (set FORCE_RESEND = true to override).",
++        "height": 190,
++        "width": 1900,
++        "color": 4
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000a4fac",
++      "name": "09:00 IST - Send Form",
++      "type": "n8n-nodes-base.scheduleTrigger",
++      "typeVersion": 1.2,
++      "position": [
++        -1140,
++        -120
++      ],
++      "parameters": {
++        "rule": {
++          "interval": [
++            {
++              "field": "cronExpression",
++              "expression": "0 9 * * *"
++            }
++          ]
++        }
++      },
++      "notes": "Workflow timezone is Asia/Kolkata (see settings), so this is 09:00 IST. Must be AFTER the app's 08:30 lock-queue cron."
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000a6e9b",
++      "name": "Manual: Send Form Now",
++      "type": "n8n-nodes-base.manualTrigger",
++      "typeVersion": 1,
++      "position": [
++        -1140,
++        60
++      ],
++      "parameters": {}
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000b2835",
++      "name": "Config (Send Form)",
++      "type": "n8n-nodes-base.set",
++      "typeVersion": 3.4,
++      "position": [
++        -900,
++        -30
++      ],
++      "parameters": {
++        "assignments": {
++          "assignments": [
++            {
++              "id": "00000000-0000-0000-0000-0000000a8d8a",
++              "name": "APP_BASE_URL",
++              "value": "https://swiftseniorchecklist.onrender.com",
++              "type": "string"
++            },
++            {
++              "id": "00000000-0000-0000-0000-0000000aac79",
++              "name": "APPS_SCRIPT_WEBAPP_URL",
++              "value": "PASTE_APPS_SCRIPT_WEB_APP_EXEC_URL",
++              "type": "string"
++            },
++            {
++              "id": "00000000-0000-0000-0000-0000000acb68",
++              "name": "FORM_BRIDGE_SECRET",
++              "value": "PASTE_SAME_VALUE_AS_BRIDGE_SECRET",
++              "type": "string"
++            },
++            {
++              "id": "00000000-0000-0000-0000-0000000aea57",
++              "name": "FALLBACK_SENIOR_PHONE",
++              "value": "",
++              "type": "string"
++            },
++            {
++              "id": "00000000-0000-0000-0000-0000000b0946",
++              "name": "FORCE_RESEND",
++              "value": false,
++              "type": "boolean"
++            }
++          ]
++        },
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000b4724",
++      "name": "App: Get Todays Checklist",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        -660,
++        -30
++      ],
++      "parameters": {
++        "method": "GET",
++        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/integrations/form/today",
++        "authentication": "genericCredentialType",
++        "genericAuthType": "httpHeaderAuth",
++        "options": {
++          "timeout": 90000
++        }
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_APP_SECRET_CRED",
++          "name": "Swift App Secret (x-cron-secret)"
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 3,
++      "waitBetweenTries": 8000
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000b8502",
++      "name": "Should Send?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2.2,
++      "position": [
++        -420,
++        -30
++      ],
++      "parameters": {
++        "conditions": {
++          "options": {
++            "caseSensitive": true,
++            "leftValue": "",
++            "typeValidation": "strict"
++          },
++          "conditions": [
++            {
++              "id": "00000000-0000-0000-0000-0000000b6613",
++              "leftValue": "={{ $json.taskCount > 0 && (!$json.formLinkSentToday || $('Config (Send Form)').first().json.FORCE_RESEND === true) }}",
++              "rightValue": "",
++              "operator": {
++                "type": "boolean",
++                "operation": "true",
++                "singleValue": true
++              }
++            }
++          ],
++          "combinator": "and"
++        },
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000ba3f1",
++      "name": "Skip: Nothing To Send",
++      "type": "n8n-nodes-base.noOp",
++      "typeVersion": 1,
++      "position": [
++        -180,
++        150
++      ],
++      "parameters": {},
++      "notes": "No tasks published for today, or the form link was already sent."
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000be1cf",
++      "name": "Config OK?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2.2,
++      "position": [
++        -180,
++        -30
++      ],
++      "parameters": {
++        "conditions": {
++          "options": {
++            "caseSensitive": true,
++            "leftValue": "",
++            "typeValidation": "strict"
++          },
++          "conditions": [
++            {
++              "id": "00000000-0000-0000-0000-0000000bc2e0",
++              "leftValue": "={{ $('App: Get Todays Checklist').first().json.formConfigured && !!($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE) }}",
++              "rightValue": "",
++              "operator": {
++                "type": "boolean",
++                "operation": "true",
++                "singleValue": true
++              }
++            }
++          ],
++          "combinator": "and"
++        },
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000c00be",
++      "name": "Stop: Missing Config",
++      "type": "n8n-nodes-base.stopAndError",
++      "typeVersion": 1,
++      "position": [
++        60,
++        150
++      ],
++      "parameters": {
++        "errorMessage": "={{ [ !$('App: Get Todays Checklist').first().json.formConfigured ? 'GOOGLE_FORM_URL is not set on the app (Render env)' : '', !($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE) ? 'Senior Authority phone is missing (Settings.seniorAuthorityPhone, SENIOR_AUTHORITY_PHONE env, or FALLBACK_SENIOR_PHONE here)' : '' ].filter(Boolean).join('; ') }}"
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000c1fad",
++      "name": "Apps Script: Rebuild Form",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        60,
++        -30
++      ],
++      "parameters": {
++        "method": "POST",
++        "url": "={{ $('Config (Send Form)').first().json.APPS_SCRIPT_WEBAPP_URL }}",
++        "sendBody": true,
++        "specifyBody": "json",
++        "jsonBody": "={{ JSON.stringify({ secret: $('Config (Send Form)').first().json.FORM_BRIDGE_SECRET, action: 'refresh', date: $('App: Get Todays Checklist').first().json.date, choices: $('App: Get Todays Checklist').first().json.choices }) }}",
++        "options": {
++          "timeout": 60000
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 2,
++      "waitBetweenTries": 5000,
++      "notes": "Apps Script web apps answer with a 302 redirect; n8n follows it by default."
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000c5d8b",
++      "name": "Form Rebuilt?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2.2,
++      "position": [
++        300,
++        -30
++      ],
++      "parameters": {
++        "conditions": {
++          "options": {
++            "caseSensitive": true,
++            "leftValue": "",
++            "typeValidation": "strict"
++          },
++          "conditions": [
++            {
++              "id": "00000000-0000-0000-0000-0000000c3e9c",
++              "leftValue": "={{ $json.ok === true }}",
++              "rightValue": "",
++              "operator": {
++                "type": "boolean",
++                "operation": "true",
++                "singleValue": true
++              }
++            }
++          ],
++          "combinator": "and"
++        },
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000c7c7a",
++      "name": "Stop: Form Not Rebuilt",
++      "type": "n8n-nodes-base.stopAndError",
++      "typeVersion": 1,
++      "position": [
++        540,
++        150
++      ],
++      "parameters": {
++        "errorMessage": "=Apps Script did not confirm the form rebuild. Response: {{ JSON.stringify($json).slice(0, 300) }}"
++      },
++      "notes": "Usual causes: wrong /exec URL, deployment access not 'Anyone', or FORM_BRIDGE_SECRET does not match BRIDGE_SECRET."
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000c9b69",
++      "name": "WhatsApp: Send Form Link to Senior",
++      "type": "n8n-nodes-base.whatsApp",
++      "typeVersion": 1.1,
++      "position": [
++        540,
++        -30
++      ],
++      "parameters": {
++        "phoneNumberId": "1158085794064004",
++        "recipientPhoneNumber": "={{ $('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE }}",
++        "template": "senior_daily_checklist|en",
++        "components": {
++          "component": [
++            {
++              "bodyParameters": {
++                "parameter": [
++                  {
++                    "text": "={{ $now.setZone('Asia/Kolkata').toFormat('dd-LLL-yyyy') }}"
++                  },
++                  {
++                    "text": "={{ $('App: Get Todays Checklist').first().json.formUrl }}"
++                  }
++                ]
++              }
++            }
++          ]
++        }
++      },
++      "credentials": {
++        "whatsAppApi": {
++          "id": "WHATSAPP_CRED_ID",
++          "name": "WhatsApp account"
++        }
++      },
++      "onError": "continueErrorOutput"
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000cba58",
++      "name": "App: Log Form Link Sent",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        780,
++        -110
++      ],
++      "parameters": {
++        "method": "POST",
++        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/notifications/log",
++        "authentication": "genericCredentialType",
++        "genericAuthType": "httpHeaderAuth",
++        "options": {
++          "timeout": 90000
++        },
++        "sendBody": true,
++        "specifyBody": "json",
++        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'SENT', providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null) }) }}"
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_APP_SECRET_CRED",
++          "name": "Swift App Secret (x-cron-secret)"
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 3,
++      "waitBetweenTries": 8000
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000cd947",
++      "name": "App: Log Form Link Failed",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        780,
++        70
++      ],
++      "parameters": {
++        "method": "POST",
++        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/notifications/log",
++        "authentication": "genericCredentialType",
++        "genericAuthType": "httpHeaderAuth",
++        "options": {
++          "timeout": 90000
++        },
++        "sendBody": true,
++        "specifyBody": "json",
++        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'FAILED', errorMessage: ($json.error ? String($json.error.message || $json.error) : 'WhatsApp send failed') }) }}"
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_APP_SECRET_CRED",
++          "name": "Swift App Secret (x-cron-secret)"
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 3,
++      "waitBetweenTries": 8000
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000cf836",
++      "name": "Note: Flow B",
++      "type": "n8n-nodes-base.stickyNote",
++      "typeVersion": 1,
++      "position": [
++        -1180,
++        310
++      ],
++      "parameters": {
++        "content": "## B. Form submitted -> update the app -> (optional) WhatsApp the employees\nGoogle Form -> Apps Script -> this webhook -> app updates the checklist (the app now shows the answers).\nWe answer the webhook as soon as the app is updated, so Apps Script only retries if the app update failed.\nNOTIFY_EMPLOYEES = false by default: flip it to true when you are ready for real not-done WhatsApps + escalations.",
++        "height": 200,
++        "width": 2500,
++        "color": 3
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000d1725",
++      "name": "Webhook: Form Submitted",
++      "type": "n8n-nodes-base.webhook",
++      "typeVersion": 2,
++      "position": [
++        -1140,
++        560
++      ],
++      "parameters": {
++        "httpMethod": "POST",
++        "path": "swift-form-submitted",
++        "authentication": "headerAuth",
++        "responseMode": "responseNode",
++        "options": {}
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_WEBHOOK_SECRET_CRED",
++          "name": "Swift Form Webhook Secret"
++        }
++      },
++      "webhookId": "00000000-0000-0000-0000-000000c0ffee",
++      "notes": "Use the PRODUCTION URL (workflow must be active) as N8N_WEBHOOK_URL in the Apps Script properties."
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000d73f2",
++      "name": "Config (Form Submit)",
++      "type": "n8n-nodes-base.set",
++      "typeVersion": 3.4,
++      "position": [
++        -900,
++        560
++      ],
++      "parameters": {
++        "assignments": {
++          "assignments": [
++            {
++              "id": "00000000-0000-0000-0000-0000000d3614",
++              "name": "APP_BASE_URL",
++              "value": "https://swiftseniorchecklist.onrender.com",
++              "type": "string"
++            },
++            {
++              "id": "00000000-0000-0000-0000-0000000d5503",
++              "name": "NOTIFY_EMPLOYEES",
++              "value": false,
++              "type": "boolean"
++            }
++          ]
++        },
++        "options": {},
++        "includeOtherFields": true
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000d92e1",
++      "name": "App: Submit Form Response",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        -660,
++        560
++      ],
++      "parameters": {
++        "method": "POST",
++        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/integrations/form/submit",
++        "authentication": "genericCredentialType",
++        "genericAuthType": "httpHeaderAuth",
++        "options": {
++          "timeout": 90000
++        },
++        "sendBody": true,
++        "specifyBody": "json",
++        "jsonBody": "={{ JSON.stringify($json.body) }}"
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_APP_SECRET_CRED",
++          "name": "Swift App Secret (x-cron-secret)"
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 3,
++      "waitBetweenTries": 8000
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000db1d0",
++      "name": "Respond to Apps Script",
++      "type": "n8n-nodes-base.respondToWebhook",
++      "typeVersion": 1.1,
++      "position": [
++        -420,
++        430
++      ],
++      "parameters": {
++        "respondWith": "json",
++        "responseBody": "={{ JSON.stringify({ ok: true, duplicate: $json.duplicate === true, counts: $json.counts || null }) }}",
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000defae",
++      "name": "Notify Employees?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2.2,
++      "position": [
++        -420,
++        600
++      ],
++      "parameters": {
++        "conditions": {
++          "options": {
++            "caseSensitive": true,
++            "leftValue": "",
++            "typeValidation": "strict"
++          },
++          "conditions": [
++            {
++              "id": "00000000-0000-0000-0000-0000000dd0bf",
++              "leftValue": "={{ $('Config (Form Submit)').first().json.NOTIFY_EMPLOYEES === true && ($json.newlyNotDone || []).length > 0 }}",
++              "rightValue": "",
++              "operator": {
++                "type": "boolean",
++                "operation": "true",
++                "singleValue": true
++              }
++            }
++          ],
++          "combinator": "and"
++        },
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000e0e9d",
++      "name": "Split Not-Done Tasks",
++      "type": "n8n-nodes-base.splitOut",
++      "typeVersion": 1,
++      "position": [
++        -180,
++        590
++      ],
++      "parameters": {
++        "fieldToSplitOut": "newlyNotDone",
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000e4c7b",
++      "name": "Has Employee Phone?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2.2,
++      "position": [
++        60,
++        590
++      ],
++      "parameters": {
++        "conditions": {
++          "options": {
++            "caseSensitive": true,
++            "leftValue": "",
++            "typeValidation": "strict"
++          },
++          "conditions": [
++            {
++              "id": "00000000-0000-0000-0000-0000000e2d8c",
++              "leftValue": "={{ !!$json.employeePhoneWhatsapp }}",
++              "rightValue": "",
++              "operator": {
++                "type": "boolean",
++                "operation": "true",
++                "singleValue": true
++              }
++            }
++          ],
++          "combinator": "and"
++        },
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000e6b6a",
++      "name": "App: Log No Phone",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        300,
++        770
++      ],
++      "parameters": {
++        "method": "POST",
++        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
++        "authentication": "genericCredentialType",
++        "genericAuthType": "httpHeaderAuth",
++        "options": {
++          "timeout": 90000
++        },
++        "sendBody": true,
++        "specifyBody": "json",
++        "jsonBody": "={{ JSON.stringify({ itemId: $json.id, templateName: 'not_done_reminder', recipientPhone: 'N/A', status: 'SKIPPED_NO_PHONE' }) }}"
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_APP_SECRET_CRED",
++          "name": "Swift App Secret (x-cron-secret)"
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 3,
++      "waitBetweenTries": 8000
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000e8a59",
++      "name": "WhatsApp: Employee Not-Done",
++      "type": "n8n-nodes-base.whatsApp",
++      "typeVersion": 1.1,
++      "position": [
++        300,
++        550
++      ],
++      "parameters": {
++        "phoneNumberId": "1158085794064004",
++        "recipientPhoneNumber": "={{ $json.employeePhoneWhatsapp }}",
++        "template": "not_done_reminder|en",
++        "components": {
++          "component": [
++            {
++              "bodyParameters": {
++                "parameter": [
++                  {
++                    "text": "={{ $json.employeeName }}"
++                  },
++                  {
++                    "text": "={{ $json.taskDescription }}"
++                  },
++                  {
++                    "text": "={{ $json.seniorRemarks || 'No remarks' }}"
++                  },
++                  {
++                    "text": "={{ $json.checklistCode }}"
++                  }
++                ]
++              }
++            }
++          ]
++        }
++      },
++      "credentials": {
++        "whatsAppApi": {
++          "id": "WHATSAPP_CRED_ID",
++          "name": "WhatsApp account"
++        }
++      },
++      "onError": "continueRegularOutput"
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000ea948",
++      "name": "App: Log Employee Message",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        540,
++        550
++      ],
++      "parameters": {
++        "method": "POST",
++        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
++        "authentication": "genericCredentialType",
++        "genericAuthType": "httpHeaderAuth",
++        "options": {
++          "timeout": 90000
++        },
++        "sendBody": true,
++        "specifyBody": "json",
++        "jsonBody": "={{ JSON.stringify({ itemId: $('Split Not-Done Tasks').item.json.id, templateName: 'not_done_reminder', recipientPhone: $('Split Not-Done Tasks').item.json.employeePhoneWhatsapp, status: ($json.error ? 'FAILED' : 'SENT'), providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null), errorMessage: ($json.error ? String($json.error.message || $json.error) : null) }) }}"
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_APP_SECRET_CRED",
++          "name": "Swift App Secret (x-cron-secret)"
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 3,
++      "waitBetweenTries": 8000
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000ec837",
++      "name": "App: Ack Reminder",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        780,
++        550
++      ],
++      "parameters": {
++        "method": "POST",
++        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/cron/reminder-sweep/ack",
++        "authentication": "genericCredentialType",
++        "genericAuthType": "httpHeaderAuth",
++        "options": {
++          "timeout": 90000
++        },
++        "sendBody": true,
++        "specifyBody": "json",
++        "jsonBody": "={{ JSON.stringify({ itemId: $('Split Not-Done Tasks').item.json.id, outcome: ($('WhatsApp: Employee Not-Done').item.json.error ? 'FAILED' : 'SENT') }) }}"
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_APP_SECRET_CRED",
++          "name": "Swift App Secret (x-cron-secret)"
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 3,
++      "waitBetweenTries": 8000
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000f0615",
++      "name": "Newly Escalated?",
++      "type": "n8n-nodes-base.if",
++      "typeVersion": 2.2,
++      "position": [
++        1020,
++        550
++      ],
++      "parameters": {
++        "conditions": {
++          "options": {
++            "caseSensitive": true,
++            "leftValue": "",
++            "typeValidation": "strict"
++          },
++          "conditions": [
++            {
++              "id": "00000000-0000-0000-0000-0000000ee726",
++              "leftValue": "={{ $json.newlyEscalated === true && !!$json.supervisorPhoneWhatsapp }}",
++              "rightValue": "",
++              "operator": {
++                "type": "boolean",
++                "operation": "true",
++                "singleValue": true
++              }
++            }
++          ],
++          "combinator": "and"
++        },
++        "options": {}
++      }
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000f2504",
++      "name": "WhatsApp: Supervisor Escalation",
++      "type": "n8n-nodes-base.whatsApp",
++      "typeVersion": 1.1,
++      "position": [
++        1260,
++        550
++      ],
++      "parameters": {
++        "phoneNumberId": "1158085794064004",
++        "recipientPhoneNumber": "={{ $json.supervisorPhoneWhatsapp }}",
++        "template": "escalation_alert|en",
++        "components": {
++          "component": [
++            {
++              "bodyParameters": {
++                "parameter": [
++                  {
++                    "text": "={{ $json.supervisorName }}"
++                  },
++                  {
++                    "text": "={{ $json.employeeName }}"
++                  },
++                  {
++                    "text": "={{ $json.taskDescription }}"
++                  },
++                  {
++                    "text": "={{ String($json.reminderCount) }}"
++                  },
++                  {
++                    "text": "={{ $json.checklistCode }}"
++                  }
++                ]
++              }
++            }
++          ]
++        }
++      },
++      "credentials": {
++        "whatsAppApi": {
++          "id": "WHATSAPP_CRED_ID",
++          "name": "WhatsApp account"
++        }
++      },
++      "onError": "continueRegularOutput"
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000f43f3",
++      "name": "App: Log Supervisor Message",
++      "type": "n8n-nodes-base.httpRequest",
++      "typeVersion": 4.2,
++      "position": [
++        1500,
++        550
++      ],
++      "parameters": {
++        "method": "POST",
++        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
++        "authentication": "genericCredentialType",
++        "genericAuthType": "httpHeaderAuth",
++        "options": {
++          "timeout": 90000
++        },
++        "sendBody": true,
++        "specifyBody": "json",
++        "jsonBody": "={{ JSON.stringify({ itemId: $('Newly Escalated?').item.json.itemId, templateName: 'escalation_alert', recipientPhone: $('Newly Escalated?').item.json.supervisorPhoneWhatsapp, status: ($json.error ? 'FAILED' : 'SENT'), providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null), errorMessage: ($json.error ? String($json.error.message || $json.error) : null) }) }}"
++      },
++      "credentials": {
++        "httpHeaderAuth": {
++          "id": "REPLACE_APP_SECRET_CRED",
++          "name": "Swift App Secret (x-cron-secret)"
++        }
++      },
++      "retryOnFail": true,
++      "maxTries": 3,
++      "waitBetweenTries": 8000
++    },
++    {
++      "id": "00000000-0000-0000-0000-0000000f62e2",
++      "name": "Note: Setup",
++      "type": "n8n-nodes-base.stickyNote",
++      "typeVersion": 1,
++      "position": [
++        -1180,
++        330
++      ],
++      "parameters": {
++        "content": "## Before activating\n1. Create 2 credentials -> Header Auth:\n   - 'Swift App Secret (x-cron-secret)': name x-cron-secret, value = your app's CRON_SECRET\n   - 'Swift Form Webhook Secret': name x-webhook-secret, value = same as Apps Script N8N_WEBHOOK_SECRET\n2. Pick your existing WhatsApp credential on the 4 WhatsApp nodes.\n3. Fill the two Config nodes (Apps Script URL + bridge secret, app URL).\n4. Run 'Manual: Send Form Now', submit the form, check the app. Then Activate.\nFull guide: integrations/README.md",
++        "height": 260,
++        "width": 700,
++        "color": 6
++      }
++    }
++  ],
++  "connections": {
++    "09:00 IST - Send Form": {
++      "main": [
++        [
++          {
++            "node": "Config (Send Form)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Manual: Send Form Now": {
++      "main": [
++        [
++          {
++            "node": "Config (Send Form)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Config (Send Form)": {
++      "main": [
++        [
++          {
++            "node": "App: Get Todays Checklist",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "App: Get Todays Checklist": {
++      "main": [
++        [
++          {
++            "node": "Should Send?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Should Send?": {
++      "main": [
++        [
++          {
++            "node": "Config OK?",
++            "type": "main",
++            "index": 0
++          }
++        ],
++        [
++          {
++            "node": "Skip: Nothing To Send",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Config OK?": {
++      "main": [
++        [
++          {
++            "node": "Apps Script: Rebuild Form",
++            "type": "main",
++            "index": 0
++          }
++        ],
++        [
++          {
++            "node": "Stop: Missing Config",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Apps Script: Rebuild Form": {
++      "main": [
++        [
++          {
++            "node": "Form Rebuilt?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Form Rebuilt?": {
++      "main": [
++        [
++          {
++            "node": "WhatsApp: Send Form Link to Senior",
++            "type": "main",
++            "index": 0
++          }
++        ],
++        [
++          {
++            "node": "Stop: Form Not Rebuilt",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "WhatsApp: Send Form Link to Senior": {
++      "main": [
++        [
++          {
++            "node": "App: Log Form Link Sent",
++            "type": "main",
++            "index": 0
++          }
++        ],
++        [
++          {
++            "node": "App: Log Form Link Failed",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Webhook: Form Submitted": {
++      "main": [
++        [
++          {
++            "node": "Config (Form Submit)",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Config (Form Submit)": {
++      "main": [
++        [
++          {
++            "node": "App: Submit Form Response",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "App: Submit Form Response": {
++      "main": [
++        [
++          {
++            "node": "Respond to Apps Script",
++            "type": "main",
++            "index": 0
++          },
++          {
++            "node": "Notify Employees?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Notify Employees?": {
++      "main": [
++        [
++          {
++            "node": "Split Not-Done Tasks",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Split Not-Done Tasks": {
++      "main": [
++        [
++          {
++            "node": "Has Employee Phone?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Has Employee Phone?": {
++      "main": [
++        [
++          {
++            "node": "WhatsApp: Employee Not-Done",
++            "type": "main",
++            "index": 0
++          }
++        ],
++        [
++          {
++            "node": "App: Log No Phone",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "WhatsApp: Employee Not-Done": {
++      "main": [
++        [
++          {
++            "node": "App: Log Employee Message",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "App: Log Employee Message": {
++      "main": [
++        [
++          {
++            "node": "App: Ack Reminder",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "App: Ack Reminder": {
++      "main": [
++        [
++          {
++            "node": "Newly Escalated?",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "Newly Escalated?": {
++      "main": [
++        [
++          {
++            "node": "WhatsApp: Supervisor Escalation",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    },
++    "WhatsApp: Supervisor Escalation": {
++      "main": [
++        [
++          {
++            "node": "App: Log Supervisor Message",
++            "type": "main",
++            "index": 0
++          }
++        ]
++      ]
++    }
++  },
++  "active": false,
++  "settings": {
++    "executionOrder": "v1",
++    "timezone": "Asia/Kolkata"
++  },
++  "pinData": {},
++  "meta": {
++    "templateCredsSetupCompleted": false,
++    "notes": "The Swift app (Postgres) is the source of truth. This workflow replaces the Google-Sheets based Senior_Checklist_Escalation_Workflow.json."
++  }
++}
+\ No newline at end of file
+diff --git a/render.yaml b/render.yaml
+index 976916a..a799993 100644
+--- a/render.yaml
++++ b/render.yaml
+@@ -37,6 +37,13 @@ services:
+         sync: false
+       - key: WHATSAPP_ACCESS_TOKEN
+         sync: false
++      # Google Form / n8n integration (see integrations/README.md)
++      - key: GOOGLE_FORM_URL
++        sync: false
++      - key: SENIOR_AUTHORITY_PHONE
++        sync: false
++      - key: SENIOR_AUTHORITY_NAME
++        sync: false
+ 
+   - type: cron
+     name: cron-generate-queue
+@@ -71,7 +78,7 @@ services:
+     runtime: node
+     plan: starter
+     region: singapore
+-    schedule: "30 13 * * *" # 19:00 IST
++    schedule: "0 3 * * *" # 08:30 IST - must run BEFORE the 09:00 IST form send, it is what creates the day's checklist rows
+     buildCommand: npm install
+     startCommand: 'curl -sf -X POST "$APP_BASE_URL/api/cron/lock-queue" -H "x-cron-secret: $CRON_SECRET"'
+     envVars:
+diff --git a/src/app/api/cron/lock-queue/route.ts b/src/app/api/cron/lock-queue/route.ts
+index 189640f..ef8b11a 100644
+--- a/src/app/api/cron/lock-queue/route.ts
++++ b/src/app/api/cron/lock-queue/route.ts
+@@ -11,7 +11,7 @@ export async function POST(request: Request) {
+   return runCronJob(request, "lock-queue", date, async (runDate) => {
+     const queueItems = await prisma.assignmentQueueItem.findMany({
+       where: { date: runDate, includeToday: true, locked: false },
+-      include: { employee: true, taskMaster: true },
++      include: { employee: { include: { supervisor: true } }, taskMaster: true },
+     });
+ 
+     let published = 0;
+@@ -35,8 +35,8 @@ export async function POST(request: Request) {
+             employeeName: item.employee?.name ?? "Unknown employee",
+             employeePhone: item.employee?.phone ?? null,
+             taskDescription: item.taskDescription,
+-            supervisorName: item.employee?.name ?? "Unknown supervisor",
+-            supervisorPhone: item.employee?.phone ?? null,
++            supervisorName: item.employee?.supervisor?.name ?? "Unassigned supervisor",
++            supervisorPhone: item.employee?.supervisor?.phone ?? null,
+             escalationThreshold: taskMaster.escalationThreshold,
+             priority: taskMaster.priority,
+             status: "PENDING",
+diff --git a/src/app/api/cron/reminder-sweep/ack/route.ts b/src/app/api/cron/reminder-sweep/ack/route.ts
+index a26e169..3982c5f 100644
+--- a/src/app/api/cron/reminder-sweep/ack/route.ts
++++ b/src/app/api/cron/reminder-sweep/ack/route.ts
+@@ -1,8 +1,15 @@
+ import { NextResponse } from "next/server";
+ 
++import { toWhatsAppNumber } from "@/lib/business-logic";
++import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
+ import { prisma } from "@/lib/prisma";
+ 
+ export async function POST(request: Request) {
++  const denied = rejectUnlessIntegrationSecret(request);
++  if (denied) {
++    return denied;
++  }
++
+   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+   const itemId = String(body.itemId ?? "").trim();
+   const outcome = String(body.outcome ?? "").trim().toUpperCase();
+@@ -15,6 +22,10 @@ export async function POST(request: Request) {
+     where: { id: itemId },
+     select: {
+       id: true,
++      checklistCode: true,
++      employeeName: true,
++      taskDescription: true,
++      supervisorPhone: true,
+       reminderCount: true,
+       escalationThreshold: true,
+       escalated: true,
+@@ -72,7 +83,9 @@ export async function POST(request: Request) {
+     where: { id: item.id },
+     data: {
+       reminderCount: nextReminderCount,
++      lastRemindedAt: new Date(),
+       escalated: item.escalated || shouldEscalate,
++      ...(shouldEscalate ? { escalatedAt: new Date() } : {}),
+       escalationTier,
+     },
+   });
+@@ -90,8 +103,14 @@ export async function POST(request: Request) {
+ 
+   return NextResponse.json({
+     itemId: item.id,
++    checklistCode: item.checklistCode,
++    employeeName: item.employeeName,
++    taskDescription: item.taskDescription,
++    supervisorName: item.supervisorName ?? "Supervisor",
++    supervisorPhoneWhatsapp: toWhatsAppNumber(item.supervisorPhone),
+     reminderCount: nextReminderCount,
+     escalated: item.escalated || shouldEscalate,
++    newlyEscalated: shouldEscalate,
+     escalationTier,
+     updated: true,
+   });
+diff --git a/src/app/api/integrations/form/submit/route.ts b/src/app/api/integrations/form/submit/route.ts
+new file mode 100644
+index 0000000..858fd21
+--- /dev/null
++++ b/src/app/api/integrations/form/submit/route.ts
+@@ -0,0 +1,170 @@
++import { NextResponse } from "next/server";
++import { z } from "zod";
++
++import { getBusinessToday, toWhatsAppNumber } from "@/lib/business-logic";
++import { colorFor } from "@/lib/cadence";
++import { planFormUpdates } from "@/lib/form-submission";
++import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
++import { prisma } from "@/lib/prisma";
++
++export const dynamic = "force-dynamic";
++
++const bodySchema = z.object({
++  /** Google Form response id - makes the call idempotent. */
++  responseId: z.string().min(1),
++  /** Checklist date the form was built for (YYYY-MM-DD). Defaults to today (IST). */
++  date: z
++    .string()
++    .regex(/^\d{4}-\d{2}-\d{2}$/)
++    .optional(),
++  submittedAt: z.string().optional(),
++  /** Ticked checkbox choices - array (preferred) or a single joined string. */
++  doneRaw: z.union([z.array(z.string()), z.string()]).default([]),
++  remarksRaw: z.string().optional().default(""),
++});
++
++/**
++ * POST /api/integrations/form/submit
++ *
++ * Called by n8n after the Google Form is submitted. Applies the Senior
++ * Authority's answers to the day's checklist so the app reflects them
++ * immediately, and returns the tasks that just became NOT_DONE so n8n can run
++ * the WhatsApp reminder / escalation chain.
++ */
++export async function POST(request: Request) {
++  const denied = rejectUnlessIntegrationSecret(request);
++  if (denied) {
++    return denied;
++  }
++
++  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
++  if (!parsed.success) {
++    return NextResponse.json({ error: "INVALID_BODY", details: parsed.error.issues }, { status: 400 });
++  }
++
++  const body = parsed.data;
++  const date = body.date ?? getBusinessToday();
++  const runDate = new Date(`${date}T00:00:00.000Z`);
++  const eventId = `form:${body.responseId}`;
++
++  // Idempotency: the unique eventId means a retry of the same response is a no-op.
++  try {
++    await prisma.webhookEvent.create({
++      data: {
++        eventId,
++        source: "google_form",
++        kind: "form_submission",
++        payload: { ...body, date },
++      },
++    });
++  } catch {
++    return NextResponse.json({ ok: true, duplicate: true, date });
++  }
++
++  try {
++    const items = await prisma.dailyChecklistItem.findMany({
++      where: { date: runDate },
++      select: {
++        id: true,
++        checklistCode: true,
++        status: true,
++        escalated: true,
++        reminderCount: true,
++        employeeName: true,
++        employeePhone: true,
++        taskDescription: true,
++        supervisorName: true,
++        supervisorPhone: true,
++        escalationThreshold: true,
++        seniorRemarks: true,
++      },
++    });
++
++    if (!items.length) {
++      await prisma.webhookEvent.delete({ where: { eventId } });
++      return NextResponse.json({ error: "NO_CHECKLIST_FOR_DATE", date }, { status: 404 });
++    }
++
++    const plan = planFormUpdates(items, { doneRaw: body.doneRaw, remarksRaw: body.remarksRaw });
++    const submittedAt = body.submittedAt && !Number.isNaN(Date.parse(body.submittedAt)) ? new Date(body.submittedAt) : new Date();
++    const byId = new Map(items.map((item) => [item.id, item]));
++
++    await prisma.$transaction(async (tx) => {
++      for (const update of plan.updates) {
++        const item = byId.get(update.id)!;
++
++        await tx.dailyChecklistItem.update({
++          where: { id: update.id },
++          data: {
++            status: update.to,
++            ...(update.remark !== undefined ? { seniorRemarks: update.remark } : {}),
++            colorStatus: colorFor({ status: update.to, escalated: item.escalated, reminderCount: item.reminderCount }),
++            deliveryStatus: "DELIVERED",
++            formSubmissionTimestamp: submittedAt,
++          },
++        });
++
++        await tx.activityLog.create({
++          data: {
++            checklistItemId: update.id,
++            actorUserId: "google-form:senior",
++            fromStatus: update.from,
++            toStatus: update.to,
++            note: update.remark ?? "Marked done via Google Form",
++          },
++        });
++
++        // A task that is now done no longer needs an open escalation.
++        if (update.to === "DONE" && item.escalated) {
++          await tx.escalationLog.updateMany({
++            where: { checklistItemId: update.id, resolved: false },
++            data: { resolved: true, resolvedAt: submittedAt },
++          });
++        }
++      }
++
++      // Stamp every item the form covered (even unchanged ones) so the app can
++      // show "form submitted at HH:MM" for the whole day.
++      await tx.dailyChecklistItem.updateMany({
++        where: { date: runDate, formSubmissionTimestamp: null },
++        data: { formSubmissionTimestamp: submittedAt },
++      });
++
++      await tx.webhookEvent.update({ where: { eventId }, data: { processedAt: new Date() } });
++    });
++
++    const newlyNotDone = plan.updates
++      .filter((update) => update.to === "NOT_DONE" && update.from !== "NOT_DONE")
++      .map((update) => {
++        const item = byId.get(update.id)!;
++        return {
++          id: item.id,
++          checklistCode: item.checklistCode,
++          employeeName: item.employeeName,
++          employeePhoneWhatsapp: toWhatsAppNumber(item.employeePhone),
++          taskDescription: item.taskDescription,
++          seniorRemarks: update.remark ?? item.seniorRemarks ?? "No remarks",
++          reminderCount: item.reminderCount,
++          escalationThreshold: item.escalationThreshold,
++        };
++      });
++
++    return NextResponse.json({
++      ok: true,
++      date,
++      counts: {
++        total: items.length,
++        markedDone: plan.updates.filter((update) => update.to === "DONE").length,
++        markedNotDone: plan.updates.filter((update) => update.to === "NOT_DONE").length,
++        unchanged: plan.unchanged,
++      },
++      unknownCodes: plan.unknownCodes,
++      newlyNotDone,
++    });
++  } catch (error) {
++    // Free the idempotency key so the caller's retry can succeed.
++    await prisma.webhookEvent.delete({ where: { eventId } }).catch(() => undefined);
++    const message = error instanceof Error ? error.message : "Unknown error";
++    return NextResponse.json({ error: "PROCESSING_FAILED", message }, { status: 500 });
++  }
++}
+diff --git a/src/app/api/integrations/form/today/route.ts b/src/app/api/integrations/form/today/route.ts
+new file mode 100644
+index 0000000..e29d53b
+--- /dev/null
++++ b/src/app/api/integrations/form/today/route.ts
+@@ -0,0 +1,72 @@
++import { NextResponse } from "next/server";
++
++import { getBusinessToday, toWhatsAppNumber } from "@/lib/business-logic";
++import { ensureSettings } from "@/lib/cron";
++import { formatChoice } from "@/lib/form-submission";
++import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
++import { prisma } from "@/lib/prisma";
++
++export const dynamic = "force-dynamic";
++
++/**
++ * GET /api/integrations/form/today?date=YYYY-MM-DD
++ *
++ * Used by n8n every morning. Returns everything needed to (1) rebuild the
++ * Google Form's checkbox list and (2) WhatsApp the form link to the Senior
++ * Authority. Requires the `x-cron-secret` header.
++ */
++export async function GET(request: Request) {
++  const denied = rejectUnlessIntegrationSecret(request);
++  if (denied) {
++    return denied;
++  }
++
++  const requested = new URL(request.url).searchParams.get("date");
++  const date = requested && /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : getBusinessToday();
++  const runDate = new Date(`${date}T00:00:00.000Z`);
++
++  const [settings, items] = await Promise.all([
++    ensureSettings(),
++    prisma.dailyChecklistItem.findMany({
++      where: { date: runDate },
++      orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
++      select: {
++        checklistCode: true,
++        employeeName: true,
++        taskDescription: true,
++        priority: true,
++        status: true,
++      },
++    }),
++  ]);
++
++  // Was the form link already WhatsApped for this business day (IST)? Lets n8n
++  // skip a duplicate send if the schedule fires twice or is re-run by hand.
++  const dayStartIst = new Date(`${date}T00:00:00+05:30`);
++  const alreadySent = await prisma.notificationLog.findFirst({
++    where: {
++      templateName: "senior_daily_checklist",
++      status: "SENT",
++      attemptedAt: { gte: dayStartIst },
++    },
++    select: { id: true },
++  });
++
++  const seniorPhone = settings.seniorAuthorityPhone ?? process.env.SENIOR_AUTHORITY_PHONE ?? null;
++  const formUrl = process.env.GOOGLE_FORM_URL?.trim() || null;
++
++  return NextResponse.json({
++    date,
++    taskCount: items.length,
++    formUrl,
++    formConfigured: Boolean(formUrl),
++    formLinkSentToday: Boolean(alreadySent),
++    senior: {
++      name: settings.seniorAuthorityName ?? process.env.SENIOR_AUTHORITY_NAME ?? "Senior Authority",
++      phone: seniorPhone,
++      whatsappNumber: toWhatsAppNumber(seniorPhone),
++    },
++    choices: items.map((item) => formatChoice(item)),
++    items,
++  });
++}
+diff --git a/src/app/api/notifications/log/route.ts b/src/app/api/notifications/log/route.ts
+index 84e1950..3eb27ab 100644
+--- a/src/app/api/notifications/log/route.ts
++++ b/src/app/api/notifications/log/route.ts
+@@ -1,9 +1,15 @@
+ import { NextResponse } from "next/server";
+ 
+ import { normalizeNotificationStatus } from "@/lib/cron";
++import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
+ import { prisma } from "@/lib/prisma";
+ 
+ export async function POST(request: Request) {
++  const denied = rejectUnlessIntegrationSecret(request);
++  if (denied) {
++    return denied;
++  }
++
+   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+   const itemId = typeof body.itemId === "string" ? body.itemId : null;
+   const templateName = String(body.templateName ?? "").trim();
+diff --git a/src/app/checklist/[date]/page.tsx b/src/app/checklist/[date]/page.tsx
+index 8052044..a7beb0b 100644
+--- a/src/app/checklist/[date]/page.tsx
++++ b/src/app/checklist/[date]/page.tsx
+@@ -1,5 +1,6 @@
+ import { notFound } from "next/navigation";
+ 
++import { AutoRefresh } from "@/app/checklist/_components/AutoRefresh";
+ import { BrandHeader } from "@/app/checklist/_components/BrandHeader";
+ import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
+ import { DateControl } from "@/app/checklist/_components/DateControl";
+@@ -76,6 +77,19 @@ export default async function ChecklistDatePage({
+   });
+ 
+   const employeeRows = rows.filter((row) => row.employeeName === selectedEmployee.name);
++
++  const submissionTimes = rows
++    .map((row) => row.formSubmissionTimestamp)
++    .filter((value): value is Date => value instanceof Date);
++  const lastFormSubmission = submissionTimes.length
++    ? new Date(Math.max(...submissionTimes.map((value) => value.getTime())))
++    : null;
++  const dayTotals = {
++    total: rows.length,
++    done: rows.filter((row) => row.status === "DONE").length,
++    notDone: rows.filter((row) => row.status === "NOT_DONE").length,
++    pending: rows.filter((row) => row.status === "PENDING").length,
++  };
+   const dayWindow = Array.from({ length: 14 }, (_, index) => {
+     const target = new Date(`${selectedDate}T00:00:00.000Z`);
+     target.setDate(target.getDate() - 6 + index);
+@@ -85,8 +99,32 @@ export default async function ChecklistDatePage({
+   return (
+     <main className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
+       <div className="mx-auto max-w-6xl space-y-5">
++        <AutoRefresh intervalSeconds={30} />
+         <BrandHeader />
+ 
++        <section className="neo-border bg-white p-4 neo-shadow-sm">
++          <div className="flex flex-wrap items-center justify-between gap-3">
++            <div>
++              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Senior form (WhatsApp + Google Form)</p>
++              <p className="mt-1 text-sm text-ink/80">
++                {lastFormSubmission
++                  ? `Last submitted ${lastFormSubmission.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })} IST`
++                  : dayTotals.total
++                    ? "Waiting for the Senior Authority to submit the form."
++                    : "No checklist has been published for this date yet."}
++              </p>
++            </div>
++            <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
++              <span className={lastFormSubmission ? "sticker bg-electric-lime text-ink" : "sticker bg-sun-yellow text-ink"}>
++                {lastFormSubmission ? "Form received" : "Awaiting form"}
++              </span>
++              <span className="sticker bg-paper text-ink">Done {dayTotals.done}</span>
++              <span className="sticker bg-hot-pink text-ink">Not done {dayTotals.notDone}</span>
++              <span className="sticker bg-paper text-ink">Pending {dayTotals.pending}</span>
++            </div>
++          </div>
++        </section>
++
+         <section className="neo-border bg-white p-4 neo-shadow-sm">
+           <DateControl date={selectedDate} dates={dayWindow} selectedEmployeeId={selectedEmployee.id} />
+         </section>
+@@ -110,6 +148,7 @@ export default async function ChecklistDatePage({
+           </div>
+ 
+           <ChecklistPanel
++            key={employeeRows.map((row) => `${row.id}:${row.updatedAt.getTime()}`).join("|")}
+             employeeName={selectedEmployee.name}
+             items={employeeRows.map((row) => ({
+               id: row.id,
+@@ -123,6 +162,7 @@ export default async function ChecklistDatePage({
+               seniorRemarks: row.seniorRemarks,
+               employeeResponse: row.employeeResponse,
+               colorStatus: row.colorStatus,
++              formSubmittedAt: row.formSubmissionTimestamp ? row.formSubmissionTimestamp.toISOString() : null,
+             }))}
+           />
+         </section>
+diff --git a/src/app/checklist/_components/AutoRefresh.tsx b/src/app/checklist/_components/AutoRefresh.tsx
+new file mode 100644
+index 0000000..ac3f6fe
+--- /dev/null
++++ b/src/app/checklist/_components/AutoRefresh.tsx
+@@ -0,0 +1,24 @@
++"use client";
++
++import { useRouter } from "next/navigation";
++import { useEffect } from "react";
++
++/**
++ * Re-fetches the server-rendered page on an interval (only while the tab is
++ * visible) so Google Form submissions show up without a manual reload.
++ */
++export function AutoRefresh({ intervalSeconds = 30 }: { intervalSeconds?: number }) {
++  const router = useRouter();
++
++  useEffect(() => {
++    const timer = window.setInterval(() => {
++      if (document.visibilityState === "visible") {
++        router.refresh();
++      }
++    }, intervalSeconds * 1000);
++
++    return () => window.clearInterval(timer);
++  }, [router, intervalSeconds]);
++
++  return null;
++}
+diff --git a/src/app/checklist/_components/ChecklistPanel.tsx b/src/app/checklist/_components/ChecklistPanel.tsx
+index 0afebe4..04d49ca 100644
+--- a/src/app/checklist/_components/ChecklistPanel.tsx
++++ b/src/app/checklist/_components/ChecklistPanel.tsx
+@@ -16,6 +16,7 @@ export type ChecklistTaskRow = {
+   escalated: boolean;
+   seniorRemarks?: string | null;
+   employeeResponse?: string | null;
++  formSubmittedAt?: string | null;
+ };
+ 
+ export function ChecklistPanel({
+@@ -109,6 +110,11 @@ export function ChecklistPanel({
+                     </span>
+                     <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span>
+                     <span className={item.escalated ? "sticker bg-ink text-paper" : "sticker bg-paper text-ink"}>{item.escalated ? "Escalated" : "Active"}</span>
++                    {item.formSubmittedAt ? (
++                      <span className="sticker bg-paper text-ink">
++                        Via form {new Date(item.formSubmittedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}
++                      </span>
++                    ) : null}
+                   </div>
+ 
+                   {(item.seniorRemarks || item.employeeResponse) && (
+diff --git a/src/lib/business-logic.ts b/src/lib/business-logic.ts
+index 54e7075..a58add9 100644
+--- a/src/lib/business-logic.ts
++++ b/src/lib/business-logic.ts
+@@ -156,3 +156,19 @@ export async function handleNotDone(
+     supervisorMessageSent,
+   };
+ }
++
++/**
++ * Returns a WhatsApp Cloud API recipient (country code + number, digits only,
++ * e.g. "919876543210") or null when the stored value is blank / "TBD" / invalid.
++ */
++export function toWhatsAppNumber(input: string | null | undefined): string | null {
++  if (!input) {
++    return null;
++  }
++
++  try {
++    return normalizePhone(input).replace(/^\+/, "");
++  } catch {
++    return null;
++  }
++}
+diff --git a/src/lib/cron.ts b/src/lib/cron.ts
+index eefd378..00168a1 100644
+--- a/src/lib/cron.ts
++++ b/src/lib/cron.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ 
+ import { getBusinessToday } from "@/lib/business-logic";
++import { secretsMatch } from "@/lib/integration-auth";
+ import { prisma } from "@/lib/prisma";
+ 
+ export type CronRouteResult = NextResponse | Response;
+@@ -20,7 +21,7 @@ export async function requireCronAuth(request: Request) {
+   const provided = request.headers.get("x-cron-secret");
+   const expected = process.env.CRON_SECRET;
+ 
+-  if (!expected || provided !== expected) {
++  if (!expected || !secretsMatch(provided, expected)) {
+     return {
+       ok: false,
+       response: NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }),
+diff --git a/src/lib/form-submission.test.ts b/src/lib/form-submission.test.ts
+new file mode 100644
+index 0000000..2917ef2
+--- /dev/null
++++ b/src/lib/form-submission.test.ts
+@@ -0,0 +1,135 @@
++import { describe, expect, it } from "vitest";
++
++import {
++  DEFAULT_NOT_DONE_REMARK,
++  formatChoice,
++  planFormUpdates,
++  type FormItem,
++} from "@/lib/form-submission";
++
++const items: FormItem[] = [
++  { id: "a", checklistCode: "CL-20260920-AB1", status: "PENDING" },
++  { id: "b", checklistCode: "CL-20260920-AB12", status: "PENDING" },
++  { id: "c", checklistCode: "CL-20260920-YT001", status: "PENDING" },
++  { id: "d", checklistCode: "CL-20260920-ZZ9", status: "DONE" },
++];
++
++describe("formatChoice", () => {
++  it("starts with the checklist code so it can be parsed back", () => {
++    const choice = formatChoice({
++      checklistCode: "CL-20260920-YT001",
++      employeeName: "Yogesh Tomar",
++      taskDescription: "Check gate register",
++      priority: "HIGH",
++    });
++    expect(choice.startsWith("CL-20260920-YT001")).toBe(true);
++    expect(choice).toContain("[HIGH]");
++  });
++
++  it("caps very long choices at 300 characters", () => {
++    const choice = formatChoice({
++      checklistCode: "CL-20260920-X",
++      employeeName: "A",
++      taskDescription: "x".repeat(500),
++    });
++    expect(choice.length).toBeLessThanOrEqual(300);
++  });
++});
++
++describe("planFormUpdates", () => {
++  it("marks ticked tasks DONE and unticked pending tasks NOT_DONE", () => {
++    const plan = planFormUpdates(items, {
++      doneRaw: ["CL-20260920-AB1 \u2014 Someone \u2014 Task [LOW]"],
++      remarksRaw: "",
++    });
++
++    expect(plan.updates.find((u) => u.id === "a")?.to).toBe("DONE");
++    const b = plan.updates.find((u) => u.id === "b");
++    expect(b?.to).toBe("NOT_DONE");
++    expect(b?.remark).toBe(DEFAULT_NOT_DONE_REMARK);
++  });
++
++  it("does not confuse a code with a longer code sharing its prefix", () => {
++    const plan = planFormUpdates(items, { doneRaw: ["CL-20260920-AB12 \u2014 X \u2014 Y"] });
++
++    expect(plan.updates.find((u) => u.id === "b")?.to).toBe("DONE");
++    // AB1 must NOT be treated as ticked just because AB12 was.
++    expect(plan.updates.find((u) => u.id === "a")?.to).toBe("NOT_DONE");
++  });
++
++  it("uses the remark for an unticked task and lets Done win when both are present", () => {
++    const plan = planFormUpdates(items, {
++      doneRaw: ["CL-20260920-AB1 \u2014 X \u2014 Y"],
++      remarksRaw: "CL-20260920-AB1: contradictory\ncl-20260920-yt001 - waiting on HR",
++    });
++
++    expect(plan.updates.find((u) => u.id === "a")?.to).toBe("DONE");
++    const c = plan.updates.find((u) => u.id === "c");
++    expect(c).toMatchObject({ to: "NOT_DONE", remark: "waiting on HR" });
++  });
++
++  it("never downgrades an already DONE task that is simply left unticked", () => {
++    const plan = planFormUpdates(items, { doneRaw: [] });
++
++    expect(plan.updates.find((u) => u.id === "d")).toBeUndefined();
++    expect(plan.unchanged).toBe(1);
++  });
++
++  it("does downgrade a DONE task when an explicit remark is given", () => {
++    const plan = planFormUpdates(items, { doneRaw: [], remarksRaw: "CL-20260920-ZZ9: redo needed" });
++
++    expect(plan.updates.find((u) => u.id === "d")).toMatchObject({ from: "DONE", to: "NOT_DONE", remark: "redo needed" });
++  });
++
++  it("accepts a single string as well as an array for doneRaw", () => {
++    const plan = planFormUpdates(items, { doneRaw: "CL-20260920-YT001 \u2014 X \u2014 Y; CL-20260920-AB1 \u2014 X \u2014 Y" });
++
++    expect(plan.updates.filter((u) => u.to === "DONE").map((u) => u.id).sort()).toEqual(["a", "c"]);
++  });
++
++  it("reports codes that are not part of that day's checklist", () => {
++    const plan = planFormUpdates(items, {
++      doneRaw: ["CL-20260101-OLD1 \u2014 X \u2014 Y"],
++      remarksRaw: "CL-20260101-OLD2: stale",
++    });
++
++    expect(plan.unknownCodes.sort()).toEqual(["CL-20260101-OLD1", "CL-20260101-OLD2"]);
++  });
++
++  it("is a no-op for already-settled tasks", () => {
++    const settled: FormItem[] = [{ id: "x", checklistCode: "CL-20260920-Q1", status: "NOT_DONE" }];
++    const plan = planFormUpdates(settled, { doneRaw: [] });
++
++    expect(plan.updates).toHaveLength(0);
++    expect(plan.unchanged).toBe(1);
++  });
++});
++
++describe("round trip with FormBridge.gs", () => {
++  it("codes extracted from generated choices (as Apps Script does) update the right tasks", () => {
++    const rows = [
++      { checklistCode: "CL-20260920-YT001", employeeName: "Yogesh Tomar", taskDescription: "Gate register", priority: "HIGH" },
++      { checklistCode: "CL-20260920-YT0012", employeeName: "Yogesh Tomar", taskDescription: "Fire drill log", priority: "LOW" },
++      { checklistCode: "CL-20260920-SG7", employeeName: "Santosh Guddu", taskDescription: "Store count", priority: "MEDIUM" },
++    ];
++    const choices = rows.map((row) => formatChoice(row));
++
++    // Same regex as buildPayload_ in integrations/google-form/FormBridge.gs
++    const ticked = [choices[1], choices[2]]
++      .map((choice) => choice.match(/CL-\d{8}-[A-Za-z0-9]+/i)?.[0])
++      .filter((code): code is string => Boolean(code));
++    expect(ticked).toEqual(["CL-20260920-YT0012", "CL-20260920-SG7"]);
++
++    const plan = planFormUpdates(
++      rows.map((row, index) => ({ id: String(index), checklistCode: row.checklistCode, status: "PENDING" as const })),
++      { doneRaw: ticked, remarksRaw: "CL-20260920-YT001: register locked" },
++    );
++
++    expect(plan.updates.map((u) => [u.checklistCode, u.to, u.remark])).toEqual([
++      ["CL-20260920-YT001", "NOT_DONE", "register locked"],
++      ["CL-20260920-YT0012", "DONE", undefined],
++      ["CL-20260920-SG7", "DONE", undefined],
++    ]);
++    expect(plan.unknownCodes).toEqual([]);
++  });
++});
+diff --git a/src/lib/form-submission.ts b/src/lib/form-submission.ts
+new file mode 100644
+index 0000000..8d5de4e
+--- /dev/null
++++ b/src/lib/form-submission.ts
+@@ -0,0 +1,164 @@
++/**
++ * Pure helpers that turn a Google Form submission from the Senior Authority
++ * into checklist status updates. Kept free of I/O so it can be unit tested.
++ *
++ * Form layout (built by integrations/google-form/FormBridge.gs):
++ *   1. Checkbox question - one choice per task, formatted by `formatChoice`.
++ *      Ticked = DONE.
++ *   2. Paragraph question - one line per task that is NOT done:
++ *        "<CHECKLIST-CODE>: reason"
++ *
++ * Rules (mirrors the original Apps Script / n8n behaviour):
++ *   - Ticked                                  -> DONE (Done always wins)
++ *   - Not ticked, has a remark                -> NOT_DONE + remark
++ *   - Not ticked, no remark, currently PENDING -> NOT_DONE (default remark)
++ *   - Not ticked, no remark, already DONE/NOT_DONE -> left untouched, so a
++ *     partial re-submission can never silently downgrade earlier work.
++ */
++
++export type FormItemStatus = "PENDING" | "DONE" | "NOT_DONE";
++
++export type FormItem = {
++  id: string;
++  checklistCode: string;
++  status: FormItemStatus;
++};
++
++export type FormUpdate = {
++  id: string;
++  checklistCode: string;
++  from: FormItemStatus;
++  to: FormItemStatus;
++  /** Remark to store. `undefined` means "leave seniorRemarks as it is". */
++  remark?: string;
++};
++
++export type FormPlan = {
++  updates: FormUpdate[];
++  /** Codes that look like checklist codes but do not exist for that date. */
++  unknownCodes: string[];
++  unchanged: number;
++};
++
++export const DEFAULT_NOT_DONE_REMARK = "Not marked done in senior form";
++
++const GENERIC_CODE = /CL-\d{8}-[A-Za-z0-9]+/gi;
++const REMARK_LINE = /^\s*(CL-\d{8}-[A-Za-z0-9]+)\s*[:\-\u2013\u2014]\s*(.+?)\s*$/i;
++
++function escapeRegExp(value: string): string {
++  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
++}
++
++/** Text shown for one task in the Google Form's checkbox list. */
++export function formatChoice(input: {
++  checklistCode: string;
++  employeeName: string;
++  taskDescription: string;
++  priority?: string | null;
++}): string {
++  const priority = input.priority ? ` [${input.priority}]` : "";
++  const base = `${input.checklistCode} \u2014 ${input.employeeName} \u2014 ${input.taskDescription}${priority}`;
++  // Google Forms limits choice length; keep the code (first token) intact.
++  return base.length > 300 ? `${base.slice(0, 297)}...` : base;
++}
++
++export function normalizeDoneRaw(doneRaw: unknown): string {
++  if (Array.isArray(doneRaw)) {
++    return doneRaw.map((entry) => String(entry)).join("\n");
++  }
++  return typeof doneRaw === "string" ? doneRaw : "";
++}
++
++function findCodesInText(text: string, knownCodes: string[]): { matched: Set<string>; unknown: string[] } {
++  const matched = new Set<string>();
++
++  for (const code of knownCodes) {
++    // Boundary check stops "CL-20260920-AB1" from matching "CL-20260920-AB12".
++    const pattern = new RegExp(`${escapeRegExp(code)}(?![A-Za-z0-9])`, "i");
++    if (pattern.test(text)) {
++      matched.add(code);
++    }
++  }
++
++  const knownLower = new Set(knownCodes.map((code) => code.toLowerCase()));
++  const unknown = Array.from(new Set(text.match(GENERIC_CODE) ?? []))
++    .filter((code) => !knownLower.has(code.toLowerCase()))
++    // A generic match may just be a known code followed by extra letters; skip those.
++    .filter((code) => !knownCodes.some((known) => code.toLowerCase().startsWith(known.toLowerCase())));
++
++  return { matched, unknown };
++}
++
++export function parseRemarks(remarksRaw: string, knownCodes: string[]): { remarks: Map<string, string>; unknown: string[] } {
++  const remarks = new Map<string, string>();
++  const unknown: string[] = [];
++  const byLower = new Map(knownCodes.map((code) => [code.toLowerCase(), code]));
++
++  for (const line of remarksRaw.split(/\r?\n/)) {
++    const match = REMARK_LINE.exec(line);
++    if (!match) {
++      continue;
++    }
++
++    const known = byLower.get(match[1].toLowerCase());
++    if (known) {
++      remarks.set(known, match[2]);
++    } else {
++      unknown.push(match[1]);
++    }
++  }
++
++  return { remarks, unknown };
++}
++
++export function planFormUpdates(
++  items: FormItem[],
++  submission: { doneRaw: unknown; remarksRaw?: unknown },
++): FormPlan {
++  const knownCodes = items.map((item) => item.checklistCode);
++  const doneText = normalizeDoneRaw(submission.doneRaw);
++  const remarksText = typeof submission.remarksRaw === "string" ? submission.remarksRaw : "";
++
++  const done = findCodesInText(doneText, knownCodes);
++  const remarks = parseRemarks(remarksText, knownCodes);
++
++  const updates: FormUpdate[] = [];
++  let unchanged = 0;
++
++  for (const item of items) {
++    const remark = remarks.remarks.get(item.checklistCode);
++
++    if (done.matched.has(item.checklistCode)) {
++      if (item.status !== "DONE") {
++        updates.push({ id: item.id, checklistCode: item.checklistCode, from: item.status, to: "DONE" });
++      } else {
++        unchanged += 1;
++      }
++      continue;
++    }
++
++    if (remark) {
++      updates.push({ id: item.id, checklistCode: item.checklistCode, from: item.status, to: "NOT_DONE", remark });
++      continue;
++    }
++
++    if (item.status === "PENDING") {
++      updates.push({
++        id: item.id,
++        checklistCode: item.checklistCode,
++        from: item.status,
++        to: "NOT_DONE",
++        remark: DEFAULT_NOT_DONE_REMARK,
++      });
++      continue;
++    }
++
++    unchanged += 1;
++  }
++
++  return {
++    updates,
++    unknownCodes: Array.from(new Set([...done.unknown, ...remarks.unknown])),
++    unchanged,
++  };
++}
+diff --git a/src/lib/integration-auth.test.ts b/src/lib/integration-auth.test.ts
+new file mode 100644
+index 0000000..88d1821
+--- /dev/null
++++ b/src/lib/integration-auth.test.ts
+@@ -0,0 +1,34 @@
++import { describe, expect, it } from "vitest";
++
++import { toWhatsAppNumber } from "@/lib/business-logic";
++import { secretsMatch } from "@/lib/integration-auth";
++
++describe("secretsMatch", () => {
++  it("accepts an exact match only", () => {
++    expect(secretsMatch("abc123", "abc123")).toBe(true);
++    expect(secretsMatch("abc124", "abc123")).toBe(false);
++    expect(secretsMatch("abc", "abc123")).toBe(false);
++  });
++
++  it("rejects missing values, so an unset CRON_SECRET never authorises anyone", () => {
++    expect(secretsMatch(undefined, "abc123")).toBe(false);
++    expect(secretsMatch("abc123", undefined)).toBe(false);
++    expect(secretsMatch("", "")).toBe(false);
++    expect(secretsMatch(null, null)).toBe(false);
++  });
++});
++
++describe("toWhatsAppNumber", () => {
++  it("returns country-code digits for Indian numbers in common formats", () => {
++    expect(toWhatsAppNumber("98765 43210")).toBe("919876543210");
++    expect(toWhatsAppNumber("+91 98765-43210")).toBe("919876543210");
++    expect(toWhatsAppNumber("09876543210")).toBe("919876543210");
++  });
++
++  it("returns null for blank, TBD or invalid values instead of throwing", () => {
++    expect(toWhatsAppNumber(null)).toBeNull();
++    expect(toWhatsAppNumber("")).toBeNull();
++    expect(toWhatsAppNumber("TBD - add phone number")).toBeNull();
++    expect(toWhatsAppNumber("12345")).toBeNull();
++  });
++});
+diff --git a/src/lib/integration-auth.ts b/src/lib/integration-auth.ts
+new file mode 100644
+index 0000000..9785fdc
+--- /dev/null
++++ b/src/lib/integration-auth.ts
+@@ -0,0 +1,37 @@
++import { timingSafeEqual } from "node:crypto";
++
++import { NextResponse } from "next/server";
++
++/**
++ * Constant-time comparison of two secrets.
++ */
++export function secretsMatch(provided: string | null | undefined, expected: string | null | undefined): boolean {
++  if (!provided || !expected) {
++    return false;
++  }
++
++  const a = Buffer.from(provided, "utf8");
++  const b = Buffer.from(expected, "utf8");
++
++  if (a.length !== b.length) {
++    return false;
++  }
++
++  return timingSafeEqual(a, b);
++}
++
++/**
++ * Guards machine-to-machine routes (n8n, Render cron). Callers must send the
++ * shared CRON_SECRET in the `x-cron-secret` header.
++ *
++ * Returns a 401 response when the secret is missing/wrong, otherwise null.
++ */
++export function rejectUnlessIntegrationSecret(request: Request): NextResponse | null {
++  const provided = request.headers.get("x-cron-secret");
++
++  if (!secretsMatch(provided, process.env.CRON_SECRET)) {
++    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
++  }
++
++  return null;
++}
+-- 
+2.43.0
+

@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 
 import { normalizeNotificationStatus } from "@/lib/cron";
+import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
+  const denied = rejectUnlessIntegrationSecret(request);
+  if (denied) {
+    return denied;
+  }
+
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const itemId = typeof body.itemId === "string" ? body.itemId : null;
   const templateName = String(body.templateName ?? "").trim();

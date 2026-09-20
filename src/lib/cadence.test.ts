@@ -63,6 +63,12 @@ describe("checklistCode", () => {
   });
 });
 
+describe("daily cadence", () => {
+  it("keeps daily tasks active on Sunday instead of excluding them", () => {
+    expect(cadenceMatches({ cadence: "DAILY", scheduleDetail: "Every day" }, new Date("2026-09-20T00:00:00.000Z"))).toMatchObject({ matches: true });
+  });
+});
+
 describe("yearly biannual cadence", () => {
   it("accepts and matches DD-Mon / DD-Mon values", () => {
     expect(validateScheduleDetail("YEARLY", "15-Aug / 15-Feb")).toMatchObject({ valid: true });

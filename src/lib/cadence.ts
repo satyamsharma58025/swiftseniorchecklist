@@ -130,10 +130,8 @@ export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string
 
   switch (task.cadence) {
     case "DAILY": {
-      if (date.weekday === 7) {
-        return { matches: false, warning: "Sunday is excluded for daily cadence" };
-      }
-      return { matches: !isHoliday(date.toISODate() ?? "") };
+      const matches = !isHoliday(date.toISODate() ?? "");
+      return { matches, warning: matches ? undefined : "Holiday excluded for daily cadence" };
     }
     case "WEEKLY": {
       const matches = (task.scheduleDetail ?? "").toLowerCase() === dayOfWeek.toLowerCase();

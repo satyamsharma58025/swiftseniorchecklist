@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { normalizePhone } from "@/lib/business-logic";
@@ -60,6 +61,18 @@ export async function POST(
 
   const targetDate = new Date(`${date}T00:00:00.000Z`);
   const nextQueueCode = await prisma.$transaction(async (tx) => reserveNextQueueCode(tx, targetDate));
+  const taskMaster = await prisma.taskMaster.create({
+    data: {
+      taskCode: `MANUAL-${Date.now()}-${randomUUID().slice(0, 8)}`,
+      employeeId,
+      taskDescription,
+      cadence: "DAILY",
+      active: false,
+      startDate: targetDate,
+      endDate: targetDate,
+      priority: priority as "HIGH" | "MEDIUM" | "LOW",
+    },
+  });
 
   const item = await prisma.assignmentQueueItem.create({
     data: {
@@ -68,6 +81,7 @@ export async function POST(
       employeeId,
       taskDescription,
       source: "MANUAL",
+      taskMasterId: taskMaster.id,
       includeToday: true,
       priority: priority as "HIGH" | "MEDIUM" | "LOW",
       locked: false,

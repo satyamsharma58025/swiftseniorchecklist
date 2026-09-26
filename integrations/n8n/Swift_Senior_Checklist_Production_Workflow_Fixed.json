@@ -1193,7 +1193,7 @@
         "url": "={{ $('Config (Send Form)').first().json.APPS_SCRIPT_WEBAPP_URL }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ secret: $('Config (Send Form)').first().json.FORM_BRIDGE_SECRET, action: 'refresh', date: $('App: Get Todays Checklist').first().json.date, choices: $('App: Get Todays Checklist').first().json.choices, byEmployee: $('App: Get Todays Checklist').first().json.byEmployee }) }}",
+        "jsonBody": "={{ JSON.stringify({ secret: $('Config (Send Form)').first().json.FORM_BRIDGE_SECRET, action: 'refresh', employeeName: $('App: Get Todays Checklist').first().json.senior.name, date: $('App: Get Todays Checklist').first().json.date, choices: $('App: Get Todays Checklist').first().json.senior.choices, byEmployee: $('App: Get Todays Checklist').first().json.byEmployee }) }}",
         "options": {
           "timeout": 60000
         }

@@ -63,6 +63,9 @@ function doPost(e) {
     if (body.action === 'refresh') {
       return json_(refreshForm_(body));
     }
+    if (body.action === 'refresh_all') {
+      return json_(refreshAllForms_(body));
+    }
     return json_({ ok: false, error: 'unknown_action' });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -80,11 +83,21 @@ function refreshForm_(body) {
   }
 
   var dateStr = String(body.date || Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd'));
-  var form;
-  var formKey = 'FORM_ID_' + dateStr;
-  var existingFormId = prop_(formKey);
+  var employeeName = body.employeeName ? String(body.employeeName).trim() : null;
 
-  // Check if an independent form for this date was already created
+  // If building a dedicated form for a single employee (e.g. Shaurya Sir):
+  var formKey = employeeName
+    ? 'FORM_ID_' + dateStr + '_' + employeeName.replace(/[^a-zA-Z0-9]/g, '_')
+    : 'FORM_ID_' + dateStr;
+
+  var formTitle = employeeName
+    ? 'Daily Checklist — ' + employeeName + ' (' + dateStr + ')'
+    : 'Senior Authority Daily Checklist - ' + dateStr;
+
+  var existingFormId = prop_(formKey);
+  var form = null;
+
+  // Check if an independent form for this date & employee was already created
   if (existingFormId) {
     try {
       form = FormApp.openById(existingFormId);
@@ -93,46 +106,38 @@ function refreshForm_(body) {
     }
   }
 
-  // If no form for this date exists, check whether to create an independent form
   if (!form) {
-    var useIndependent = prop_('INDEPENDENT_DAILY_FORMS');
-    if (useIndependent === 'false' && prop_('FORM_ID')) {
-      // Re-use single form mode (if user specifically configured)
-      form = FormApp.openById(prop_('FORM_ID'));
-      if (CLEAR_RESPONSES_ON_REFRESH) {
-        form.deleteAllResponses();
-      }
-    } else {
-      // DEFAULT: Create a brand new independent Google Form for today!
-      // This ensures yesterday's form and responses are preserved independently in Drive.
-      form = FormApp.create('Senior Authority Daily Checklist - ' + dateStr);
-      form.setDescription('Tick every task that is DONE today for each employee. For anything NOT done, write a remark in the box below with: CHECKLIST-CODE: reason');
-      form.setCollectEmail(false);
+    form = FormApp.create(formTitle);
+    form.setCollectEmail(false);
 
-      // Attach the submit trigger to this new independent form
-      ScriptApp.newTrigger('onFormSubmit_')
-        .forForm(form)
-        .onFormSubmit()
-        .create();
+    // Attach the submit trigger to this independent form
+    ScriptApp.newTrigger('onFormSubmit_')
+      .forForm(form)
+      .onFormSubmit()
+      .create();
 
-      // Store form ID for today so repeat calls update this day's form without creating duplicates
-      PropertiesService.getScriptProperties().setProperty(formKey, form.getId());
-      PropertiesService.getScriptProperties().setProperty('FORM_DATE_' + form.getId(), dateStr);
-    }
+    PropertiesService.getScriptProperties().setProperty(formKey, form.getId());
+    PropertiesService.getScriptProperties().setProperty('FORM_DATE_' + form.getId(), dateStr);
   }
 
-  form.setTitle('Senior Authority Daily Checklist - ' + dateStr);
-  form.setDescription('Tick every task that is DONE today. For anything not done, add a line in the remarks box: CHECKLIST-CODE: reason');
+  form.setTitle(formTitle);
+  form.setDescription('Tick every task that is completed today (' + dateStr + '). For anything not done, please add a remark below.');
 
-  // Clear previous questions in today's form before populating
+  // Always clear previous questions before populating to keep fresh
   form.getItems().forEach(function (item) { form.deleteItem(item); });
 
-  // 1. Group checklist points by Employee so employees are prominently visible!
-  if (Array.isArray(body.byEmployee) && body.byEmployee.length > 0) {
+  if (employeeName) {
+    // 1. Dedicated single-employee form: ONLY this employee's choices!
+    var empItem = form.addCheckboxItem();
+    empItem.setTitle('📋 Assigned Tasks (' + choices.length + ')')
+      .setChoiceValues(choices)
+      .setRequired(false);
+  } else if (Array.isArray(body.byEmployee) && body.byEmployee.length > 0) {
+    // 2. Multi-employee fallback sectioning
     body.byEmployee.forEach(function (emp) {
       if (Array.isArray(emp.choices) && emp.choices.length > 0) {
-        var empItem = form.addCheckboxItem();
-        empItem.setTitle('👤 ' + emp.employeeName + ' (' + emp.choices.length + ' tasks)')
+        var groupItem = form.addCheckboxItem();
+        groupItem.setTitle('👤 ' + emp.employeeName + ' (' + emp.choices.length + ' tasks)')
           .setChoiceValues(emp.choices)
           .setRequired(false);
       }
@@ -145,7 +150,7 @@ function refreshForm_(body) {
       .setRequired(false);
   }
 
-  // 2. Remarks question for any tasks not done
+  // Remarks question for any tasks not done
   form.addParagraphTextItem()
     .setTitle(REMARKS_TITLE)
     .setHelpText('One line per task, format:  CHECKLIST-CODE: your remark   (e.g.  CL-20260920-YT001: waiting on HR)')
@@ -158,10 +163,44 @@ function refreshForm_(body) {
   return {
     ok: true,
     date: dateStr,
+    employeeName: employeeName,
     count: choices.length,
     formId: form.getId(),
-    formUrl: form.getPublishedUrl(),
-    publishedUrl: form.getPublishedUrl()
+    formUrl: form.getPublishedUrl() || form.getEditUrl(),
+    publishedUrl: form.getPublishedUrl() || form.getEditUrl()
+  };
+}
+
+function refreshAllForms_(body) {
+  var byEmployee = body.byEmployee;
+  if (!Array.isArray(byEmployee) || !byEmployee.length) {
+    return { ok: false, error: 'no_employees' };
+  }
+
+  var dateStr = String(body.date || Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd'));
+  var results = [];
+
+  byEmployee.forEach(function (emp) {
+    if (emp.choices && emp.choices.length > 0) {
+      var res = refreshForm_({
+        date: dateStr,
+        employeeName: emp.employeeName,
+        choices: emp.choices
+      });
+      results.push({
+        employeeName: emp.employeeName,
+        employeePhone: emp.employeePhone,
+        whatsappNumber: emp.whatsappNumber,
+        taskCount: emp.choices.length,
+        formUrl: res.formUrl
+      });
+    }
+  });
+
+  return {
+    ok: true,
+    date: dateStr,
+    forms: results
   };
 }
 

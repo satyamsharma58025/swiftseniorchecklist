@@ -58,12 +58,25 @@ export default async function ChecklistDatePage({
     notFound();
   }
 
-  const rows = await prisma.dailyChecklistItem.findMany({
+  const targetDate = new Date(`${selectedDate}T00:00:00.000Z`);
+
+  let rows = await prisma.dailyChecklistItem.findMany({
     where: {
-      date: parseBusinessDate(selectedDate),
+      date: targetDate,
     },
     orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
   });
+
+  if (rows.length === 0) {
+    const { ensureDailyQueueAndLock } = await import("@/lib/daily-task-service");
+    await ensureDailyQueueAndLock(targetDate);
+    rows = await prisma.dailyChecklistItem.findMany({
+      where: {
+        date: targetDate,
+      },
+      orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
+    });
+  }
 
   const employeeSummaries = targetEmployees.map((employee) => {
     const employeeRows = rows.filter((row) => row.employeeName === employee.name);
@@ -96,8 +109,8 @@ export default async function ChecklistDatePage({
     pending: rows.filter((row) => row.status === "PENDING").length,
   };
   const dayWindow = Array.from({ length: 14 }, (_, index) => {
-    const target = new Date(parseBusinessDate(selectedDate));
-    target.setDate(target.getDate() - 6 + index);
+    const target = new Date(targetDate);
+    target.setUTCDate(target.getUTCDate() - 6 + index);
     return getBusinessToday(target);
   });
 

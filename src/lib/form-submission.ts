@@ -49,7 +49,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Text shown for one task in the Google Form's checkbox list. */
+/** Text shown for one task in the Google Form's checkbox list. Employee is clearly visible first! */
 export function formatChoice(input: {
   checklistCode: string;
   employeeName: string;
@@ -57,8 +57,8 @@ export function formatChoice(input: {
   priority?: string | null;
 }): string {
   const priority = input.priority ? ` [${input.priority}]` : "";
-  const base = `${input.checklistCode} \u2014 ${input.employeeName} \u2014 ${input.taskDescription}${priority}`;
-  // Google Forms limits choice length; keep the code (first token) intact.
+  const base = `${input.employeeName} \u2014 ${input.taskDescription}${priority} (${input.checklistCode})`;
+  // Google Forms limits choice length; keep the choice within limits.
   return base.length > 300 ? `${base.slice(0, 297)}...` : base;
 }
 
@@ -95,16 +95,33 @@ export function parseRemarks(remarksRaw: string, knownCodes: string[]): { remark
   const byLower = new Map(knownCodes.map((code) => [code.toLowerCase(), code]));
 
   for (const line of remarksRaw.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+
     const match = REMARK_LINE.exec(line);
-    if (!match) {
+    if (match) {
+      const known = byLower.get(match[1].toLowerCase());
+      if (known) {
+        remarks.set(known, match[2].trim());
+      } else {
+        unknown.push(match[1]);
+      }
       continue;
     }
 
-    const known = byLower.get(match[1].toLowerCase());
-    if (known) {
-      remarks.set(known, match[2]);
-    } else {
-      unknown.push(match[1]);
+    // Flexible match: if line contains a known code, extract remark
+    let foundKnown: string | null = null;
+    for (const code of knownCodes) {
+      const pattern = new RegExp(`${escapeRegExp(code)}(?![A-Za-z0-9])`, "i");
+      if (pattern.test(line)) {
+        foundKnown = code;
+        break;
+      }
+    }
+
+    if (foundKnown) {
+      const afterCode = line.split(new RegExp(`${escapeRegExp(foundKnown)}[\\):\\-\\s]*`, "i"))[1] || "";
+      const cleaned = afterCode.replace(/^[:\-\u2013\u2014\s]+/, "").trim();
+      remarks.set(foundKnown, cleaned || DEFAULT_NOT_DONE_REMARK);
     }
   }
 

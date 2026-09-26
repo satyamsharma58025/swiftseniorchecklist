@@ -49,10 +49,12 @@ export default async function ChecklistDatePage({
     ? employees
     : EMPLOYEE_NAMES.map((name, index) => ({ id: `seed-${index + 1}`, name, designation: "Employee" }));
 
-  const selectedEmployee =
-    targetEmployees.find((employee) => employee.id === resolvedParams.employeeId) ?? targetEmployees[0];
+  const isAll = resolvedParams.employeeId === "all";
+  const selectedEmployee = !isAll
+    ? (targetEmployees.find((employee) => employee.id === resolvedParams.employeeId) ?? targetEmployees[0])
+    : null;
 
-  if (!selectedEmployee) {
+  if (!isAll && !selectedEmployee) {
     notFound();
   }
 
@@ -60,7 +62,7 @@ export default async function ChecklistDatePage({
     where: {
       date: parseBusinessDate(selectedDate),
     },
-    orderBy: { taskDescription: "asc" },
+    orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
   });
 
   const employeeSummaries = targetEmployees.map((employee) => {
@@ -77,7 +79,9 @@ export default async function ChecklistDatePage({
     };
   });
 
-  const employeeRows = rows.filter((row) => row.employeeName === selectedEmployee.name);
+  const displayedRows = isAll
+    ? rows
+    : rows.filter((row) => row.employeeName === selectedEmployee?.name);
 
   const submissionTimes = rows
     .map((row) => row.formSubmissionTimestamp)
@@ -127,7 +131,7 @@ export default async function ChecklistDatePage({
         </section>
 
         <section className="neo-border bg-white p-4 neo-shadow-sm">
-          <DateControl date={selectedDate} dates={dayWindow} selectedEmployeeId={selectedEmployee.id} />
+          <DateControl date={selectedDate} dates={dayWindow} selectedEmployeeId={isAll ? "all" : selectedEmployee?.id} />
         </section>
 
         <section className="neo-border bg-white p-4 neo-shadow-sm">
@@ -135,23 +139,34 @@ export default async function ChecklistDatePage({
             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Today</p>
             <span className="sticker bg-hot-pink text-ink">{selectedDate}</span>
           </div>
-          <EmployeeTabs date={selectedDate} employees={employeeSummaries} selectedEmployeeId={selectedEmployee.id} />
+          <EmployeeTabs
+            date={selectedDate}
+            employees={employeeSummaries}
+            selectedEmployeeId={isAll ? "all" : selectedEmployee?.id}
+            allSummary={dayTotals}
+          />
         </section>
 
         <section className="neo-border bg-white p-4 neo-shadow-sm md:p-6">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Employee</p>
-              <h2 className="brand-display mt-2 text-3xl text-ink">{selectedEmployee.name}</h2>
-              <p className="mt-1 text-sm text-ink/75">{selectedEmployee.designation}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">
+                {isAll ? "All Floor Tasks" : "Employee"}
+              </p>
+              <h2 className="brand-display mt-2 text-3xl text-ink">
+                {isAll ? "All Employees" : selectedEmployee?.name}
+              </h2>
+              <p className="mt-1 text-sm text-ink/75">
+                {isAll ? `${targetEmployees.length} employees on the floor` : selectedEmployee?.designation}
+              </p>
             </div>
-            <span className="sticker bg-electric-lime text-ink">{employeeRows.length} tasks</span>
+            <span className="sticker bg-electric-lime text-ink">{displayedRows.length} tasks</span>
           </div>
 
           <ChecklistPanel
-            key={employeeRows.map((row) => `${row.id}:${row.updatedAt.getTime()}`).join("|")}
-            employeeName={selectedEmployee.name}
-            items={employeeRows.map((row) => ({
+            key={displayedRows.map((row) => `${row.id}:${row.updatedAt.getTime()}`).join("|")}
+            employeeName={isAll ? "All Employees" : selectedEmployee?.name ?? "Employee"}
+            items={displayedRows.map((row) => ({
               id: row.id,
               checklistCode: row.checklistCode,
               taskDescription: row.taskDescription,

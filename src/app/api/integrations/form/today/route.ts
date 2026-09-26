@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getBusinessToday, toWhatsAppNumber } from "@/lib/business-logic";
 import { ensureSettings } from "@/lib/cron";
+import { ensureDailyQueueAndLock } from "@/lib/daily-task-service";
 import { formatChoice } from "@/lib/form-submission";
 import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
  * Used by n8n every morning. Returns everything needed to (1) rebuild the
  * Google Form's checkbox list and (2) WhatsApp the form link to the Senior
  * Authority. Requires the `x-cron-secret` header.
+ *
+ * Automatically ensures today's tasks are generated and locked in
+ * so the checklist is guaranteed ready for the 09:00 AM IST send.
  */
 export async function GET(request: Request) {
   const denied = rejectUnlessIntegrationSecret(request);
@@ -25,7 +29,7 @@ export async function GET(request: Request) {
   const date = requested && /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : getBusinessToday();
   const runDate = new Date(`${date}T00:00:00.000Z`);
 
-  const [settings, items] = await Promise.all([
+  const [settings, initialItems] = await Promise.all([
     ensureSettings(),
     prisma.dailyChecklistItem.findMany({
       where: { date: runDate },
@@ -39,6 +43,9 @@ export async function GET(request: Request) {
       },
     }),
   ]);
+
+  // If tasks have not been locked in yet, automatically generate and lock them!
+  const items = initialItems.length > 0 ? initialItems : await ensureDailyQueueAndLock(runDate);
 
   // Was the form link already WhatsApped for this business day (IST)? Lets n8n
   // skip a duplicate send if the schedule fires twice or is re-run by hand.
@@ -55,6 +62,20 @@ export async function GET(request: Request) {
   const seniorPhone = settings.seniorAuthorityPhone ?? process.env.SENIOR_AUTHORITY_PHONE ?? null;
   const formUrl = process.env.GOOGLE_FORM_URL?.trim() || null;
 
+  // Group tasks by employee so Google Forms and clients can render employee-wise sections:
+  const byEmployeeMap = new Map<string, Array<(typeof items)[number]>>();
+  for (const item of items) {
+    const list = byEmployeeMap.get(item.employeeName) ?? [];
+    list.push(item);
+    byEmployeeMap.set(item.employeeName, list);
+  }
+  const byEmployee = Array.from(byEmployeeMap.entries()).map(([employeeName, employeeItems]) => ({
+    employeeName,
+    taskCount: employeeItems.length,
+    choices: employeeItems.map((item) => formatChoice(item)),
+    items: employeeItems,
+  }));
+
   return NextResponse.json({
     date,
     taskCount: items.length,
@@ -67,6 +88,7 @@ export async function GET(request: Request) {
       whatsappNumber: toWhatsAppNumber(seniorPhone),
     },
     choices: items.map((item) => formatChoice(item)),
+    byEmployee,
     items,
   });
 }

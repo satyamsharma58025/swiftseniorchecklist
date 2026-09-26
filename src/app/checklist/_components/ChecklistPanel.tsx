@@ -101,7 +101,15 @@ export function ChecklistPanel({
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="flex items-start gap-3">
                 <span className={`mt-1 h-4 w-4 border-[3px] border-ink ${colorClasses[color] ?? "bg-ink"}`} />
-                <div>
+                <div className="flex-1">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="sticker bg-sun-yellow text-[11px] font-black uppercase tracking-[0.14em] text-ink">
+                      👤 {item.employeeName}
+                    </span>
+                    <span className="sticker bg-paper font-mono text-[10px] font-bold text-ink">
+                      {item.checklistCode}
+                    </span>
+                  </div>
                   <p className="text-lg font-black uppercase tracking-[0.04em] text-ink">{item.taskDescription}</p>
                   <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
                     <span className="sticker bg-paper text-ink">Priority: {item.priority}</span>

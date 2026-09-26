@@ -1,63 +1,59 @@
 /**
  * FormBridge.gs - connects the Senior Authority Google Form to n8n.
  *
- * Install: open the Google Form -> three-dot menu -> Script editor -> paste this
- * whole file -> set the Script Properties listed below -> run setup() once ->
- * Deploy as a Web app (see integrations/README.md).
- *
- * Two jobs:
- *   1. doPost()        n8n calls this every morning with today's task list; the
- *                      form's checkbox question is rebuilt to match.
- *   2. onFormSubmit_() fires when the Senior Authority submits the form and
- *                      forwards the answers to the n8n webhook, which updates
- *                      the Swift Senior Checklist app.
- *
- * Script Properties (Project Settings -> Script Properties):
- *   BRIDGE_SECRET       any long random string. n8n sends it when rebuilding the form.
- *   N8N_WEBHOOK_URL     n8n PRODUCTION URL, e.g. https://your-n8n/webhook/swift-form-submitted
- *   N8N_WEBHOOK_SECRET  any long random string. Must equal the value in the n8n
- *                       "Swift Form Webhook Secret" credential.
- * Set automatically: FORM_ID, FORM_DATE.
+ * Install: open Google Apps Script (script.google.com) or from a Google Form:
+ *   1. Paste this entire file into Code.gs
+ *   2. Script Properties (Project Settings -> Script Properties):
+ *        BRIDGE_SECRET       any random string (must match n8n Config node)
+ *        N8N_WEBHOOK_URL     n8n Production Webhook URL (e.g. https://your-n8n/webhook/swift-form-submitted)
+ *        N8N_WEBHOOK_SECRET  webhook secret (must match n8n Header Auth)
+ *        INDEPENDENT_DAILY_FORMS  "true" (default: creates independent Google Form each day)
+ *   3. Run setup() once to initialize triggers.
+ *   4. Deploy as Web App (Execute as: Me, Who has access: Anyone).
+ *   5. Copy the /exec URL into n8n's Config node APPS_SCRIPT_WEBAPP_URL.
  */
 
 var DONE_TITLE = 'Tick every task that is DONE today';
 var REMARKS_TITLE = 'Remarks for anything NOT done';
-var CLEAR_RESPONSES_ON_REFRESH = true; // the app keeps the history, the form need not
+var CLEAR_RESPONSES_ON_REFRESH = false; // Preserves historical responses for independent forms
 
 // ---------------------------------------------------------------- setup ----
 
 /** Run once from the editor (Run -> setup). Safe to run again. */
 function setup() {
-  var form = FormApp.getActiveForm();
-  if (!form) {
-    throw new Error('Open this script from the Google Form (Form editor -> three dots -> Script editor), then run setup again.');
-  }
-
   var props = PropertiesService.getScriptProperties();
-  props.setProperty('FORM_ID', form.getId());
 
+  // Try to bind to active form if opened from a form container
+  try {
+    var activeForm = FormApp.getActiveForm();
+    if (activeForm) {
+      props.setProperty('FORM_ID', activeForm.getId());
+      ScriptApp.newTrigger('onFormSubmit_').forForm(activeForm).onFormSubmit().create();
+    }
+  } catch (e) {}
+
+  // Clean existing project triggers to avoid duplicates
   ScriptApp.getProjectTriggers().forEach(function (t) {
     var fn = t.getHandlerFunction();
-    if (fn === 'onFormSubmit_' || fn === 'retryPending_') {
+    if (fn === 'retryPending_') {
       ScriptApp.deleteTrigger(t);
     }
   });
-  ScriptApp.newTrigger('onFormSubmit_').forForm(form).onFormSubmit().create();
-  ScriptApp.newTrigger('retryPending_').timeBased().everyMinutes(15).create();
 
-  form.setCollectEmail(false);
+  // Retry queue every 15 minutes for any failed webhook deliveries
+  ScriptApp.newTrigger('retryPending_').timeBased().everyMinutes(15).create();
 
   var missing = ['BRIDGE_SECRET', 'N8N_WEBHOOK_URL', 'N8N_WEBHOOK_SECRET'].filter(function (k) {
     return !prop_(k);
   });
   Logger.log(missing.length
-    ? 'Setup done, but these Script Properties are still missing: ' + missing.join(', ')
-    : 'Setup done. Triggers installed. Now deploy as a Web app.');
+    ? 'Setup completed with warnings. Missing Script Properties: ' + missing.join(', ')
+    : 'Setup successful! Deploy as a Web App (Anyone can access) and paste /exec URL into n8n.');
 }
 
 // ------------------------------------------------- 1. n8n -> rebuild form ----
 
-/** Web app entry point. n8n POSTs JSON: { secret, action: 'refresh', date, choices: [...] } */
+/** Web app entry point. n8n POSTs JSON: { secret, action: 'refresh', date, choices: [...], byEmployee: [...] } */
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
@@ -83,29 +79,90 @@ function refreshForm_(body) {
     return { ok: false, error: 'no_choices' };
   }
 
-  var form = FormApp.openById(prop_('FORM_ID'));
-  form.setTitle('Senior Authority Daily Checklist - ' + body.date);
-  form.setDescription('Tick every task that is DONE. For anything not done, add a line in the remarks box: CHECKLIST-CODE: reason');
+  var dateStr = String(body.date || Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd'));
+  var form;
+  var formKey = 'FORM_ID_' + dateStr;
+  var existingFormId = prop_(formKey);
 
-  form.getItems().forEach(function (item) { form.deleteItem(item); });
-  if (CLEAR_RESPONSES_ON_REFRESH) {
-    form.deleteAllResponses();
+  // Check if an independent form for this date was already created
+  if (existingFormId) {
+    try {
+      form = FormApp.openById(existingFormId);
+    } catch (e) {
+      form = null;
+    }
   }
 
-  form.addCheckboxItem()
-    .setTitle(DONE_TITLE)
-    .setChoiceValues(choices)
-    .setRequired(false);
+  // If no form for this date exists, check whether to create an independent form
+  if (!form) {
+    var useIndependent = prop_('INDEPENDENT_DAILY_FORMS');
+    if (useIndependent === 'false' && prop_('FORM_ID')) {
+      // Re-use single form mode (if user specifically configured)
+      form = FormApp.openById(prop_('FORM_ID'));
+      if (CLEAR_RESPONSES_ON_REFRESH) {
+        form.deleteAllResponses();
+      }
+    } else {
+      // DEFAULT: Create a brand new independent Google Form for today!
+      // This ensures yesterday's form and responses are preserved independently in Drive.
+      form = FormApp.create('Senior Authority Daily Checklist - ' + dateStr);
+      form.setDescription('Tick every task that is DONE today for each employee. For anything NOT done, write a remark in the box below with: CHECKLIST-CODE: reason');
+      form.setCollectEmail(false);
 
+      // Attach the submit trigger to this new independent form
+      ScriptApp.newTrigger('onFormSubmit_')
+        .forForm(form)
+        .onFormSubmit()
+        .create();
+
+      // Store form ID for today so repeat calls update this day's form without creating duplicates
+      PropertiesService.getScriptProperties().setProperty(formKey, form.getId());
+      PropertiesService.getScriptProperties().setProperty('FORM_DATE_' + form.getId(), dateStr);
+    }
+  }
+
+  form.setTitle('Senior Authority Daily Checklist - ' + dateStr);
+  form.setDescription('Tick every task that is DONE today. For anything not done, add a line in the remarks box: CHECKLIST-CODE: reason');
+
+  // Clear previous questions in today's form before populating
+  form.getItems().forEach(function (item) { form.deleteItem(item); });
+
+  // 1. Group checklist points by Employee so employees are prominently visible!
+  if (Array.isArray(body.byEmployee) && body.byEmployee.length > 0) {
+    body.byEmployee.forEach(function (emp) {
+      if (Array.isArray(emp.choices) && emp.choices.length > 0) {
+        var empItem = form.addCheckboxItem();
+        empItem.setTitle('👤 ' + emp.employeeName + ' (' + emp.choices.length + ' tasks)')
+          .setChoiceValues(emp.choices)
+          .setRequired(false);
+      }
+    });
+  } else {
+    // Fallback: all choices in one checkbox question
+    form.addCheckboxItem()
+      .setTitle(DONE_TITLE)
+      .setChoiceValues(choices)
+      .setRequired(false);
+  }
+
+  // 2. Remarks question for any tasks not done
   form.addParagraphTextItem()
     .setTitle(REMARKS_TITLE)
     .setHelpText('One line per task, format:  CHECKLIST-CODE: your remark   (e.g.  CL-20260920-YT001: waiting on HR)')
     .setRequired(false);
 
   form.setAcceptingResponses(true);
-  PropertiesService.getScriptProperties().setProperty('FORM_DATE', String(body.date || ''));
+  PropertiesService.getScriptProperties().setProperty('FORM_DATE', dateStr);
+  PropertiesService.getScriptProperties().setProperty('LATEST_FORM_URL', form.getPublishedUrl());
 
-  return { ok: true, date: body.date, count: choices.length, formUrl: form.getPublishedUrl() };
+  return {
+    ok: true,
+    date: dateStr,
+    count: choices.length,
+    formId: form.getId(),
+    formUrl: form.getPublishedUrl(),
+    publishedUrl: form.getPublishedUrl()
+  };
 }
 
 // --------------------------------------------- 2. form submit -> n8n -> app ---
@@ -136,14 +193,23 @@ function buildPayload_(response) {
     }
   });
 
+  var formDate = prop_('FORM_DATE');
+  var props = PropertiesService.getScriptProperties().getProperties();
+  var editUrl = response.getEditResponseUrl() || '';
+  for (var k in props) {
+    if (k.indexOf('FORM_ID_') === 0 && editUrl.indexOf(props[k]) !== -1) {
+      formDate = k.replace('FORM_ID_', '');
+      break;
+    }
+  }
+
   var payload = {
     responseId: response.getId(),
     submittedAt: response.getTimestamp().toISOString(),
     doneRaw: doneCodes,
-    remarksRaw: remarks
+    remarksRaw: remarks,
+    date: formDate
   };
-  var date = prop_('FORM_DATE');
-  if (date) { payload.date = date; }
   return payload;
 }
 
@@ -182,17 +248,6 @@ function retryPending_() {
       props.deleteProperty(key);
     }
   });
-}
-
-// -------------------------------------------------------------- helpers ----
-
-/** Handy for testing: re-sends the most recent form response through n8n. */
-function resendLastResponse() {
-  var form = FormApp.openById(prop_('FORM_ID'));
-  var responses = form.getResponses();
-  if (!responses.length) { Logger.log('No responses yet.'); return; }
-  var ok = postToN8n_(buildPayload_(responses[responses.length - 1]));
-  Logger.log(ok ? 'Sent.' : 'Failed - see Executions log.');
 }
 
 function prop_(key) {

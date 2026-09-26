@@ -1,0 +1,2569 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "path": "whatsapp-incoming",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "197fa9e5-de42-4928-a6d1-064c152d2221",
+      "name": "Meta Webhook Verify (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        -2832
+      ],
+      "webhookId": "whatsapp-incoming-verify"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "verify-token-check",
+              "leftValue": "={{ $json.query['hub.verify_token'] }}",
+              "rightValue": "swiftstrips_wa_2026",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "60e9146b-4276-4ce9-a58b-1b7dea9243de",
+      "name": "Token Matches?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2048,
+        -2800
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "0e5e84cf-15cd-477c-b95a-0fdaad77ee8e",
+      "name": "Respond With Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2256,
+        -2912
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Forbidden",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "id": "4885ea26-7b90-4d92-8f25-886ce1aaba20",
+      "name": "Respond Forbidden",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2256,
+        -2752
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-incoming",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "34ba3510-0a1f-45da-8f18-da0bf11ef427",
+      "name": "Meta Webhook Receive (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        -2576
+      ],
+      "webhookId": "whatsapp-incoming-receive"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the incoming WhatsApp message text + sender number\nconst body = $json.body;\n\nconst entry = body?.entry?.[0];\nconst change = entry?.changes?.[0];\nconst value = change?.value;\nconst message = value?.messages?.[0];\n\nif (!message) {\n  // This was a status update (delivered/read), not a real message\n  return [{ json: { is_message: false, from_number: null, text_body: '', interactive_reply_id: '' } }];\n}\n\nconst fromNumber = message.from; // sender's WhatsApp number\nconst messageType = message.type; // 'text', 'interactive', etc.\nconst textBody = messageType === 'text' ? (message.text?.body || '').trim().toLowerCase() : '';\nconst interactiveReplyId = messageType === 'interactive' ? (message.interactive?.list_reply?.id || message.interactive?.button_reply?.id || '') : '';\n\nreturn [{\n  json: {\n    is_message: true,\n    from_number: fromNumber,\n    message_type: messageType,\n    text_body: textBody,\n    interactive_reply_id: interactiveReplyId\n  }\n}];"
+      },
+      "id": "95f1d1dc-ea15-409d-95c3-154fa43832e4",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        -2576
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "EVENT_RECEIVED",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "7c2c13cb-0975-49b4-b36f-aee28b308797",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2288,
+        -2656
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "keyword-menu",
+              "leftValue": "={{ $json.text_body }}",
+              "rightValue": "menu",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "keyword-report",
+              "leftValue": "={{ $json.text_body }}",
+              "rightValue": "report",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "8ae3c71c-2303-4794-ada9-776e505f82c8",
+      "name": "Is Menu Keyword?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2288,
+        -2464
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-date-pick",
+              "leftValue": "={{ $json.interactive_reply_id }}",
+              "rightValue": "date_",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "9c34b741-ffa3-4f34-bdb5-f8acd1235985",
+      "name": "Is Date Selection?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2496,
+        -2320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/1158085794064004/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const rows = [];\n  for (let i = 0; i < 7; i++) {\n    const d = $now.minus({ days: i }).setZone('Asia/Kolkata');\n    const label = d.toFormat('dd-MMM');\n    const iso = d.toFormat('yyyy-MM-dd');\n    rows.push({\n      id: 'date_' + iso,\n      title: (i === 0 ? 'Today' : i === 1 ? 'Yesterday' : label),\n      description: label\n    });\n  }\n  return JSON.stringify({\n    messaging_product: 'whatsapp',\n    to: $json.from_number,\n    type: 'interactive',\n    interactive: {\n      type: 'list',\n      header: { type: 'text', text: 'Swift Strips Reports' },\n      body: { text: 'Pick a date to get that day\\'s Consumption + Purchase report:' },\n      footer: { text: 'Last 7 days shown' },\n      action: {\n        button: 'Pick a Date',\n        sections: [ { title: 'Select Date', rows } ]\n      }\n    }\n  });\n})() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "2950c63b-58e5-47c1-b116-b1268d5f470d",
+      "name": "Send Interactive Menu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2496,
+        -2464
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "WTkBhVHVYpaQda0A",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the selected date out of the list_reply id, e.g. 'date_2026-09-10'\nconst id = $json.interactive_reply_id;\nconst isoDate = id.replace('date_', '');\nconst dt = DateTime.fromISO(isoDate, { zone: 'Asia/Kolkata' });\n\nreturn [{\n  json: {\n    from_number: $json.from_number,\n    selected_iso_date: isoDate,\n    selected_year: dt.year,\n    selected_month: dt.month,\n    selected_day: dt.day,\n    selected_month_name: dt.toFormat('MMM_yyyy'),\n    selected_label: dt.toFormat('dd-MMM-yyyy')\n  }\n}];"
+      },
+      "id": "f0ad1bf9-79c6-4c5a-8ce8-255bc8a3e26e",
+      "name": "Parse Selected Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2720,
+        -2320
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1ahXT7qXHpDpYLCwCTN5OoNLBuJsKAEHa1B4tg_vsUFU/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Sep_2026_FIFO_Template",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "41e98d95-b927-4c49-babd-2dea46fc2bb1",
+      "name": "Read Sheet For Selected Date",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2944,
+        -2320
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oZDOr8W3w9PvYjqw",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1z6d9ovkYZBnMq4qjIyPm_K_3sfRpN9Cj0FJ5PhQ2cD0/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Contacts",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 3,
+              "firstDataRow": 4
+            }
+          }
+        }
+      },
+      "id": "47963801-250c-474d-8e19-ceda1ae7c18c",
+      "name": "Get All Contacts",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4896,
+        -2896
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oZDOr8W3w9PvYjqw",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Reads your existing Contacts sheet (ID | Name | Number, header row 3, data from row 4) \u2014 the same one the Tasks sheet's dropdown and phone-lookup formula already use."
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Gemini Output1').first().json;\nconst target = (ctx.contact_name || '').toString().trim().toLowerCase();\nconst rows = $input.all().map(i => i.json);\n\nconst exact = rows.find(r => (r['Name'] || '').toString().trim().toLowerCase() === target);\nconst partial = !exact && rows.find(r => target && (r['Name'] || '').toString().trim().toLowerCase().includes(target));\nconst reverse = !exact && !partial && rows.find(r => {\n  const n = (r['Name'] || '').toString().trim().toLowerCase();\n  return n && target.includes(n);\n});\nconst match = exact || partial || reverse;\n\nreturn [{\n  json: {\n    match_found: !!match,\n    contact_name: match ? match['Name'] : ctx.contact_name,\n    task: ctx.task,\n    due_date: ctx.due_date,\n    frequency: ctx.frequency,\n    from_number: ctx.from_number\n  }\n}];"
+      },
+      "id": "5c82d2ca-afcb-414a-ac6e-c78143417a0b",
+      "name": "Match Contact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5104,
+        -2896
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "found",
+              "leftValue": "={{ $json.match_found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "35a07b04-71dc-441c-9339-a7de28cafb8b",
+      "name": "Contact Match Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5312,
+        -2896
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1158085794064004/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `\u26a0\ufe0f I couldn't find \"${$json['contact_name']}\" in the Contacts sheet, so I haven't created the task. Please add them there first or resend using the exact name.` }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "0ef33688-4794-46eb-88f0-9945b3f6aaec",
+      "name": "Notify Boss - Contact Not Found",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5520,
+        -2736
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "WTkBhVHVYpaQda0A",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst entry = body?.entry?.[0];\nconst change = entry?.changes?.[0];\nconst value = change?.value;\nconst message = value?.messages?.[0];\n\n// EDIT THIS LIST \u2014 currently set to YOUR number only, for testing\nconst BOSS_NUMBERS = ['919031011111', '917903066993','919798637485'];\n\nif (!message || message.type !== 'audio') {\n  return [{ json: { is_boss_voice: false } }];\n}\n\nconst fromNumber = (message.from || '').toString().trim();\nconst isBoss = BOSS_NUMBERS.includes(fromNumber);\n\nreturn [{\n  json: {\n    is_boss_voice: isBoss,\n    from_number: fromNumber,\n    audio_id: message.audio?.id || '',\n    mime_type: message.audio?.mime_type || 'audio/ogg'\n  }\n}];"
+      },
+      "id": "a07f14d6-0a25-42c0-8741-64b5f51e11e6",
+      "name": "Extract Voice Task1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        -2736
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "isBoss",
+              "leftValue": "={{ $json.is_boss_voice }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "hasAudio",
+              "leftValue": "={{ $json.audio_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "6fa389f0-543a-492a-b400-f1bbda83f4d3",
+      "name": "Is Boss Audio Message?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3424,
+        -2736
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.audio_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "09af4b77-1207-40b0-8129-60569c7cc967",
+      "name": "Get Media URL1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3648,
+        -2816
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "WTkBhVHVYpaQda0A",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "01fcbded-0aa2-42af-a915-111c8a83318d",
+      "name": "Download Audio1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3856,
+        -2816
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "WTkBhVHVYpaQda0A",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "destinationKey": "base64Audio",
+        "options": {}
+      },
+      "id": "b2a5a1be-2756-47f0-836c-1b0e22af8ffe",
+      "name": "Convert Audio to Base",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        4064,
+        -2816
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  contents: [{\n    parts: [\n      { text: `You are transcribing a short voice note from a factory manager (boss) assigning a task to an employee. Today's date is ${$now.setZone('Asia/Kolkata').toFormat('yyyy-MM-dd')} (Asia/Kolkata). Listen to the audio and return ONLY a JSON object, no markdown, no extra text, in exactly this shape: {\\\"contact_name\\\": string, \\\"task\\\": string, \\\"due_date\\\": \\\"YYYY-MM-DD\\\", \\\"frequency\\\": \\\"one-time\\\"|\\\"daily\\\"|\\\"weekly\\\"|\\\"monthly\\\"}. Resolve relative phrases such as 'within two days', 'by Friday', or 'tomorrow' into an absolute date using today's date as the base. If no frequency is implied, use \\\"one-time\\\". If a field genuinely cannot be determined, set it to null.` },\n      { inline_data: { mime_type: $('Extract Voice Task1').first().json.mime_type, data: $json.base64Audio } }\n    ]\n  }],\n  generationConfig: { temperature: 0, response_mime_type: 'application/json' }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "1c656917-eb15-4867-98ea-76806df755c7",
+      "name": "Gemini Extract Task1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4272,
+        -2816
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "ej5Bo6MPNlhBMXKD",
+          "name": "Query Auth account"
+        },
+        "googlePalmApi": {
+          "id": "9zQXZGLX1PfeUC6k",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $json;\nlet text = '';\ntry {\n  text = resp.candidates?.[0]?.content?.parts?.[0]?.text || '';\n} catch (e) {}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(String(text).replace(/```json|```/g, '').trim());\n} catch (e) {\n  return [{ json: { parse_ok: false, raw: text, from_number: $('Extract Voice Task1').first().json.from_number } }];\n}\n\nif (!parsed || !parsed.contact_name || !parsed.task || !parsed.due_date) {\n  return [{ json: { parse_ok: false, raw: text, parsed, from_number: $('Extract Voice Task1').first().json.from_number } }];\n}\n\nreturn [{\n  json: {\n    parse_ok: true,\n    contact_name: String(parsed.contact_name).trim(),\n    task: String(parsed.task).trim(),\n    due_date: String(parsed.due_date).trim(),\n    frequency: parsed.frequency || 'one-time',\n    from_number: $('Extract Voice Task1').first().json.from_number\n  }\n}];"
+      },
+      "id": "447a8b6e-8b8a-41c1-9464-f4b188cd5133",
+      "name": "Parse Gemini Output1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4480,
+        -2816
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ok",
+              "leftValue": "={{ $json.parse_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "fb4e8847-46e9-40e7-a111-8f978e53b230",
+      "name": "Gemini Parsed OK?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4688,
+        -2816
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1z6d9ovkYZBnMq4qjIyPm_K_3sfRpN9Cj0FJ5PhQ2cD0/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1853535062,
+          "mode": "list",
+          "cachedResultName": "Tasks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1z6d9ovkYZBnMq4qjIyPm_K_3sfRpN9Cj0FJ5PhQ2cD0/edit#gid=1853535062"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 3,
+              "firstDataRow": 4
+            }
+          }
+        }
+      },
+      "id": "0e9b773c-40e1-4edf-bb9e-3bc0b6c2d2d1",
+      "name": "Get All Tasks (find next row)1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5520,
+        -2976
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oZDOr8W3w9PvYjqw",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst headerRow = 3;\n\nconst dataRows = rows.filter(r => {\n  const contact = (r['Contact Name'] || '').toString().trim();\n  const task = (r['Task'] || '').toString().trim();\n  const taskId = (r['Task ID'] || '').toString().trim();\n  return contact !== '' || task !== '' || taskId !== '';\n});\n\nconst maxRow = dataRows.reduce((m, r) => Math.max(m, Number(r.row_number) || 0), headerRow);\nconst nextRow = maxRow + 1;\nconst ctx = $('Match Contact').first().json;\n\nreturn [{\n  json: {\n    row_number: nextRow,\n    'Contact Name': ctx.contact_name,\n    'Task': ctx.task,\n    'Due Date': ctx.due_date,\n    'Frequency': ctx.frequency,\n    from_number: ctx.from_number\n  }\n}];"
+      },
+      "id": "69f8d5b1-c623-4683-8971-ac570ffdcc24",
+      "name": "Find Next Blank Row1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5728,
+        -2976
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1z6d9ovkYZBnMq4qjIyPm_K_3sfRpN9Cj0FJ5PhQ2cD0/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1853535062,
+          "mode": "list",
+          "cachedResultName": "Tasks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1z6d9ovkYZBnMq4qjIyPm_K_3sfRpN9Cj0FJ5PhQ2cD0/edit#gid=1853535062"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "Contact Name": "={{ $json['Contact Name'] }}",
+            "Task": "={{ $json['Task'] }}",
+            "Due Date": "={{ $json['Due Date'] }}",
+            "Frequency": "={{ $json['Frequency'] }}",
+            "FALSE": true
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "locationDefine": {
+            "values": {
+              "headerRow": 3,
+              "firstDataRow": 4
+            }
+          }
+        }
+      },
+      "id": "f2798a33-ee02-41af-8c96-3f9b0f040d4e",
+      "name": "Write Voice Task to Row1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5936,
+        -2976
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oZDOr8W3w9PvYjqw",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1z6d9ovkYZBnMq4qjIyPm_K_3sfRpN9Cj0FJ5PhQ2cD0/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1853535062,
+          "mode": "list",
+          "cachedResultName": "Tasks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1z6d9ovkYZBnMq4qjIyPm_K_3sfRpN9Cj0FJ5PhQ2cD0/edit#gid=1853535062"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 3,
+              "firstDataRow": 4
+            }
+          }
+        }
+      },
+      "id": "b632cb60-5291-47fc-8693-a56493aaba9e",
+      "name": "Re-Read Sheet After Write1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        6144,
+        -2976
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oZDOr8W3w9PvYjqw",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const target = Number($('Find Next Blank Row1').first().json.row_number);\nconst rows = $input.all().map(i => i.json);\nconst row = rows.find(r => Number(r.row_number) === target);\nconst from_number = $('Find Next Blank Row1').first().json.from_number;\n\nif (!row) {\n  return [{ json: { write_confirmed: false, from_number, 'Contact Name': $('Find Next Blank Row1').first().json['Contact Name'], 'Task': $('Find Next Blank Row1').first().json['Task'] } }];\n}\n\nreturn [{\n  json: {\n    write_confirmed: true,\n    'Task ID': (row['Task ID'] || '').toString().trim(),\n    'Contact Name': (row['Contact Name'] || '').toString().trim(),\n    'Phone Number': (row['Phone Number'] || '').toString().trim(),\n    'Task': (row['Task'] || '').toString().trim(),\n    'Due Date': (row['Due Date'] || '').toString().trim(),\n    from_number\n  }\n}];"
+      },
+      "id": "12d6cbca-1d1a-415c-83ea-fc037623913c",
+      "name": "Extract Written Row1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6352,
+        -2976
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "hasPhone",
+              "leftValue": "={{ $json['Phone Number'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "038448e8-d3c1-47db-8257-cad402f2615a",
+      "name": "Phone Number Resolved?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6560,
+        -2976
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1158085794064004/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `\u2705 Task added for ${$json['Contact Name']}: \"${$json['Task']}\" (ID ${$json['Task ID']}), due ${$json['Due Date']}. They'll get the WhatsApp notification automatically within a minute.` }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "6e7387a3-ad94-4d4f-a359-ec80c66285dc",
+      "name": "Confirm to Boss1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6768,
+        -3008
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "WTkBhVHVYpaQda0A",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1158085794064004/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `\u26a0\ufe0f Task \"${$json['Task']}\" for ${$json['Contact Name']} was added (ID ${$json['Task ID'] || 'pending'}), but no phone number came through. Check that ${$json['Contact Name']} has a Number set in the Contacts sheet.` }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "e42cb37b-9b74-44da-8f9f-968f10f9350e",
+      "name": "Notify Boss - Phone Not Resolved1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6768,
+        -2896
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "WTkBhVHVYpaQda0A",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1158085794064004/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: '\u26a0\ufe0f Sorry, I could not clearly understand that task from the voice note. Please try again, clearly stating: the person\\'s name, what needs to be done, and the deadline.' }\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "a7630ba3-bec7-4c39-a7c2-7e21ec0589df",
+      "name": "Notify Boss - Could Not Understand1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4896,
+        -2656
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "WTkBhVHVYpaQda0A",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## \ud83c\udf99\ufe0f Boss Voice Note -> New Task (matched to your real sheet)\nBoss sends a WhatsApp VOICE NOTE. Wire the first node from your existing 'Meta Webhook Receive (POST)'. Gemini transcribes + extracts {contact_name, task, due_date, frequency}. We then match contact_name against your real Contacts sheet (exact match required, since your Phone Number formula uses MATCH exact-text) to get the canonical name, write it plus Task/Due Date/Frequency into the next blank row, and tick the Send checkbox (col G). Task ID and Phone Number are left to your existing formulas.\n\nWe deliberately do NOT send the assignee a WhatsApp message ourselves \u2014 your existing 'On Sheet Row Update' poll-trigger workflow already does that automatically the moment Phone Number populates and Status isn't 'Sent'. Adding our own send here would double-message people. We only confirm to the boss.\n\nSETUP: (1) Gemini API key + n8n HTTP Query Auth credential named 'Gemini API'. (2) Verify 'Convert Audio to Base64' node type for your n8n version. (3) HEADROOM: Contact Name dropdown validation only covers rows up to B149 (you're at 135) and Task ID/Phone formulas are filled to row 216 \u2014 extend both down a few hundred rows soon so this doesn't quietly stop working. (4) Currently testing with only your own number in BOSS_NUMBERS.",
+        "height": 1116,
+        "width": 3860,
+        "color": 5
+      },
+      "id": "bcc013cf-58ed-4126-a118-f16c7146b15d",
+      "name": "Sticky Note - Voice Task Assignment1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3152,
+        -3376
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## A. 09:00 IST - build the form and WhatsApp it\nApp -> today's tasks -> Apps Script builds independent Google Form -> WhatsApp link to the Senior Authority.\nTasks are automatically generated and locked if not already locked. Forms are independent per day.",
+        "height": 638,
+        "width": 2908,
+        "color": 4
+      },
+      "id": "fba237af-9b0d-4893-aeb0-c7658fbcafc6",
+      "name": "Note: Flow A",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1504,
+        -4688
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "a5154e48-6b7c-4383-aecd-1c6e23b166d0",
+      "name": "09:00 IST - Send Form",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1472,
+        -4464
+      ],
+      "notes": "Workflow timezone is Asia/Kolkata (see settings), so this is 09:00 IST."
+    },
+    {
+      "parameters": {},
+      "id": "17cc66d7-fa67-4a1f-a468-ba2f2dd93762",
+      "name": "Manual: Send Form Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1472,
+        -4288
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00000000-0000-0000-0000-0000000a8d8a",
+              "name": "APP_BASE_URL",
+              "value": "https://swiftseniorchecklist.onrender.com",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000aac79",
+              "name": "APPS_SCRIPT_WEBAPP_URL",
+              "value": "https://script.google.com/macros/s/AKfycby8Z8woY3D11xqiueBsmlhs8G5cd4n8cpmLlX7hHd2FAAnpU1Alo7AJc1LCfxIMRg/exec",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000acb68",
+              "name": "FORM_BRIDGE_SECRET",
+              "value": "qwertyuiopasdfghjkl",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000aea57",
+              "name": "FALLBACK_SENIOR_PHONE",
+              "value": "919798637485",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000b0946",
+              "name": "FORCE_RESEND",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "887ed7e2-39fc-4dcc-95a2-a5c0718d7a24",
+      "name": "Config (Send Form)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1232,
+        -4384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/integrations/form/today",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "e1455825-fa65-4d72-bb24-dff1f691380b",
+      "name": "App: Get Todays Checklist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -992,
+        -4384
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000b6613",
+              "leftValue": "={{ $json.taskCount > 0 && (!$json.formLinkSentToday || $('Config (Send Form)').first().json.FORCE_RESEND === true) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "514a538c-f01d-44ee-9246-9cdc5e51573a",
+      "name": "Should Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        -4384
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "35c68bfb-b41e-4894-b6c3-435c4412af31",
+      "name": "Skip: Nothing To Send",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        -4208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000bc2e0",
+              "leftValue": "={{ !!($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3aa94b6b-3cca-43b8-92e2-dac45fbb8635",
+      "name": "Config OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -512,
+        -4384
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Senior Authority phone is missing (Settings.seniorAuthorityPhone, SENIOR_AUTHORITY_PHONE env, or FALLBACK_SENIOR_PHONE here)"
+      },
+      "id": "c62e3915-92bf-463c-b27b-bc1ab71a451e",
+      "name": "Stop: Missing Config",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        -4208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Send Form)').first().json.APPS_SCRIPT_WEBAPP_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ secret: $('Config (Send Form)').first().json.FORM_BRIDGE_SECRET, action: 'refresh', date: $('App: Get Todays Checklist').first().json.date, choices: $('App: Get Todays Checklist').first().json.choices, byEmployee: $('App: Get Todays Checklist').first().json.byEmployee }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "2b482dbc-22b6-4fc4-b9a4-f0d7e24e9158",
+      "name": "Apps Script: Rebuild Form",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -272,
+        -4384
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000c3e9c",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "24ddb020-89b1-45ec-887a-b2b2f1d1f5a5",
+      "name": "Form Rebuilt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -32,
+        -4384
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Apps Script did not confirm the form rebuild. Response: {{ JSON.stringify($json).slice(0, 300) }}"
+      },
+      "id": "97700f20-3006-4e03-a6a0-86dc8d0d8476",
+      "name": "Stop: Form Not Rebuilt",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        208,
+        -4208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://tinyurl.com/api-create.php?url={{ encodeURIComponent($('Apps Script: Rebuild Form').first().json.formUrl || $('App: Get Todays Checklist').first().json.formUrl) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "2ad843f6-2f8c-465d-b1f9-95a615bca8cd",
+      "name": "Shorten Form Link2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        208,
+        -4384
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00000000-0000-0000-0000-0000000cba58",
+              "name": "formLink",
+              "value": "={{ (typeof $json.data === 'string' && $json.data.indexOf('http') === 0) ? $json.data : ($('Apps Script: Rebuild Form').first().json.formUrl || $('App: Get Todays Checklist').first().json.formUrl) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4959c899-7c54-4655-8375-00d7e3810603",
+      "name": "Form Link",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        -4384
+      ]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "={{ $('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE }}",
+        "template": "senior_daily_checklist|en",
+        "components": {
+          "component": [
+            {
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "text": "={{ $now.setZone('Asia/Kolkata').toFormat('dd-LLL-yyyy') }}"
+                  },
+                  {
+                    "text": "={{ $json.formLink }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "9436e972-8204-48d2-915f-8cb568d65043",
+      "name": "WhatsApp: Send Form Link to Senior",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        560,
+        -4384
+      ],
+      "webhookId": "e573bc4f-798d-48f6-9b9b-dcbc8ae70ba8",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "gnD3am3fj5pbwlEX",
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'SENT', providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null) }) }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "e8ad78d5-b65d-4d58-b3ce-fb84bfc43ca5",
+      "name": "App: Log Form Link Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        -4464
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Send Form)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'FAILED', errorMessage: ($json.error ? String($json.error.message || $json.error) : 'WhatsApp send failed') }) }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "216e8058-dbff-4f5c-88db-95e63ba23da0",
+      "name": "App: Log Form Link Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        -4288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## B. Form submitted -> update the app -> (optional) WhatsApp the employees\nGoogle Form -> Apps Script -> this webhook -> app updates the checklist (the app now shows the answers).\nWe answer the webhook as soon as the app is updated, so Apps Script only retries if the app update failed.\nNOTIFY_EMPLOYEES = false by default: flip it to true when you are ready for real not-done WhatsApps + escalations.",
+        "height": 712,
+        "width": 2916,
+        "color": 3
+      },
+      "id": "0ff4f9cb-7ded-4600-8cdc-0c8fccda6765",
+      "name": "Note: Flow B",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1520,
+        -4048
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "swift-form-submitted",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6c7318cb-2ad1-4044-b8f2-c5a9411233f3",
+      "name": "Webhook: Form Submitted",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1472,
+        -3792
+      ],
+      "webhookId": "00000000-0000-0000-0000-000000c0ffee",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00000000-0000-0000-0000-0000000d92e1",
+              "name": "APP_BASE_URL",
+              "value": "https://swiftseniorchecklist.onrender.com",
+              "type": "string"
+            },
+            {
+              "id": "00000000-0000-0000-0000-0000000db1d0",
+              "name": "NOTIFY_EMPLOYEES",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "765b768a-d8ed-4fc6-a07c-f6b7bd1b038a",
+      "name": "Config (Form Submit)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1248,
+        -3696
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/integrations/form/submit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "e8c075c0-1678-4f48-a8de-c69137303c49",
+      "name": "App: Submit Form Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -992,
+        -3792
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, duplicate: $json.duplicate === true, counts: $json.counts || null }) }}",
+        "options": {}
+      },
+      "id": "837c33e5-db3b-47fb-be5b-a417217d2344",
+      "name": "Respond to Apps Script",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -752,
+        -3920
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000e2d8c",
+              "leftValue": "={{ $('Config (Form Submit)').first().json.NOTIFY_EMPLOYEES === true && ($json.newlyNotDone || []).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cae74186-96aa-4c7d-a608-9b6b68c57af6",
+      "name": "Notify Employees?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -752,
+        -3744
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "newlyNotDone",
+        "options": {}
+      },
+      "id": "b6b50fd3-a1f1-4566-84b7-095b4ee70b77",
+      "name": "Split Not-Done Tasks",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000e8a59",
+              "leftValue": "={{ !!$json.employeePhoneWhatsapp }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0b9e98e9-a27c-4cef-aff0-668130a7b641",
+      "name": "Has Employee Phone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -272,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ itemId: $json.id, templateName: 'not_done_reminder', recipientPhone: 'N/A', status: 'SKIPPED_NO_PHONE' }) }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "007a20e9-fde3-4856-8bbd-0c562766b1ba",
+      "name": "App: Log No Phone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -32,
+        -3584
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "={{ $json.employeePhoneWhatsapp }}",
+        "template": "not_done_reminder|en",
+        "components": {
+          "component": [
+            {
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "text": "={{ $json.employeeName }}"
+                  },
+                  {
+                    "text": "={{ $json.taskDescription }}"
+                  },
+                  {
+                    "text": "={{ $json.seniorRemarks || 'No remarks' }}"
+                  },
+                  {
+                    "text": "={{ $json.checklistCode }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "32a22060-c548-41b4-8822-d3683e8d8710",
+      "name": "WhatsApp: Employee Not-Done",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        -32,
+        -3808
+      ],
+      "webhookId": "cedc076c-0bf6-4ed2-9115-e01a9868a079",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "gnD3am3fj5pbwlEX",
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ itemId: $('Split Not-Done Tasks').item.json.id, templateName: 'not_done_reminder', recipientPhone: $('Split Not-Done Tasks').item.json.employeePhoneWhatsapp, status: ($json.error ? 'FAILED' : 'SENT'), providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null), errorMessage: ($json.error ? String($json.error.message || $json.error) : null) }) }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "f6740a57-420b-4ecc-a06b-16330f3c051d",
+      "name": "App: Log Employee Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        208,
+        -3808
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/cron/reminder-sweep/ack",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ itemId: $('Split Not-Done Tasks').item.json.id, outcome: ($('WhatsApp: Employee Not-Done').item.json.error ? 'FAILED' : 'SENT') }) }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "ad26901d-e4ac-4a79-8383-0c70384932ad",
+      "name": "App: Ack Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        -3808
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-0000000f43f3",
+              "leftValue": "={{ $json.newlyEscalated === true && !!$json.supervisorPhoneWhatsapp }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "08fdeebe-e212-4e99-903e-b5278ded66af",
+      "name": "Newly Escalated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        688,
+        -3808
+      ]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "1158085794064004",
+        "recipientPhoneNumber": "={{ $json.supervisorPhoneWhatsapp }}",
+        "template": "escalation_alert|en",
+        "components": {
+          "component": [
+            {
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "text": "={{ $json.supervisorName }}"
+                  },
+                  {
+                    "text": "={{ $json.employeeName }}"
+                  },
+                  {
+                    "text": "={{ $json.taskDescription }}"
+                  },
+                  {
+                    "text": "={{ String($json.reminderCount) }}"
+                  },
+                  {
+                    "text": "={{ $json.checklistCode }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "f77a106c-ffb2-412a-80d1-f10d7f4ae038",
+      "name": "WhatsApp: Supervisor Escalation",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        928,
+        -3808
+      ],
+      "webhookId": "b10bab1a-9173-420e-a902-f7c65d6c3605",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "gnD3am3fj5pbwlEX",
+          "name": "WhatsApp account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config (Form Submit)').first().json.APP_BASE_URL }}/api/notifications/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ itemId: $('Newly Escalated?').item.json.itemId, templateName: 'escalation_alert', recipientPhone: $('Newly Escalated?').item.json.supervisorPhoneWhatsapp, status: ($json.error ? 'FAILED' : 'SENT'), providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null), errorMessage: ($json.error ? String($json.error.message || $json.error) : null) }) }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "047a60de-ef4c-494b-ab07-687d94714601",
+      "name": "App: Log Supervisor Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1168,
+        -3808
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Before activating\n1. Create 2 credentials -> Header Auth:\n   - 'Swift App Secret (x-cron-secret)': name x-cron-secret, value = your app's CRON_SECRET\n   - 'Swift Form Webhook Secret': name x-webhook-secret, value = same as Apps Script N8N_WEBHOOK_SECRET\n2. Pick your existing WhatsApp credential on the 4 WhatsApp nodes.\n3. Fill the two Config nodes (Apps Script URL + bridge secret, app URL).\n4. Run 'Manual: Send Form Now', submit the form, check the app. Then Activate.",
+        "height": 384,
+        "width": 1164,
+        "color": 6
+      },
+      "id": "d350d772-b513-4274-b746-9a0dced56e8a",
+      "name": "Note: Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2240,
+        -4544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-0000-0000-00000000f101",
+              "leftValue": "={{ $json.is_message === true && $json.message_type === 'text' && !['menu', 'report'].includes($json.text_body) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c6364eeb-074c-481d-a3c8-71c933d9854a",
+      "name": "Forward To Swift App?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2272,
+        -4512
+      ],
+      "notes": "Only plain TEXT messages that are not the 'menu'/'report' keywords go to the Swift Senior Checklist app. Voice notes, list replies and status callbacks are untouched."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://swiftseniorchecklist.onrender.com/api/integrations/whatsapp/inbound",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Meta Webhook Receive (POST)').first().json.body) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "1fa9b743-5be5-4659-b77f-3c5b2291f5b7",
+      "name": "App: Forward Inbound Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2496,
+        -4512
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "m8dbvQEf5x6YbHOU",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Swift Senior Checklist: employee replies\nWIRE ONE CONNECTION: `Extract Message Data` -> `Forward To Swift App?` (keep its existing outputs to `Respond 200 OK` and `Is Menu Keyword?`).\nThen attach the 'Swift App Secret (x-cron-secret)' credential to the HTTP node.",
+        "height": 150,
+        "width": 520,
+        "color": 6
+      },
+      "id": "c241442b-3814-433e-b4ef-08bb65261b5c",
+      "name": "Sticky Note - Swift App Forward",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2224,
+        -4672
+      ]
+    }
+  ],
+  "connections": {
+    "Meta Webhook Verify (GET)": {
+      "main": [
+        [
+          {
+            "node": "Token Matches?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token Matches?": {
+      "main": [
+        [
+          {
+            "node": "Respond With Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Forbidden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta Webhook Receive (POST)": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Voice Task1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is Menu Keyword?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Forward To Swift App?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Menu Keyword?": {
+      "main": [
+        [
+          {
+            "node": "Send Interactive Menu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Date Selection?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Date Selection?": {
+      "main": [
+        [
+          {
+            "node": "Parse Selected Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Selected Date": {
+      "main": [
+        [
+          {
+            "node": "Read Sheet For Selected Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Contacts": {
+      "main": [
+        [
+          {
+            "node": "Match Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Contact": {
+      "main": [
+        [
+          {
+            "node": "Contact Match Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Match Found?": {
+      "main": [
+        [
+          {
+            "node": "Get All Tasks (find next row)1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Boss - Contact Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Voice Task1": {
+      "main": [
+        [
+          {
+            "node": "Is Boss Audio Message?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Boss Audio Message?1": {
+      "main": [
+        [
+          {
+            "node": "Get Media URL1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Media URL1": {
+      "main": [
+        [
+          {
+            "node": "Download Audio1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Audio1": {
+      "main": [
+        [
+          {
+            "node": "Convert Audio to Base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Audio to Base": {
+      "main": [
+        [
+          {
+            "node": "Gemini Extract Task1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Extract Task1": {
+      "main": [
+        [
+          {
+            "node": "Parse Gemini Output1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Gemini Output1": {
+      "main": [
+        [
+          {
+            "node": "Gemini Parsed OK?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Parsed OK?1": {
+      "main": [
+        [
+          {
+            "node": "Get All Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Boss - Could Not Understand1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Tasks (find next row)1": {
+      "main": [
+        [
+          {
+            "node": "Find Next Blank Row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Next Blank Row1": {
+      "main": [
+        [
+          {
+            "node": "Write Voice Task to Row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Voice Task to Row1": {
+      "main": [
+        [
+          {
+            "node": "Re-Read Sheet After Write1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-Read Sheet After Write1": {
+      "main": [
+        [
+          {
+            "node": "Extract Written Row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Written Row1": {
+      "main": [
+        [
+          {
+            "node": "Phone Number Resolved?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phone Number Resolved?1": {
+      "main": [
+        [
+          {
+            "node": "Confirm to Boss1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Boss - Phone Not Resolved1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09:00 IST - Send Form": {
+      "main": [
+        [
+          {
+            "node": "Config (Send Form)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual: Send Form Now": {
+      "main": [
+        [
+          {
+            "node": "Config (Send Form)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Send Form)": {
+      "main": [
+        [
+          {
+            "node": "App: Get Todays Checklist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App: Get Todays Checklist": {
+      "main": [
+        [
+          {
+            "node": "Should Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send?": {
+      "main": [
+        [
+          {
+            "node": "Config OK?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip: Nothing To Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config OK?": {
+      "main": [
+        [
+          {
+            "node": "Apps Script: Rebuild Form",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: Missing Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apps Script: Rebuild Form": {
+      "main": [
+        [
+          {
+            "node": "Form Rebuilt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Rebuilt?": {
+      "main": [
+        [
+          {
+            "node": "Shorten Form Link2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: Form Not Rebuilt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shorten Form Link2": {
+      "main": [
+        [
+          {
+            "node": "Form Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Link": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Send Form Link to Senior",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: Send Form Link to Senior": {
+      "main": [
+        [
+          {
+            "node": "App: Log Form Link Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "App: Log Form Link Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Form Submitted": {
+      "main": [
+        [
+          {
+            "node": "Config (Form Submit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Form Submit)": {
+      "main": [
+        [
+          {
+            "node": "App: Submit Form Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App: Submit Form Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Apps Script",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Employees?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Employees?": {
+      "main": [
+        [
+          {
+            "node": "Split Not-Done Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Not-Done Tasks": {
+      "main": [
+        [
+          {
+            "node": "Has Employee Phone?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Employee Phone?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Employee Not-Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "App: Log No Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: Employee Not-Done": {
+      "main": [
+        [
+          {
+            "node": "App: Log Employee Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App: Log Employee Message": {
+      "main": [
+        [
+          {
+            "node": "App: Ack Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App: Ack Reminder": {
+      "main": [
+        [
+          {
+            "node": "Newly Escalated?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Newly Escalated?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Supervisor Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: Supervisor Escalation": {
+      "main": [
+        [
+          {
+            "node": "App: Log Supervisor Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forward To Swift App?": {
+      "main": [
+        [
+          {
+            "node": "App: Forward Inbound Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "edb08d22bbf0200b2991372af6da5aefb39840ff878ed67c2cfbeed65566d203"
+  }
+}

@@ -15,14 +15,15 @@ const items: FormItem[] = [
 ];
 
 describe("formatChoice", () => {
-  it("starts with the checklist code so it can be parsed back", () => {
+  it("starts with the employee name so employee is properly visible and ends with checklist code", () => {
     const choice = formatChoice({
       checklistCode: "CL-20260920-YT001",
       employeeName: "Yogesh Tomar",
       taskDescription: "Check gate register",
       priority: "HIGH",
     });
-    expect(choice.startsWith("CL-20260920-YT001")).toBe(true);
+    expect(choice.startsWith("Yogesh Tomar")).toBe(true);
+    expect(choice).toContain("CL-20260920-YT001");
     expect(choice).toContain("[HIGH]");
   });
 

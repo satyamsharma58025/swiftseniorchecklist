@@ -1365,6 +1365,7 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
       "credentials": {
         "httpHeaderAuth": {
           "id": "m8dbvQEf5x6YbHOU",

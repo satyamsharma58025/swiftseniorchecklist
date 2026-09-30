@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { getBusinessToday } from "@/lib/business-logic";
 import { prisma } from "@/lib/prisma";
 
@@ -5,103 +7,216 @@ export default async function DashboardPage() {
   const today = getBusinessToday();
   const date = new Date(`${today}T00:00:00.000Z`);
 
-  const items = await prisma.dailyChecklistItem.findMany({
-    where: { date },
-    select: {
-      employeeName: true,
-      taskDescription: true,
-      supervisorName: true,
-      status: true,
-      escalated: true,
-      reminderCount: true,
-    },
-  });
+  const [employees, items] = await Promise.all([
+    prisma.employee.findMany({
+      where: { active: true },
+      select: { id: true, name: true, designation: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.dailyChecklistItem.findMany({
+      where: { date },
+      select: {
+        id: true,
+        employeeName: true,
+        taskDescription: true,
+        supervisorName: true,
+        status: true,
+        escalated: true,
+        reminderCount: true,
+      },
+      orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
+    }),
+  ]);
+
+  type EmployeeStat = {
+    id: string;
+    name: string;
+    designation: string;
+    total: number;
+    done: number;
+    pending: number;
+    notDone: number;
+    escalated: number;
+    progress: number;
+  };
+
+  const employeeMap = new Map(employees.map((employee) => [employee.name, employee]));
+  const employeeStats = Array.from(
+    items.reduce((acc: Map<string, Omit<EmployeeStat, "progress">>, item) => {
+      const key = item.employeeName;
+      const current = acc.get(key) ?? {
+        id: employeeMap.get(key)?.id ?? key,
+        name: key,
+        designation: employeeMap.get(key)?.designation ?? "Operations",
+        total: 0,
+        done: 0,
+        pending: 0,
+        notDone: 0,
+        escalated: 0,
+      };
+
+      current.total += 1;
+      if (item.status === "DONE") current.done += 1;
+      if (item.status === "PENDING") current.pending += 1;
+      if (item.status === "NOT_DONE") current.notDone += 1;
+      if (item.escalated) current.escalated += 1;
+      acc.set(key, current);
+      return acc;
+    }, new Map<string, Omit<EmployeeStat, "progress">>()),
+  ).map(([, value]) => ({
+    ...value,
+    progress: value.total === 0 ? 0 : Math.round((value.done / value.total) * 100),
+  })) as EmployeeStat[];
 
   const totals = {
     total: items.length,
     done: items.filter((item) => item.status === "DONE").length,
+    pending: items.filter((item) => item.status === "PENDING").length,
     notDone: items.filter((item) => item.status === "NOT_DONE").length,
-    escalatedCount: items.filter((item) => item.escalated).length,
+    escalated: items.filter((item) => item.escalated).length,
   };
+
+  const escalatedTasks = items.filter((item) => item.escalated);
+  const activeEmployees = employeeStats.length;
 
   return (
     <main className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         <header className="border-[3px] border-ink bg-ink px-5 py-6 text-paper neo-shadow-lg md:px-7">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.30em] text-sun-yellow">Swift Strips India</p>
-              <h1 className="brand-display mt-2 text-3xl md:text-4xl">Today&apos;s supervision dashboard</h1>
+              <p className="text-[10px] font-black uppercase tracking-[0.32em] text-sun-yellow">Swift Strips India</p>
+              <h1 className="brand-display mt-2 text-3xl md:text-4xl">Operational Dashboard</h1>
+              <p className="mt-2 text-sm text-paper/80">Daily checklist performance and employee task status for {today}</p>
             </div>
-            <div className="border-[3px] border-paper bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">
-              {today}
+            <div className="flex items-center gap-2">
+              <span className="border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">
+                {today}
+              </span>
+              <Link href={`/checklist/${today}`} className="neo-press border-[3px] border-paper bg-electric-lime px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">
+                Open checklist
+              </Link>
             </div>
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {[
-            { label: "Total", value: totals.total, tone: "bg-paper" },
-            { label: "Done", value: totals.done, tone: "bg-electric-lime" },
+            { label: "Total Tasks", value: totals.total, tone: "bg-paper" },
+            { label: "Completed", value: totals.done, tone: "bg-electric-lime" },
+            { label: "Pending", value: totals.pending, tone: "bg-sun-yellow" },
             { label: "Not Done", value: totals.notDone, tone: "bg-hot-pink" },
-            { label: "Escalated", value: totals.escalatedCount, tone: "bg-cyber-cyan" },
+            { label: "Escalated", value: totals.escalated, tone: "bg-cyber-cyan" },
           ].map((card) => (
             <div key={card.label} className={`neo-border p-5 neo-shadow-sm ${card.tone}`}>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/70">{card.label}</p>
-              <p className="brand-display mt-3 text-4xl">{card.value}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-ink/70">{card.label}</p>
+              <p className="brand-display mt-3 text-4xl leading-none">{card.value}</p>
             </div>
           ))}
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-          <div className="neo-border bg-white p-6 neo-shadow-sm">
+        <section className="grid gap-6 xl:grid-cols-[1.45fr_0.55fr]">
+          <div className="neo-border bg-white p-5 neo-shadow-sm md:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="brand-display text-3xl text-ink">Checklist for {today}</h2>
-              <span className="sticker bg-electric-lime text-ink">{totals.done}/{totals.total} complete</span>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-ink/70">Employee overview</p>
+                <h2 className="brand-display mt-2 text-2xl text-ink">Today&apos;s task distribution</h2>
+              </div>
+              <span className="sticker bg-electric-lime text-ink">{activeEmployees} employees</span>
             </div>
 
-            <div className="space-y-3">
-              {items.length === 0 ? (
-                <p className="text-sm text-ink/75">No checklist items were generated for this date yet.</p>
-              ) : (
-                items.map((item, index) => (
-                  <div key={`${item.employeeName}-${item.taskDescription}-${index}`} className="neo-border bg-paper p-4 neo-shadow-sm">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-lg font-black uppercase tracking-[0.04em] text-ink">{item.employeeName}</p>
-                        <p className="mt-1 text-sm text-ink/75">{item.taskDescription}</p>
-                      </div>
-                      <span
-                        className={[
-                          "sticker text-ink",
-                          item.status === "DONE" && "bg-brand-green",
-                          item.status === "NOT_DONE" && "bg-hot-pink",
-                          item.status === "PENDING" && "bg-sun-yellow",
-                        ].filter(Boolean).join(" ")}
-                      >
-                        {item.status}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-separate border-spacing-y-2">
+                <thead>
+                  <tr className="text-left text-[10px] font-black uppercase tracking-[0.18em] text-ink/70">
+                    <th className="px-2 py-2">Employee</th>
+                    <th className="px-2 py-2">Tasks</th>
+                    <th className="px-2 py-2">Done</th>
+                    <th className="px-2 py-2">Pending</th>
+                    <th className="px-2 py-2">Not Done</th>
+                    <th className="px-2 py-2">Progress</th>
+                    <th className="px-2 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employeeStats.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-2 py-6 text-sm text-ink/75">No employee tasks scheduled for this date yet.</td>
+                    </tr>
+                  ) : (
+                    employeeStats.map((employee) => (
+                      <tr key={employee.name} className="neo-border bg-paper align-middle">
+                        <td className="px-3 py-3">
+                          <div>
+                            <p className="text-sm font-black uppercase tracking-[0.04em] text-ink">{employee.name}</p>
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-ink/60">{employee.designation}</p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-sm font-bold text-ink">{employee.total}</td>
+                        <td className="px-3 py-3 text-sm font-bold text-ink">{employee.done}</td>
+                        <td className="px-3 py-3 text-sm font-bold text-ink">{employee.pending}</td>
+                        <td className="px-3 py-3 text-sm font-bold text-ink">{employee.notDone}</td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2.5 w-24 border-[2px] border-ink bg-white">
+                              <div className="h-full bg-brand-green" style={{ width: `${employee.progress}%` }} />
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-ink">{employee.progress}%</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Link
+                            href={`/checklist/${today}?employeeId=${employee.id}`}
+                            className="neo-press border-[3px] border-ink bg-white px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-ink"
+                          >
+                            View tasks
+                          </Link>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          <aside className="neo-border bg-white p-6 neo-shadow-sm">
-            <h2 className="brand-display text-3xl text-ink">Escalation feed</h2>
-            <div className="mt-4 space-y-4">
-              {items.filter((item) => item.escalated).length === 0 ? (
-                <p className="text-sm text-ink/75">No escalations on this date.</p>
+          <aside className="space-y-6">
+            <div className="neo-border bg-white p-5 neo-shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-ink/70">Attention required</p>
+              <h2 className="brand-display mt-2 text-2xl text-ink">Escalations</h2>
+
+              {escalatedTasks.length === 0 ? (
+                <p className="mt-4 text-sm text-ink/75">No escalations on this date.</p>
               ) : (
-                items.filter((item) => item.escalated).map((item, index) => (
-                  <div key={`${item.employeeName}-${item.taskDescription}-${index}`} className="neo-border bg-hot-pink p-3">
-                    <p className="text-lg font-black uppercase tracking-[0.04em] text-ink">{item.employeeName}</p>
-                    <p className="mt-1 text-sm text-ink/80">{item.taskDescription}</p>
-                    <p className="mt-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink/70">Supervisor: {item.supervisorName}</p>
-                  </div>
-                ))
+                <div className="mt-4 space-y-3">
+                  {escalatedTasks.map((item) => (
+                    <div key={`${item.employeeName}-${item.taskDescription}`} className="neo-border bg-hot-pink p-3">
+                      <p className="text-sm font-black uppercase tracking-[0.04em] text-ink">{item.employeeName}</p>
+                      <p className="mt-1 text-xs text-ink/80">{item.taskDescription}</p>
+                      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-ink/70">Supervisor: {item.supervisorName}</p>
+                    </div>
+                  ))}
+                </div>
               )}
+            </div>
+
+            <div className="neo-border bg-white p-5 neo-shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-ink/70">Delivery health</p>
+              <h2 className="brand-display mt-2 text-2xl text-ink">Operations pulse</h2>
+              <div className="mt-4 space-y-4 text-sm text-ink">
+                <div className="flex items-center justify-between border-b-[3px] border-ink pb-2">
+                  <span>Active employees</span>
+                  <strong>{activeEmployees}</strong>
+                </div>
+                <div className="flex items-center justify-between border-b-[3px] border-ink pb-2">
+                  <span>Pending review</span>
+                  <strong>{totals.pending + totals.notDone}</strong>
+                </div>
+                <div className="flex items-center justify-between border-b-[3px] border-ink pb-2">
+                  <span>Escalated</span>
+                  <strong>{totals.escalated}</strong>
+                </div>
+              </div>
             </div>
           </aside>
         </section>

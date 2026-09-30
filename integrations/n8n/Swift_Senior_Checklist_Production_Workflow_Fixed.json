@@ -1074,7 +1074,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
-          "timeout": 90000
+          "timeout": 15000
         }
       },
       "id": "e1455825-fa65-4d72-bb24-dff1f691380b",

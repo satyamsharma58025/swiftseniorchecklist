@@ -298,7 +298,9 @@ export async function ensureDailyQueueAndLock(runDate: Date) {
   return items;
 }
 
-export async function getDailyTaskSets(targetDate: Date) {
+export async function getTodaysEmployeeTaskSets(targetDate: Date) {
+  const startedAt = Date.now();
+
   const items = await prisma.dailyChecklistItem.findMany({
     where: { date: targetDate },
     include: { taskMaster: { include: { employee: { include: { supervisor: true } } } } },
@@ -355,10 +357,24 @@ export async function getDailyTaskSets(targetDate: Date) {
     grouped.set(employeeId, current);
   }
 
-  return Array.from(grouped.values()).map((entry) => ({
-    ...entry,
-    tasks: entry.tasks,
-  }));
+  const employees = Array.from(grouped.values())
+    .map((entry) => ({
+      ...entry,
+      tasks: entry.tasks,
+    }))
+    .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+
+  return {
+    items,
+    employees,
+    taskCount: items.length,
+    employeeCount: employees.length,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+export async function getDailyTaskSets(targetDate: Date) {
+  return (await getTodaysEmployeeTaskSets(targetDate)).employees;
 }
 
 export async function groupTasksByEmployee(targetDate: Date) {

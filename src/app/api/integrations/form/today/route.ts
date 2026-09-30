@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getBusinessToday, toWhatsAppNumber } from "@/lib/business-logic";
 import { ensureSettings } from "@/lib/cron";
-import { ensureDailyQueueAndLock } from "@/lib/daily-task-service";
+import { getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
 import { formatChoice } from "@/lib/form-submission";
 import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
@@ -35,12 +35,14 @@ export async function GET(request: Request) {
     ensureSettings(),
   ]);
 
-  await ensureDailyQueueAndLock(runDate);
+  const payload = await getTodaysEmployeeTaskSets(runDate);
+  const { items, employees, taskCount, durationMs } = payload;
 
-  const items = await prisma.dailyChecklistItem.findMany({
-    where: { date: runDate },
-    include: { taskMaster: { include: { employee: { include: { supervisor: true } } } } },
-    orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
+  console.info("[form/today]", {
+    date,
+    employeeCount: employees.length,
+    taskCount,
+    durationMs,
   });
 
   const filteredItems = employeeFilter && employeeFilter.toLowerCase() !== "all"

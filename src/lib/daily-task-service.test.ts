@@ -17,6 +17,9 @@ const db = vi.hoisted(() => ({
     findFirst: vi.fn(),
     upsert: vi.fn(),
   },
+  notificationLog: {
+    findMany: vi.fn(),
+  },
   queueCodeSequence: {
     upsert: vi.fn(),
     update: vi.fn(),
@@ -25,7 +28,7 @@ const db = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
-import { ensureDailyQueueAndLock } from "@/lib/daily-task-service";
+import { ensureDailyQueueAndLock, getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
 
 const runDate = new Date("2026-09-30T00:00:00.000Z");
 
@@ -58,12 +61,63 @@ beforeEach(() => {
   db.assignmentQueueItem.findUnique.mockResolvedValue(null);
   db.dailyChecklistItem.findMany.mockResolvedValue([]);
   db.dailyChecklistItem.findFirst.mockResolvedValue(null);
+  db.notificationLog.findMany.mockResolvedValue([]);
   db.assignmentQueueItem.upsert.mockResolvedValue({ id: "queue-1", taskMasterId: "tm-1", date: runDate, locked: true });
   db.dailyChecklistItem.upsert.mockResolvedValue({ id: "item-1", taskMasterId: "tm-1", date: runDate, status: "PENDING" });
   db.queueCodeSequence.upsert.mockResolvedValue({ id: "seq-1", nextValue: 1 });
   db.queueCodeSequence.update.mockResolvedValue({});
   db.assignmentQueueItem.updateMany.mockResolvedValue({ count: 1 });
   db.employee.findUnique.mockResolvedValue({ id: "emp-1", name: "Yogesh Tomar", phone: "9876543210", supervisor: null });
+});
+
+describe("getTodaysEmployeeTaskSets", () => {
+  it("reads materialized rows for all employees without re-running daily generation", async () => {
+    const tasks = [
+      {
+        id: "item-1",
+        date: runDate,
+        taskMasterId: "tm-1",
+        employeeName: "Rahul",
+        employeePhone: "9876543210",
+        taskDescription: "Verify attendance",
+        checklistCode: "CL-001",
+        supervisorName: "Manager",
+        supervisorPhone: "9876543211",
+        priority: "HIGH",
+        status: "PENDING",
+        taskMaster: {
+          employeeId: "emp-1",
+          employee: { id: "emp-1", name: "Rahul", phone: "9876543210", designation: "Lead", department: "Ops", supervisor: null },
+        },
+      },
+      {
+        id: "item-2",
+        date: runDate,
+        taskMasterId: "tm-2",
+        employeeName: "Priya",
+        employeePhone: "9876543212",
+        taskDescription: "Review dispatch",
+        checklistCode: "CL-002",
+        supervisorName: "Manager",
+        supervisorPhone: "9876543211",
+        priority: "MEDIUM",
+        status: "DONE",
+        taskMaster: {
+          employeeId: "emp-2",
+          employee: { id: "emp-2", name: "Priya", phone: "9876543212", designation: "Coordinator", department: "Ops", supervisor: null },
+        },
+      },
+    ];
+
+    db.dailyChecklistItem.findMany.mockResolvedValue(tasks as never);
+
+    const result = await getTodaysEmployeeTaskSets(runDate);
+
+    expect(result.taskCount).toBe(2);
+    expect(result.employees).toHaveLength(2);
+    expect(result.employees.map((employee) => employee.employeeName)).toEqual(["Priya", "Rahul"]);
+    expect(db.taskMaster.findMany).not.toHaveBeenCalled();
+  });
 });
 
 describe("ensureDailyQueueAndLock", () => {

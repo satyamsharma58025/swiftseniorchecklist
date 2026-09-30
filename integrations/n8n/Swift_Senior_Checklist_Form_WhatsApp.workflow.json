@@ -111,7 +111,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
-          "timeout": 90000
+          "timeout": 15000
         }
       },
       "credentials": {
@@ -121,8 +121,8 @@
         }
       },
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 8000
+      "maxTries": 2,
+      "waitBetweenTries": 2000
     },
     {
       "id": "00000000-0000-0000-0000-0000000b8502",

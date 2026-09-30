@@ -1193,7 +1193,7 @@
         "url": "={{ $('Config (Send Form)').first().json.APPS_SCRIPT_WEBAPP_URL }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ secret: $('Config (Send Form)').first().json.FORM_BRIDGE_SECRET, action: 'refresh', employeeName: $('App: Get Todays Checklist').first().json.senior.name, date: $('App: Get Todays Checklist').first().json.date, choices: $('App: Get Todays Checklist').first().json.senior.choices, byEmployee: $('App: Get Todays Checklist').first().json.byEmployee }) }}",
+        "jsonBody": "={{ JSON.stringify({ secret: $('Config (Send Form)').first().json.FORM_BRIDGE_SECRET, action: 'refresh', date: $('App: Get Todays Checklist').first().json.date, employeeName: $json.employeeName, employeePhone: $json.employeePhone, whatsappNumber: $json.whatsappNumber, choices: $json.choices }) }}",
         "options": {
           "timeout": 60000
         }
@@ -1259,7 +1259,7 @@
     },
     {
       "parameters": {
-        "url": "=https://tinyurl.com/api-create.php?url={{ encodeURIComponent($('Apps Script: Rebuild Form').first().json.formUrl || $('App: Get Todays Checklist').first().json.formUrl) }}",
+        "url": "=https://tinyurl.com/api-create.php?url={{ encodeURIComponent($json.formUrl || $json.formLink || '') }}",
         "options": {
           "response": {
             "response": {
@@ -1286,7 +1286,7 @@
             {
               "id": "00000000-0000-0000-0000-0000000cba58",
               "name": "formLink",
-              "value": "={{ (typeof $json.data === 'string' && $json.data.indexOf('http') === 0) ? $json.data : ($('Apps Script: Rebuild Form').first().json.formUrl || $('App: Get Todays Checklist').first().json.formUrl) }}",
+              "value": "={{ (typeof $json.data === 'string' && $json.data.indexOf('http') === 0) ? $json.data : ($json.formUrl || $json.formLink || '') }}",
               "type": "string"
             }
           ]
@@ -1305,7 +1305,7 @@
     {
       "parameters": {
         "phoneNumberId": "1158085794064004",
-        "recipientPhoneNumber": "={{ $('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE }}",
+        "recipientPhoneNumber": "={{ $json.whatsappNumber || $json.employeePhone || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE }}",
         "template": "senior_daily_checklist|en",
         "components": {
           "component": [
@@ -1349,7 +1349,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'SENT', providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null) }) }}",
+        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($json.whatsappNumber || $json.employeePhone || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'SENT', providerMessageId: ($json.messages && $json.messages[0] ? $json.messages[0].id : null) }) }}",
         "options": {
           "timeout": 90000
         }
@@ -1381,7 +1381,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($('App: Get Todays Checklist').first().json.senior.whatsappNumber || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'FAILED', errorMessage: ($json.error ? String($json.error.message || $json.error) : 'WhatsApp send failed') }) }}",
+        "jsonBody": "={{ JSON.stringify({ templateName: 'senior_daily_checklist', recipientPhone: String($json.whatsappNumber || $json.employeePhone || $('Config (Send Form)').first().json.FALLBACK_SENIOR_PHONE), status: 'FAILED', errorMessage: ($json.error ? String($json.error.message || $json.error) : 'WhatsApp send failed') }) }}",
         "options": {
           "timeout": 90000
         }
@@ -1951,6 +1951,20 @@
         2224,
         -4672
       ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000eeee1",
+      "name": "Split Employee Forms",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        420,
+        -30
+      ],
+      "parameters": {
+        "fieldToSplitOut": "byEmployee",
+        "options": {}
+      }
     }
   ],
   "connections": {
@@ -2334,7 +2348,7 @@
       "main": [
         [
           {
-            "node": "Apps Script: Rebuild Form",
+            "node": "Split Employee Forms",
             "type": "main",
             "index": 0
           }
@@ -2342,6 +2356,17 @@
         [
           {
             "node": "Stop: Missing Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Employee Forms": {
+      "main": [
+        [
+          {
+            "node": "Apps Script: Rebuild Form",
             "type": "main",
             "index": 0
           }
@@ -2555,6 +2580,17 @@
         [
           {
             "node": "App: Forward Inbound Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Employee Forms": {
+      "main": [
+        [
+          {
+            "node": "Apps Script: Rebuild Form",
             "type": "main",
             "index": 0
           }

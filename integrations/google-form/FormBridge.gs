@@ -77,18 +77,34 @@ function doGet() {
 }
 
 function refreshForm_(body) {
-  var choices = body.choices;
-  if (!Array.isArray(choices) || !choices.length) {
+  var choices = Array.isArray(body.choices) ? body.choices.slice() : [];
+  if (!choices.length) {
     return { ok: false, error: 'no_choices' };
   }
 
   var dateStr = String(body.date || Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd'));
   var employeeName = body.employeeName ? String(body.employeeName).trim() : null;
 
-  // If building a dedicated form for a single employee (e.g. Shaurya Sir):
   var formKey = employeeName
     ? 'FORM_ID_' + dateStr + '_' + employeeName.replace(/[^a-zA-Z0-9]/g, '_')
     : 'FORM_ID_' + dateStr;
+  var signatureKey = 'FORM_SIGNATURE_' + formKey;
+  var urlKey = 'FORM_URL_' + formKey;
+  var signature = JSON.stringify({ version: 2, employeeName: employeeName, choices: choices });
+  var props = PropertiesService.getScriptProperties();
+
+  if (prop_(signatureKey) === signature && prop_(urlKey)) {
+    return {
+      ok: true,
+      date: dateStr,
+      employeeName: employeeName,
+      count: choices.length,
+      formId: prop_(formKey),
+      formUrl: prop_(urlKey),
+      publishedUrl: prop_(urlKey),
+      unchanged: true
+    };
+  }
 
   var formTitle = employeeName
     ? 'Daily Checklist — ' + employeeName + ' (' + dateStr + ')'
@@ -97,7 +113,6 @@ function refreshForm_(body) {
   var existingFormId = prop_(formKey);
   var form = null;
 
-  // Check if an independent form for this date & employee was already created
   if (existingFormId) {
     try {
       form = FormApp.openById(existingFormId);
@@ -109,88 +124,50 @@ function refreshForm_(body) {
   if (!form) {
     form = FormApp.create(formTitle);
     form.setCollectEmail(false);
-
-    // Attach the submit trigger to this independent form
-    ScriptApp.newTrigger('onFormSubmit_')
-      .forForm(form)
-      .onFormSubmit()
-      .create();
-
     PropertiesService.getScriptProperties().setProperty(formKey, form.getId());
     PropertiesService.getScriptProperties().setProperty('FORM_DATE_' + form.getId(), dateStr);
   }
 
-  form.setTitle(formTitle);
-  form.setDescription('Tick every task that is completed today (' + dateStr + '). For anything not done, please add a remark below.');
+  ensureSubmitTrigger_(form);
+  var formDescription = 'Tick every task that is completed today (' + dateStr + '). For anything not done, add notes in the remarks section below.';
+  var updatedInBatch = updateFormInBatch_(form, formTitle, formDescription, employeeName, choices, body.byEmployee);
 
-  // Always clear previous questions before populating to keep fresh
-  form.getItems().forEach(function (item) { form.deleteItem(item); });
+  if (!updatedInBatch) {
+    form.setTitle(formTitle);
+    form.setDescription(formDescription);
 
-  if (employeeName) {
-    // 1. Dedicated single-employee form:
-    // Create checkbox choices for tasks, followed by individual task remarks
-    var empItem = form.addCheckboxItem();
-    empItem.setTitle('📋 Tick Tasks Completed by ' + employeeName + ' (' + choices.length + ')')
-      .setChoiceValues(choices)
+    var existingItems = form.getItems();
+    for (var i = 0; i < existingItems.length; i++) {
+      form.deleteItem(existingItems[i]);
+    }
+
+    if (employeeName) {
+      addTaskSection_(form, '📋 Tick Tasks Completed by ' + employeeName + ' (' + choices.length + ')', choices);
+      addRemarkFieldsForChoices_(form, choices);
+    } else if (Array.isArray(body.byEmployee) && body.byEmployee.length > 0) {
+      body.byEmployee.forEach(function (emp) {
+        if (Array.isArray(emp.choices) && emp.choices.length > 0) {
+          addTaskSection_(form, '👤 ' + emp.employeeName + ' — Completed Tasks (' + emp.choices.length + ')', emp.choices);
+          addRemarkFieldsForChoices_(form, emp.choices);
+        }
+      });
+    } else {
+      addTaskSection_(form, DONE_TITLE, choices);
+      addRemarkFieldsForChoices_(form, choices);
+    }
+
+    form.addParagraphTextItem()
+      .setTitle(REMARKS_TITLE)
+      .setHelpText('General remarks or notes (e.g. Plant-wide observations, or CL-20260920-XXXX: reason)')
       .setRequired(false);
-
-    // Individual remarks per task for this employee
-    choices.forEach(function (choice) {
-      var codeMatch = String(choice).match(/CL-\d{8}-[A-Za-z0-9]+/i);
-      var codeStr = codeMatch ? codeMatch[0] : '';
-      var cleanTitle = choice.length > 90 ? choice.slice(0, 87) + '...' : choice;
-      form.addTextItem()
-        .setTitle('💬 Remark for: ' + cleanTitle)
-        .setHelpText(codeStr ? 'Optional remark for ' + codeStr + ' if incomplete or pending review' : 'Optional remark for this task')
-        .setRequired(false);
-    });
-  } else if (Array.isArray(body.byEmployee) && body.byEmployee.length > 0) {
-    // 2. Multi-employee sectioning with individual task remarks
-    body.byEmployee.forEach(function (emp) {
-      if (Array.isArray(emp.choices) && emp.choices.length > 0) {
-        var groupItem = form.addCheckboxItem();
-        groupItem.setTitle('👤 ' + emp.employeeName + ' — Completed Tasks (' + emp.choices.length + ')')
-          .setChoiceValues(emp.choices)
-          .setRequired(false);
-
-        // Individual remarks per task for each employee
-        emp.choices.forEach(function (choice) {
-          var codeMatch = String(choice).match(/CL-\d{8}-[A-Za-z0-9]+/i);
-          var codeStr = codeMatch ? codeMatch[0] : '';
-          var cleanTitle = choice.length > 90 ? choice.slice(0, 87) + '...' : choice;
-          form.addTextItem()
-            .setTitle('💬 Remark: ' + cleanTitle)
-            .setHelpText(codeStr ? 'Optional remark for ' + codeStr : 'Optional remark')
-            .setRequired(false);
-        });
-      }
-    });
-  } else {
-    // Fallback: all choices in one checkbox question
-    form.addCheckboxItem()
-      .setTitle(DONE_TITLE)
-      .setChoiceValues(choices)
-      .setRequired(false);
-
-    choices.forEach(function (choice) {
-      var codeMatch = String(choice).match(/CL-\d{8}-[A-Za-z0-9]+/i);
-      var codeStr = codeMatch ? codeMatch[0] : '';
-      form.addTextItem()
-        .setTitle('💬 Remark for: ' + (choice.length > 90 ? choice.slice(0, 87) + '...' : choice))
-        .setHelpText(codeStr ? 'Optional remark for ' + codeStr : '')
-        .setRequired(false);
-    });
   }
 
-  // General remarks question for any overall feedback / notes
-  form.addParagraphTextItem()
-    .setTitle(REMARKS_TITLE)
-    .setHelpText('General remarks or notes (e.g. Plant-wide observations, or CL-20260920-XXXX: reason)')
-    .setRequired(false);
-
   form.setAcceptingResponses(true);
-  PropertiesService.getScriptProperties().setProperty('FORM_DATE', dateStr);
-  PropertiesService.getScriptProperties().setProperty('LATEST_FORM_URL', form.getPublishedUrl());
+  var publishedUrl = form.getPublishedUrl() || form.getEditUrl();
+  props.setProperty('FORM_DATE', dateStr);
+  props.setProperty('LATEST_FORM_URL', publishedUrl);
+  props.setProperty(signatureKey, signature);
+  props.setProperty(urlKey, publishedUrl);
 
   return {
     ok: true,
@@ -198,14 +175,159 @@ function refreshForm_(body) {
     employeeName: employeeName,
     count: choices.length,
     formId: form.getId(),
-    formUrl: form.getPublishedUrl() || form.getEditUrl(),
-    publishedUrl: form.getPublishedUrl() || form.getEditUrl()
+    formUrl: publishedUrl,
+    publishedUrl: publishedUrl
   };
 }
 
+function addTaskSection_(form, title, choices) {
+  var item = form.addCheckboxItem();
+  item.setTitle(title)
+    .setChoiceValues(choices)
+    .setRequired(false);
+}
+
+function addRemarkFieldsForChoices_(form, choices) {
+  for (var i = 0; i < choices.length; i++) {
+    var choice = String(choices[i]);
+    var codeMatch = choice.match(/CL-\d{8}-[A-Za-z0-9]+/i);
+    var codeStr = codeMatch ? codeMatch[0] : '';
+    var cleanTitle = choice.length > 90 ? choice.slice(0, 87) + '...' : choice;
+    var item = form.addTextItem();
+    item.setTitle('💬 Remark for: ' + cleanTitle)
+      .setHelpText(codeStr ? 'Optional remark for ' + codeStr : 'Optional remark for this task')
+      .setRequired(false);
+  }
+}
+
+function updateFormInBatch_(form, formTitle, formDescription, employeeName, choices, byEmployee) {
+  try {
+    var requests = [{
+      updateFormInfo: {
+        info: { title: formTitle, description: formDescription },
+        updateMask: 'title,description'
+      }
+    }];
+    var existingItems = form.getItems();
+
+    for (var deleteIndex = existingItems.length - 1; deleteIndex >= 0; deleteIndex--) {
+      requests.push({ deleteItem: { location: { index: deleteIndex } } });
+    }
+
+    var sections = [];
+    if (employeeName) {
+      sections.push({
+        title: '📋 Tick Tasks Completed by ' + employeeName + ' (' + choices.length + ')',
+        choices: choices
+      });
+    } else if (Array.isArray(byEmployee) && byEmployee.length > 0) {
+      byEmployee.forEach(function (emp) {
+        if (Array.isArray(emp.choices) && emp.choices.length > 0) {
+          sections.push({
+            title: '👤 ' + emp.employeeName + ' — Completed Tasks (' + emp.choices.length + ')',
+            choices: emp.choices
+          });
+        }
+      });
+    } else {
+      sections.push({ title: DONE_TITLE, choices: choices });
+    }
+
+    var itemIndex = 0;
+    sections.forEach(function (section) {
+      requests.push({
+        createItem: {
+          item: {
+            title: section.title,
+            questionItem: {
+              question: {
+                required: false,
+                choiceQuestion: {
+                  type: 'CHECKBOX',
+                  options: section.choices.map(function (choice) { return { value: String(choice) }; })
+                }
+              }
+            }
+          },
+          location: { index: itemIndex++ }
+        }
+      });
+
+      section.choices.forEach(function (choice) {
+        var choiceText = String(choice);
+        var codeMatch = choiceText.match(/CL-\d{8}-[A-Za-z0-9]+/i);
+        var codeStr = codeMatch ? codeMatch[0] : '';
+        var cleanTitle = choiceText.length > 90 ? choiceText.slice(0, 87) + '...' : choiceText;
+        requests.push({
+          createItem: {
+            item: {
+              title: '💬 Remark for: ' + cleanTitle,
+              description: codeStr ? 'Optional remark for ' + codeStr : 'Optional remark for this task',
+              questionItem: { question: { required: false, textQuestion: { paragraph: false } } }
+            },
+            location: { index: itemIndex++ }
+          }
+        });
+      });
+    });
+
+    requests.push({
+      createItem: {
+        item: {
+          title: REMARKS_TITLE,
+          description: 'General remarks or notes (e.g. Plant-wide observations, or CL-20260920-XXXX: reason)',
+          questionItem: { question: { required: false, textQuestion: { paragraph: true } } }
+        },
+        location: { index: itemIndex }
+      }
+    });
+
+    var response = UrlFetchApp.fetch(
+      'https://forms.googleapis.com/v1/forms/' + encodeURIComponent(form.getId()) + ':batchUpdate',
+      {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+        payload: JSON.stringify({ requests: requests, includeFormInResponse: false }),
+        muteHttpExceptions: true
+      }
+    );
+    var status = response.getResponseCode();
+    if (status >= 200 && status < 300) {
+      return true;
+    }
+
+    console.error('[FormBridge] Forms API batch update failed (' + status + '): ' + response.getContentText().slice(0, 500));
+    return false;
+  } catch (err) {
+    console.error('[FormBridge] Forms API batch update unavailable; using Apps Script builder: ' + err);
+    return false;
+  }
+}
+
+function ensureSubmitTrigger_(form) {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    var trigger = triggers[i];
+    if (trigger.getHandlerFunction() === 'onFormSubmit_' && trigger.getTriggerSourceId && trigger.getTriggerSourceId() === form.getId()) {
+      return true;
+    }
+  }
+
+  ScriptApp.newTrigger('onFormSubmit_')
+    .forForm(form)
+    .onFormSubmit()
+    .create();
+
+  return true;
+}
+
 function refreshAllForms_(body) {
-  var byEmployee = body.byEmployee;
-  if (!Array.isArray(byEmployee) || !byEmployee.length) {
+  var byEmployee = Array.isArray(body.byEmployee) ? body.byEmployee.filter(function (emp) {
+    return emp && Array.isArray(emp.choices) && emp.choices.length > 0;
+  }) : [];
+
+  if (!byEmployee.length) {
     return { ok: false, error: 'no_employees' };
   }
 
@@ -213,20 +335,18 @@ function refreshAllForms_(body) {
   var results = [];
 
   byEmployee.forEach(function (emp) {
-    if (emp.choices && emp.choices.length > 0) {
-      var res = refreshForm_({
-        date: dateStr,
-        employeeName: emp.employeeName,
-        choices: emp.choices
-      });
-      results.push({
-        employeeName: emp.employeeName,
-        employeePhone: emp.employeePhone,
-        whatsappNumber: emp.whatsappNumber,
-        taskCount: emp.choices.length,
-        formUrl: res.formUrl
-      });
-    }
+    var res = refreshForm_({
+      date: dateStr,
+      employeeName: emp.employeeName,
+      choices: emp.choices
+    });
+    results.push({
+      employeeName: emp.employeeName,
+      employeePhone: emp.employeePhone,
+      whatsappNumber: emp.whatsappNumber,
+      taskCount: emp.choices.length,
+      formUrl: res.formUrl
+    });
   });
 
   return {

@@ -27,9 +27,12 @@ export function ChecklistPanel({
   employeeName: string;
 }) {
   const [localItems, setLocalItems] = useState(items);
+  const [editingRemarks, setEditingRemarks] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   async function updateStatus(itemId: string, nextStatus: "DONE" | "NOT_DONE") {
     const previous = localItems.find((item) => item.id === itemId);
+    const activeRemark = editingRemarks[itemId] ?? previous?.seniorRemarks ?? (nextStatus === "NOT_DONE" ? "Marked not done by authority" : "");
 
     setLocalItems((current) =>
       current.map((item) =>
@@ -37,18 +40,20 @@ export function ChecklistPanel({
           ? {
               ...item,
               status: nextStatus,
+              seniorRemarks: activeRemark || item.seniorRemarks,
             }
           : item,
       ),
     );
 
     try {
+      setSavingId(itemId);
       const response = await fetch(`/api/checklist/item/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: nextStatus,
-          seniorRemarks: previous?.seniorRemarks ?? "Manual update",
+          seniorRemarks: activeRemark || (nextStatus === "NOT_DONE" ? "Marked not done by authority" : "Manual update"),
         }),
       });
 
@@ -67,11 +72,43 @@ export function ChecklistPanel({
             ? {
                 ...item,
                 status: previous?.status ?? item.status,
+                seniorRemarks: previous?.seniorRemarks ?? item.seniorRemarks,
               }
             : item,
         ),
       );
       console.error(error);
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function saveRemarkOnly(itemId: string) {
+    const remarkValue = editingRemarks[itemId];
+    if (remarkValue === undefined) return;
+
+    try {
+      setSavingId(itemId);
+      const response = await fetch(`/api/checklist/item/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seniorRemarks: remarkValue,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save remark");
+      }
+
+      const updated = await response.json();
+      setLocalItems((current) =>
+        current.map((item) => (item.id === updated.id ? { ...item, seniorRemarks: updated.seniorRemarks } : item)),
+      );
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSavingId(null);
     }
   }
 
@@ -125,11 +162,32 @@ export function ChecklistPanel({
                     ) : null}
                   </div>
 
+                  {/* Separate Remark Input per Task */}
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      type="text"
+                      placeholder="Add specific remark for this task..."
+                      value={editingRemarks[item.id] !== undefined ? editingRemarks[item.id] : (item.seniorRemarks ?? "")}
+                      onChange={(e) => setEditingRemarks({ ...editingRemarks, [item.id]: e.target.value })}
+                      className="neo-border flex-1 bg-paper/50 px-3 py-1.5 text-xs font-semibold text-ink placeholder:text-ink/40 focus:bg-white focus:outline-none"
+                    />
+                    {editingRemarks[item.id] !== undefined && editingRemarks[item.id] !== (item.seniorRemarks ?? "") && (
+                      <button
+                        type="button"
+                        onClick={() => saveRemarkOnly(item.id)}
+                        disabled={savingId === item.id}
+                        className="neo-press neo-border bg-electric-lime px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-ink"
+                      >
+                        {savingId === item.id ? "Saving..." : "Save Remark"}
+                      </button>
+                    )}
+                  </div>
+
                   {(item.seniorRemarks || item.employeeResponse) && (
                     <div className="mt-3 grid gap-2 md:grid-cols-2">
                       {item.seniorRemarks ? (
                         <div className="neo-border bg-sun-yellow p-3 text-sm text-ink">
-                          <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-ink/80">Senior remarks</p>
+                          <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-ink/80">Current Senior Remark</p>
                           <p>{item.seniorRemarks}</p>
                         </div>
                       ) : null}

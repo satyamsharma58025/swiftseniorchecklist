@@ -133,4 +133,29 @@ describe("round trip with FormBridge.gs", () => {
     ]);
     expect(plan.unknownCodes).toEqual([]);
   });
+
+  it("correctly assigns separate individual remarks per task when multiple individual remarks are submitted", () => {
+    const rows = [
+      { checklistCode: "CL-20260928-TASK1", employeeName: "Employee A", taskDescription: "Check pumps", priority: "HIGH" },
+      { checklistCode: "CL-20260928-TASK2", employeeName: "Employee B", taskDescription: "Log inventory", priority: "MEDIUM" },
+    ];
+
+    // Simulating FormBridge buildPayload_ output with individual remarks for each task
+    const individualRemarksPayload = [
+      "CL-20260928-TASK1: Valve pressure too low, waiting on maintenance",
+      "CL-20260928-TASK2: Delayed awaiting invoice from vendor",
+    ].join("\n");
+
+    const plan = planFormUpdates(
+      rows.map((row, index) => ({ id: String(index), checklistCode: row.checklistCode, status: "PENDING" as const })),
+      { doneRaw: [], remarksRaw: individualRemarksPayload },
+    );
+
+    expect(plan.updates.find((u) => u.checklistCode === "CL-20260928-TASK1")?.remark).toBe(
+      "Valve pressure too low, waiting on maintenance"
+    );
+    expect(plan.updates.find((u) => u.checklistCode === "CL-20260928-TASK2")?.remark).toBe(
+      "Delayed awaiting invoice from vendor"
+    );
+  });
 });

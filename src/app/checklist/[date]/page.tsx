@@ -5,7 +5,7 @@ import { BrandHeader } from "@/app/checklist/_components/BrandHeader";
 import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
 import { DateControl } from "@/app/checklist/_components/DateControl";
 import { EmployeeTabs } from "@/app/checklist/_components/EmployeeTabs";
-import { getBusinessToday, parseBusinessDate } from "@/lib/business-logic";
+import { getBusinessToday } from "@/lib/business-logic";
 import { prisma } from "@/lib/prisma";
 
 const EMPLOYEE_NAMES = [
@@ -123,22 +123,33 @@ export default async function ChecklistDatePage({
         <section className="neo-border bg-white p-4 neo-shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Senior form (WhatsApp + Google Form)</p>
-              <p className="mt-1 text-sm text-ink/80">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-brand-green animate-pulse" />
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">
+                  Form Response Tracking & Audit Monitor
+                </p>
+              </div>
+              <p className="mt-1 text-sm font-bold text-ink">
                 {lastFormSubmission
-                  ? `Last submitted ${lastFormSubmission.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })} IST`
+                  ? `Last response synced: ${lastFormSubmission.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })} IST`
                   : dayTotals.total
-                    ? "Waiting for the Senior Authority to submit the form."
+                    ? "Awaiting first response from Senior Authority Google Form."
                     : "No checklist has been published for this date yet."}
+              </p>
+              <p className="mt-0.5 text-xs text-ink/75">
+                Tasks with specific senior remarks: <span className="font-bold text-ink">{rows.filter((r) => Boolean(r.seniorRemarks)).length}</span> / {dayTotals.total}
               </p>
             </div>
             <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
               <span className={lastFormSubmission ? "sticker bg-electric-lime text-ink" : "sticker bg-sun-yellow text-ink"}>
-                {lastFormSubmission ? "Form received" : "Awaiting form"}
+                {lastFormSubmission ? "Responses Tracked" : "Awaiting submission"}
               </span>
               <span className="sticker bg-paper text-ink">Done {dayTotals.done}</span>
               <span className="sticker bg-hot-pink text-ink">Not done {dayTotals.notDone}</span>
               <span className="sticker bg-paper text-ink">Pending {dayTotals.pending}</span>
+              <span className="sticker bg-sun-yellow text-ink">
+                Remarks Logged: {rows.filter((r) => Boolean(r.seniorRemarks)).length}
+              </span>
             </div>
           </div>
         </section>

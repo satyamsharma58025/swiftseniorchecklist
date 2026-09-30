@@ -127,19 +127,42 @@ function refreshForm_(body) {
   form.getItems().forEach(function (item) { form.deleteItem(item); });
 
   if (employeeName) {
-    // 1. Dedicated single-employee form: ONLY this employee's choices!
+    // 1. Dedicated single-employee form:
+    // Create checkbox choices for tasks, followed by individual task remarks
     var empItem = form.addCheckboxItem();
-    empItem.setTitle('📋 Assigned Tasks (' + choices.length + ')')
+    empItem.setTitle('📋 Tick Tasks Completed by ' + employeeName + ' (' + choices.length + ')')
       .setChoiceValues(choices)
       .setRequired(false);
+
+    // Individual remarks per task for this employee
+    choices.forEach(function (choice) {
+      var codeMatch = String(choice).match(/CL-\d{8}-[A-Za-z0-9]+/i);
+      var codeStr = codeMatch ? codeMatch[0] : '';
+      var cleanTitle = choice.length > 90 ? choice.slice(0, 87) + '...' : choice;
+      form.addTextItem()
+        .setTitle('💬 Remark for: ' + cleanTitle)
+        .setHelpText(codeStr ? 'Optional remark for ' + codeStr + ' if incomplete or pending review' : 'Optional remark for this task')
+        .setRequired(false);
+    });
   } else if (Array.isArray(body.byEmployee) && body.byEmployee.length > 0) {
-    // 2. Multi-employee fallback sectioning
+    // 2. Multi-employee sectioning with individual task remarks
     body.byEmployee.forEach(function (emp) {
       if (Array.isArray(emp.choices) && emp.choices.length > 0) {
         var groupItem = form.addCheckboxItem();
-        groupItem.setTitle('👤 ' + emp.employeeName + ' (' + emp.choices.length + ' tasks)')
+        groupItem.setTitle('👤 ' + emp.employeeName + ' — Completed Tasks (' + emp.choices.length + ')')
           .setChoiceValues(emp.choices)
           .setRequired(false);
+
+        // Individual remarks per task for each employee
+        emp.choices.forEach(function (choice) {
+          var codeMatch = String(choice).match(/CL-\d{8}-[A-Za-z0-9]+/i);
+          var codeStr = codeMatch ? codeMatch[0] : '';
+          var cleanTitle = choice.length > 90 ? choice.slice(0, 87) + '...' : choice;
+          form.addTextItem()
+            .setTitle('💬 Remark: ' + cleanTitle)
+            .setHelpText(codeStr ? 'Optional remark for ' + codeStr : 'Optional remark')
+            .setRequired(false);
+        });
       }
     });
   } else {
@@ -148,12 +171,21 @@ function refreshForm_(body) {
       .setTitle(DONE_TITLE)
       .setChoiceValues(choices)
       .setRequired(false);
+
+    choices.forEach(function (choice) {
+      var codeMatch = String(choice).match(/CL-\d{8}-[A-Za-z0-9]+/i);
+      var codeStr = codeMatch ? codeMatch[0] : '';
+      form.addTextItem()
+        .setTitle('💬 Remark for: ' + (choice.length > 90 ? choice.slice(0, 87) + '...' : choice))
+        .setHelpText(codeStr ? 'Optional remark for ' + codeStr : '')
+        .setRequired(false);
+    });
   }
 
-  // Remarks question for any tasks not done
+  // General remarks question for any overall feedback / notes
   form.addParagraphTextItem()
     .setTitle(REMARKS_TITLE)
-    .setHelpText('One line per task, format:  CHECKLIST-CODE: your remark   (e.g.  CL-20260920-YT001: waiting on HR)')
+    .setHelpText('General remarks or notes (e.g. Plant-wide observations, or CL-20260920-XXXX: reason)')
     .setRequired(false);
 
   form.setAcceptingResponses(true);
@@ -208,29 +240,56 @@ function refreshAllForms_(body) {
 
 function onFormSubmit_(e) {
   var payload = buildPayload_(e.response);
+  Logger.log('[FormBridge] Received submission for date: ' + payload.date + ', responseId: ' + payload.responseId + ', doneCount: ' + payload.doneRaw.length);
   if (!postToN8n_(payload)) {
     // n8n or the network was down: keep it and retry every 15 minutes.
     PropertiesService.getScriptProperties().setProperty('PENDING_' + payload.responseId, JSON.stringify(payload));
+    Logger.log('[FormBridge] Saved to retry queue as PENDING_' + payload.responseId);
   }
 }
 
 function buildPayload_(response) {
   var doneCodes = [];
-  var remarks = '';
+  var individualRemarks = [];
+  var generalRemarks = '';
 
   response.getItemResponses().forEach(function (ir) {
-    var type = ir.getItem().getType();
+    var item = ir.getItem();
+    var type = item.getType();
+    var title = item.getTitle() || '';
+    var resp = ir.getResponse();
+
     if (type === FormApp.ItemType.CHECKBOX) {
-      var v = ir.getResponse();
-      var list = Array.isArray(v) ? v : (v ? [String(v)] : []);
+      var list = Array.isArray(resp) ? resp : (resp ? [String(resp)] : []);
       list.forEach(function (choice) {
         var m = String(choice).match(/CL-\d{8}-[A-Za-z0-9]+/i);
         if (m) { doneCodes.push(m[0]); }
       });
+    } else if (type === FormApp.ItemType.TEXT) {
+      // Individual task remark
+      var textVal = String(resp || '').trim();
+      if (textVal) {
+        var codeInTitle = title.match(/CL-\d{8}-[A-Za-z0-9]+/i);
+        if (codeInTitle) {
+          individualRemarks.push(codeInTitle[0] + ': ' + textVal);
+        } else {
+          individualRemarks.push(title + ': ' + textVal);
+        }
+      }
     } else if (type === FormApp.ItemType.PARAGRAPH_TEXT) {
-      remarks = String(ir.getResponse() || '');
+      var pVal = String(resp || '').trim();
+      if (pVal) {
+        generalRemarks = generalRemarks ? generalRemarks + '\n' + pVal : pVal;
+      }
     }
   });
+
+  // Combine individual remarks with any general remarks
+  var combinedRemarks = individualRemarks.slice();
+  if (generalRemarks) {
+    combinedRemarks.push(generalRemarks);
+  }
+  var finalRemarksText = combinedRemarks.join('\n');
 
   var formDate = prop_('FORM_DATE');
   var props = PropertiesService.getScriptProperties().getProperties();
@@ -246,7 +305,7 @@ function buildPayload_(response) {
     responseId: response.getId(),
     submittedAt: response.getTimestamp().toISOString(),
     doneRaw: doneCodes,
-    remarksRaw: remarks,
+    remarksRaw: finalRemarksText,
     date: formDate
   };
   return payload;

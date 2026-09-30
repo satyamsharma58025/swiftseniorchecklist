@@ -74,12 +74,27 @@ In Meta WhatsApp Business Manager (WABA ID: `1158085794064004`), ensure these 3 
 
 ### Template 1: `senior_daily_checklist`
 - **Category**: `UTILITY`
-- **Language**: `en` (or `en_US`)
+- **Language**: `en_US`
 - **Body**:
   ```text
-  Good morning! Today's daily operational checklist for {{1}} is ready. Please click the link below to mark completed tasks and provide remarks:
+  🌅 **Good Morning!**
 
-  {{2}}
+📋 **Your Daily Operational Checklist for {{1}} is Ready!**
+
+It’s time to get today’s tasks moving. 🚀
+Please use the link below to:
+
+✅ Mark completed tasks
+📝 Add remarks or updates
+📌 Keep track of pending activities
+
+👉 **Click here to open your checklist:**
+{{2}}
+
+Let’s make today productive! 💪
+
+**Thank you!**
+
   ```
 - **Variables**:
   - `{{1}}`: Date formatted as `dd-LLL-yyyy` (e.g., `27-Sep-2026`)

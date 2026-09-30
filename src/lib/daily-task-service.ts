@@ -1,130 +1,287 @@
+import { DateTime } from "luxon";
+
+import { toWhatsAppNumber } from "@/lib/business-logic";
 import { cadenceMatches, checklistCode, colorFor, reserveNextQueueCode } from "@/lib/cadence";
 import { prisma } from "@/lib/prisma";
 
-/**
- * Ensures today's tasks are automatically generated from TaskMaster
- * and locked into DailyChecklistItem rows so the daily checklist is ready
- * before or by 9:00 AM IST.
- */
-export async function ensureDailyQueueAndLock(runDate: Date) {
-  // 1. Check if DailyChecklistItem rows already exist for this date
-  let items = await prisma.dailyChecklistItem.findMany({
-    where: { date: runDate },
-    orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
-    select: {
-      id: true,
-      checklistCode: true,
-      employeeName: true,
-      employeePhone: true,
-      taskDescription: true,
-      priority: true,
-      status: true,
+export type DueTaskMaster = {
+  id: string;
+  taskCode: string;
+  employeeId: string;
+  taskDescription: string;
+  cadence: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
+  scheduleDetail?: string | null;
+  active: boolean;
+  startDate?: Date | null;
+  endDate?: Date | null;
+  priority: "HIGH" | "MEDIUM" | "LOW";
+  escalationThreshold: number;
+  employee: {
+    id: string;
+    name: string;
+    phone: string | null;
+    designation: string;
+    department: string;
+    supervisor?: { id: string; name: string; phone: string | null } | null;
+  };
+  reassignments: Array<{ id: string; effectiveDate: Date; newEmployeeId: string }>;
+  assignedEmployee: {
+    id: string;
+    name: string;
+    phone: string | null;
+    designation: string;
+    department: string;
+    supervisor?: { id: string; name: string; phone: string | null } | null;
+  };
+};
+
+function toBusinessDateKey(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const date = typeof value === "string" ? new Date(value) : value;
+  const parsed = DateTime.fromJSDate(date, { zone: "Asia/Kolkata" });
+  return parsed.isValid ? parsed.toISODate() : null;
+}
+
+export async function resolveAssignedEmployee(
+  task: {
+    employeeId: string;
+    employee?: { id: string; name: string; phone: string | null; designation?: string; department?: string; supervisor?: { id: string; name: string; phone: string | null } | null } | null;
+    reassignments?: Array<{ id: string; effectiveDate: Date | string; newEmployeeId: string }>;
+  },
+  targetDate: Date,
+): Promise<{
+  id: string;
+  name: string;
+  phone: string | null;
+  designation: string;
+  department: string;
+  supervisor?: { id: string; name: string; phone: string | null } | null;
+}> {
+  const baseEmployee = task.employee ?? (await prisma.employee.findUnique({
+    where: { id: task.employeeId },
+    include: { supervisor: true },
+  }));
+
+  if (!baseEmployee) {
+    throw new Error(`Missing employee for task: ${task.employeeId}`);
+  }
+
+  const reassignments = Array.isArray(task.reassignments) ? task.reassignments : [];
+  const effectiveReassignment = reassignments
+    .filter((entry) => {
+      const effectiveDate = new Date(entry.effectiveDate);
+      return !Number.isNaN(effectiveDate.getTime()) && effectiveDate <= targetDate;
+    })
+    .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime())[0];
+
+  if (!effectiveReassignment) {
+    return {
+      id: baseEmployee.id,
+      name: baseEmployee.name,
+      phone: baseEmployee.phone,
+      designation: baseEmployee.designation ?? "Employee",
+      department: baseEmployee.department ?? "General",
+      supervisor: baseEmployee.supervisor ?? null,
+    };
+  }
+
+  const reassignedEmployee = await prisma.employee.findUnique({
+    where: { id: effectiveReassignment.newEmployeeId },
+    include: { supervisor: true },
+  });
+
+  if (!reassignedEmployee) {
+    return {
+      id: baseEmployee.id,
+      name: baseEmployee.name,
+      phone: baseEmployee.phone,
+      designation: baseEmployee.designation ?? "Employee",
+      department: baseEmployee.department ?? "General",
+      supervisor: baseEmployee.supervisor ?? null,
+    };
+  }
+
+  return {
+    id: reassignedEmployee.id,
+    name: reassignedEmployee.name,
+    phone: reassignedEmployee.phone,
+    designation: reassignedEmployee.designation ?? "Employee",
+    department: reassignedEmployee.department ?? "General",
+    supervisor: reassignedEmployee.supervisor ?? null,
+  };
+}
+
+export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskMaster[]> {
+  const taskMasters = await prisma.taskMaster.findMany({
+    where: { active: true },
+    include: {
+      employee: { include: { supervisor: true } },
+      reassignments: { orderBy: { effectiveDate: "desc" } },
     },
   });
 
-  if (items.length > 0) {
-    return items;
-  }
+  const dueTaskMasters: DueTaskMaster[] = [];
 
-  // 2. If no checklist items exist, check AssignmentQueueItem
-  const existingQueue = await prisma.assignmentQueueItem.findMany({
-    where: { date: runDate },
-    include: { employee: { include: { supervisor: true } }, taskMaster: true },
-  });
-
-  // If even queue items do not exist, generate them from active TaskMaster tasks
-  if (existingQueue.length === 0) {
-    const activeTasks = await prisma.taskMaster.findMany({
-      where: { active: true },
-      include: { employee: { include: { supervisor: true } } },
+  for (const task of taskMasters) {
+    const isPaused = await prisma.taskPause.findFirst({
+      where: {
+        taskMasterId: task.id,
+        startDate: { lte: targetDate },
+        endDate: { gte: targetDate },
+      },
     });
 
-    for (const task of activeTasks) {
-      // Check if paused
-      const isPaused = await prisma.taskPause.findFirst({
-        where: {
-          taskMasterId: task.id,
-          startDate: { lte: runDate },
-          endDate: { gte: runDate },
-        },
-      });
-
-      if (isPaused) {
-        continue;
-      }
-
-      const match = cadenceMatches(
-        task as { cadence: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY"; scheduleDetail?: string | null },
-        runDate,
-      );
-
-      if (!match.matches) {
-        continue;
-      }
-
-      const nextQueueCode = await prisma.$transaction(async (tx) => reserveNextQueueCode(tx, runDate));
-
-      await prisma.assignmentQueueItem.create({
-        data: {
-          queueCode: nextQueueCode,
-          date: runDate,
-          employeeId: task.employeeId,
-          taskDescription: task.taskDescription,
-          source: "AUTO",
-          taskMasterId: task.id,
-          includeToday: true,
-          priority: task.priority,
-          locked: false,
-        },
-      });
-    }
-  }
-
-  // 3. Lock the queue items and create DailyChecklistItem rows
-  const queueToLock = await prisma.assignmentQueueItem.findMany({
-    where: { date: runDate, includeToday: true, locked: false },
-    include: { employee: { include: { supervisor: true } }, taskMaster: true },
-  });
-
-  for (const item of queueToLock) {
-    const taskMaster = item.taskMaster;
-    if (!taskMaster) {
+    if (isPaused) {
       continue;
     }
 
-    const code = checklistCode(taskMaster.taskCode, runDate);
-
-    const exists = await prisma.dailyChecklistItem.findFirst({
-      where: { taskMasterId: taskMaster.id, date: runDate },
-    });
-
-    if (!exists) {
-      await prisma.dailyChecklistItem.create({
-        data: {
-          checklistCode: code,
-          date: runDate,
-          taskMasterId: taskMaster.id,
-          employeeName: item.employee?.name ?? "Unknown employee",
-          employeePhone: item.employee?.phone ?? null,
-          taskDescription: item.taskDescription,
-          supervisorName: item.employee?.supervisor?.name ?? "Unassigned supervisor",
-          supervisorPhone: item.employee?.supervisor?.phone ?? null,
-          escalationThreshold: taskMaster.escalationThreshold,
-          priority: taskMaster.priority,
-          status: "PENDING",
-          colorStatus: colorFor({ status: "PENDING" }),
-        },
-      });
+    if (task.startDate && toBusinessDateKey(task.startDate) && toBusinessDateKey(task.startDate)! > DateTime.fromJSDate(targetDate, { zone: "Asia/Kolkata" }).toISODate()!) {
+      continue;
     }
 
-    await prisma.assignmentQueueItem.update({
-      where: { id: item.id },
-      data: { locked: true, lockedAt: new Date() },
+    if (task.endDate && toBusinessDateKey(task.endDate) && toBusinessDateKey(task.endDate)! < DateTime.fromJSDate(targetDate, { zone: "Asia/Kolkata" }).toISODate()!) {
+      continue;
+    }
+
+    const cadenceResult = cadenceMatches(
+      task as {
+        cadence: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
+        scheduleDetail?: string | null;
+      },
+      targetDate,
+    );
+
+    if (!cadenceResult.matches) {
+      continue;
+    }
+
+    const assignedEmployee = await resolveAssignedEmployee(task, targetDate);
+
+    dueTaskMasters.push({
+      id: task.id,
+      taskCode: task.taskCode,
+      employeeId: assignedEmployee.id,
+      taskDescription: task.taskDescription,
+      cadence: task.cadence,
+      scheduleDetail: task.scheduleDetail,
+      active: task.active,
+      startDate: task.startDate,
+      endDate: task.endDate,
+      priority: task.priority,
+      escalationThreshold: task.escalationThreshold,
+      employee: {
+        id: task.employee.id,
+        name: task.employee.name,
+        phone: task.employee.phone,
+        designation: task.employee.designation,
+        department: task.employee.department,
+        supervisor: task.employee.supervisor ?? null,
+      },
+      reassignments: (task.reassignments ?? []).map((entry) => ({
+        id: entry.id,
+        effectiveDate: entry.effectiveDate,
+        newEmployeeId: entry.newEmployeeId,
+      })),
+      assignedEmployee,
     });
   }
 
-  // 4. Return the locked checklist items
-  items = await prisma.dailyChecklistItem.findMany({
+  return dueTaskMasters;
+}
+
+export async function ensureAssignmentQueue(targetDate: Date) {
+  const dueTasks = await getDueTaskMasters(targetDate);
+
+  const created: Array<{ id: string; taskMasterId: string; employeeId: string }> = [];
+
+  for (const task of dueTasks) {
+    const queueCode = await prisma.$transaction(async (tx) => reserveNextQueueCode(tx, targetDate));
+    const queueItem = await prisma.assignmentQueueItem.upsert({
+      where: {
+        taskMasterId_date: {
+          taskMasterId: task.id,
+          date: targetDate,
+        },
+      },
+      create: {
+        queueCode,
+        date: targetDate,
+        employeeId: task.assignedEmployee.id,
+        taskDescription: task.taskDescription,
+        source: "AUTO",
+        taskMasterId: task.id,
+        includeToday: true,
+        priority: task.priority,
+        locked: false,
+      },
+      update: {
+        employeeId: task.assignedEmployee.id,
+        taskDescription: task.taskDescription,
+        source: "AUTO",
+        includeToday: true,
+        priority: task.priority,
+      },
+    });
+
+    created.push({ id: queueItem.id, taskMasterId: task.id, employeeId: task.assignedEmployee.id });
+  }
+
+  return created;
+}
+
+export async function materializeDailyChecklist(targetDate: Date) {
+  const dueTasks = await getDueTaskMasters(targetDate);
+  const created: Array<{ id: string; taskMasterId: string; employeeName: string }> = [];
+
+  for (const task of dueTasks) {
+    const checklistCodeValue = checklistCode(task.taskCode, targetDate);
+    const item = await prisma.dailyChecklistItem.upsert({
+      where: {
+        taskMasterId_date: {
+          taskMasterId: task.id,
+          date: targetDate,
+        },
+      },
+      create: {
+        checklistCode: checklistCodeValue,
+        date: targetDate,
+        taskMasterId: task.id,
+        employeeName: task.assignedEmployee.name,
+        employeePhone: task.assignedEmployee.phone,
+        taskDescription: task.taskDescription,
+        supervisorName: task.assignedEmployee.supervisor?.name ?? "Unassigned supervisor",
+        supervisorPhone: task.assignedEmployee.supervisor?.phone ?? null,
+        escalationThreshold: task.escalationThreshold,
+        priority: task.priority,
+        status: "PENDING",
+        colorStatus: colorFor({ status: "PENDING" }),
+      },
+      update: {},
+    });
+
+    created.push({ id: item.id, taskMasterId: task.id, employeeName: task.assignedEmployee.name });
+
+    await prisma.assignmentQueueItem.updateMany({
+      where: {
+        taskMasterId: task.id,
+        date: targetDate,
+        locked: false,
+      },
+      data: {
+        locked: true,
+        lockedAt: new Date(),
+      },
+    });
+  }
+
+  return created;
+}
+
+export async function ensureDailyQueueAndLock(runDate: Date) {
+  await ensureAssignmentQueue(runDate);
+  await materializeDailyChecklist(runDate);
+
+  const items = await prisma.dailyChecklistItem.findMany({
     where: { date: runDate },
     orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
     select: {
@@ -139,4 +296,71 @@ export async function ensureDailyQueueAndLock(runDate: Date) {
   });
 
   return items;
+}
+
+export async function getDailyTaskSets(targetDate: Date) {
+  const items = await prisma.dailyChecklistItem.findMany({
+    where: { date: targetDate },
+    include: { taskMaster: { include: { employee: { include: { supervisor: true } } } } },
+    orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
+  });
+
+  const dayStart = new Date(`${DateTime.fromJSDate(targetDate, { zone: "Asia/Kolkata" }).toISODate()}T00:00:00+05:30`);
+  const dayEnd = new Date(`${DateTime.fromJSDate(targetDate, { zone: "Asia/Kolkata" }).toISODate()}T23:59:59+05:30`);
+  const logs = await prisma.notificationLog.findMany({
+    where: {
+      templateName: "senior_daily_checklist",
+      attemptedAt: { gte: dayStart, lte: dayEnd },
+    },
+    select: { recipientPhone: true, status: true },
+  });
+
+  const deliveryStatusByPhone = new Map<string, "PENDING" | "SENT" | "FAILED">();
+  for (const log of logs) {
+    const phoneKey = toWhatsAppNumber(log.recipientPhone) ?? log.recipientPhone.replace(/\D/g, "");
+    deliveryStatusByPhone.set(phoneKey, log.status === "SENT" ? "SENT" : log.status === "FAILED" ? "FAILED" : "PENDING");
+  }
+
+  const grouped = new Map<string, { employeeId: string; employeeName: string; designation: string; department: string; phone: string | null; supervisorName: string | null; supervisorPhone: string | null; taskCount: number; completedCount: number; pendingCount: number; notDoneCount: number; tasks: typeof items; deliveryStatus: "PENDING" | "SENT" | "FAILED"; }>();
+
+  for (const item of items) {
+    const employeeId = item.taskMaster?.employeeId ?? item.taskMaster?.employee?.id ?? item.employeeName;
+    const employeeName = item.employeeName || item.taskMaster?.employee?.name || "Unknown employee";
+    const designation = item.taskMaster?.employee?.designation ?? "Employee";
+    const department = item.taskMaster?.employee?.department ?? "General";
+    const phone = item.employeePhone ?? item.taskMaster?.employee?.phone ?? null;
+    const supervisor = item.taskMaster?.employee?.supervisor ?? null;
+    const phoneKey = toWhatsAppNumber(phone) ?? String(phone ?? "").replace(/\D/g, "");
+    const current = grouped.get(employeeId) ?? {
+      employeeId,
+      employeeName,
+      designation,
+      department,
+      phone,
+      supervisorName: supervisor?.name ?? item.supervisorName ?? null,
+      supervisorPhone: supervisor?.phone ?? item.supervisorPhone ?? null,
+      taskCount: 0,
+      completedCount: 0,
+      pendingCount: 0,
+      notDoneCount: 0,
+      tasks: [],
+      deliveryStatus: deliveryStatusByPhone.get(phoneKey) ?? "PENDING",
+    };
+
+    current.taskCount += 1;
+    current.completedCount += item.status === "DONE" ? 1 : 0;
+    current.pendingCount += item.status === "PENDING" ? 1 : 0;
+    current.notDoneCount += item.status === "NOT_DONE" ? 1 : 0;
+    current.tasks.push(item);
+    grouped.set(employeeId, current);
+  }
+
+  return Array.from(grouped.values()).map((entry) => ({
+    ...entry,
+    tasks: entry.tasks,
+  }));
+}
+
+export async function groupTasksByEmployee(targetDate: Date) {
+  return getDailyTaskSets(targetDate);
 }

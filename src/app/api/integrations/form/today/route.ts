@@ -140,12 +140,14 @@ export async function GET(request: Request) {
     };
   });
 
-  const seniorName = settings.seniorAuthorityName ?? process.env.SENIOR_AUTHORITY_NAME ?? null;
-  const seniorPhone = settings.seniorAuthorityPhone ?? process.env.SENIOR_AUTHORITY_PHONE ?? null;
+  const seniorName = settings.seniorAuthorityName ?? null;
+  const seniorPhone = settings.seniorAuthorityPhone ?? null;
   const formUrl = process.env.GOOGLE_FORM_URL?.trim() || null;
+  const warnings: string[] = [];
 
   if (!seniorName || !seniorPhone) {
-    console.warn("[form/today] Senior authority not configured: seniorName=%s, seniorPhone=%s", seniorName ? "set" : "missing", seniorPhone ? "set" : "missing");
+    warnings.push("Senior authority is not configured; the payload returns senior: null without using any fallback values.");
+    console.warn("[form/today] Senior authority not configured; returning senior=null");
   }
 
   const seniorItems = seniorName && seniorPhone
@@ -168,6 +170,7 @@ export async function GET(request: Request) {
     formUrl,
     formConfigured: Boolean(formUrl),
     formLinkSentToday,
+    warnings,
     senior: seniorName && seniorPhone ? {
       name: seniorName,
       phone: seniorPhone,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { DateTime } from "luxon";
 
 import { getBusinessToday, toWhatsAppNumber } from "@/lib/business-logic";
 import { colorFor } from "@/lib/cadence";
@@ -13,10 +14,7 @@ const bodySchema = z.object({
   /** Google Form response id - makes the call idempotent. */
   responseId: z.string().min(1),
   /** Checklist date the form was built for (YYYY-MM-DD). Defaults to today (IST). */
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  date: z.string().optional(),
   submittedAt: z.string().optional(),
   /** Ticked checkbox choices - array (preferred) or a single joined string. */
   doneRaw: z.union([z.array(z.string()), z.string()]).default([]),
@@ -43,6 +41,16 @@ export async function POST(request: Request) {
   }
 
   const body = parsed.data;
+  if (body.date !== undefined) {
+    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+      ? DateTime.fromISO(body.date, { zone: "UTC" })
+      : null;
+    if (!parsedDate?.isValid || parsedDate.toFormat("yyyy-MM-dd") !== body.date) {
+      console.error("[form/submit] INVALID_DATE", { date: body.date, responseId: body.responseId });
+      return NextResponse.json({ error: "INVALID_DATE" }, { status: 400 });
+    }
+  }
+
   const date = body.date ?? getBusinessToday();
   const runDate = new Date(`${date}T00:00:00.000Z`);
   const eventId = `form:${body.responseId}`;

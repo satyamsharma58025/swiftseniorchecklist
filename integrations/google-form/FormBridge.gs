@@ -1,12 +1,14 @@
 /**
- * FormBridge.gs - connects the Senior Authority Google Form to n8n.
+ * FormBridge.gs - connects the Senior Authority Google Form to the checklist app.
  *
  * Install: open Google Apps Script (script.google.com) or from a Google Form:
  *   1. Paste this entire file into Code.gs
  *   2. Script Properties (Project Settings -> Script Properties):
- *        BRIDGE_SECRET       any random string (must match n8n Config node)
- *        N8N_WEBHOOK_URL     n8n Production Webhook URL (e.g. https://your-n8n/webhook/swift-form-submitted)
- *        N8N_WEBHOOK_SECRET  webhook secret (must match n8n Header Auth)
+ *        APP_BASE_URL        checklist app origin
+ *        APP_SECRET          value matching the app's CRON_SECRET
+ *        BRIDGE_SECRET       secret used by n8n when rebuilding forms
+ *        N8N_WEBHOOK_URL     optional secondary notification endpoint
+ *        N8N_WEBHOOK_SECRET  optional secret for the secondary notification endpoint
  *        INDEPENDENT_DAILY_FORMS  "true" (default: creates independent Google Form each day)
  *   3. Run setup() once to initialize triggers.
  *   4. Deploy as Web App (Execute as: Me, Who has access: Anyone).
@@ -40,10 +42,10 @@ function setup() {
     }
   });
 
-  // Retry queue every 15 minutes for any failed webhook deliveries
+  // Retry queue every 15 minutes; each item observes its own backoff time.
   ScriptApp.newTrigger('retryPending_').timeBased().everyMinutes(15).create();
 
-  var missing = ['BRIDGE_SECRET', 'N8N_WEBHOOK_URL', 'N8N_WEBHOOK_SECRET'].filter(function (k) {
+  var missing = ['BRIDGE_SECRET', 'APP_BASE_URL', 'APP_SECRET'].filter(function (k) {
     return !prop_(k);
   });
   Logger.log(missing.length
@@ -368,11 +370,7 @@ function onFormSubmit_(e) {
     return;
   }
 
-  if (!postToN8n_(payload)) {
-    // n8n or the network was down: keep it and retry every 15 minutes.
-    PropertiesService.getScriptProperties().setProperty('PENDING_' + payload.responseId, JSON.stringify(payload));
-    Logger.log('[FormBridge] Saved to retry queue as PENDING_' + payload.responseId);
-  }
+  deliverPayload_(payload);
 }
 
 function resolveSubmissionDate_(formId, properties) {
@@ -451,79 +449,222 @@ function buildPayload_(response, formId) {
   return payload;
 }
 
-function deadLetterPayload_(payload, reason) {
+function deadLetterPayload_(payload, reason, responseBody) {
   var responseId = String(payload.responseId || 'unknown');
   var props = PropertiesService.getScriptProperties();
   props.setProperty('DEAD_LETTER_' + responseId, JSON.stringify({
     payload: payload,
     reason: reason,
+    responseBody: responseBody || null,
     deadLetteredAt: new Date().toISOString()
   }));
   props.deleteProperty('PENDING_' + responseId);
   Logger.log('[FormBridge] Dead-lettered response ' + responseId + ': ' + reason + ', date=' + String(payload.date || ''));
 }
 
-function postToN8n_(payload) {
-  var url = prop_('N8N_WEBHOOK_URL');
-  if (!url) {
-    console.error('N8N_WEBHOOK_URL is not set.');
-    return false;
+function classifyAppStatus_(status) {
+  if (status >= 200 && status < 300) { return 'success'; }
+  if (status === 401) { return 'configuration_error'; }
+  if (status === 429 || status >= 500) { return 'retry'; }
+  return 'dead_letter';
+}
+
+function retryDelayMs_(attempts) {
+  var delayMinutes = Math.min(15 * Math.pow(2, Math.max(0, attempts - 1)), 75);
+  return delayMinutes * 60 * 1000;
+}
+
+function postToApp_(payload) {
+  var baseUrl = prop_('APP_BASE_URL');
+  var appSecret = prop_('APP_SECRET');
+  if (!baseUrl || !appSecret) {
+    return { kind: 'configuration_error', message: 'APP_BASE_URL or APP_SECRET is missing' };
   }
+
+  try {
+    var res = UrlFetchApp.fetch(String(baseUrl).replace(/\/+$/, '') + '/api/integrations/form/submit', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-cron-secret': appSecret },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+      followRedirects: false
+    });
+    var code = res.getResponseCode();
+    return {
+      kind: classifyAppStatus_(code),
+      status: code,
+      responseBody: res.getContentText(),
+      message: 'App returned HTTP ' + code
+    };
+  } catch (err) {
+    return { kind: 'retry', message: 'Could not reach app: ' + String(err) };
+  }
+}
+
+function notifyN8n_(payload) {
+  var url = prop_('N8N_WEBHOOK_URL');
+  if (!url) { return; }
+  var secret = prop_('N8N_WEBHOOK_SECRET');
+  if (!secret) {
+    console.error('[FormBridge] Optional n8n notification skipped: N8N_WEBHOOK_SECRET is not configured. App intake succeeded.');
+    return;
+  }
+
   try {
     var res = UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
-      headers: { 'x-webhook-secret': prop_('N8N_WEBHOOK_SECRET') || '' },
+      headers: { 'x-webhook-secret': secret },
       payload: JSON.stringify(payload),
       muteHttpExceptions: true,
       followRedirects: true
     });
     var code = res.getResponseCode();
-    if (code >= 200 && code < 300) { return true; }
-    console.error('n8n returned ' + code + ': ' + res.getContentText().slice(0, 300));
-    return false;
+    if (code < 200 || code >= 300) {
+      console.error('[FormBridge] Optional n8n notification failed with HTTP ' + code + '. App intake succeeded.');
+    }
   } catch (err) {
-    console.error('Could not reach n8n: ' + err);
-    return false;
+    console.error('[FormBridge] Optional n8n notification failed: ' + String(err) + '. App intake succeeded.');
   }
 }
 
-/** Time-driven (every 15 min): re-send anything that failed. The app ignores duplicates. */
+function savePending_(payload, attempts, nextAttemptAt, options) {
+  var record = {
+    payload: payload,
+    attempts: attempts,
+    nextAttemptAt: nextAttemptAt ? nextAttemptAt.toISOString() : null,
+    blocked: Boolean(options && options.blocked),
+    lastError: options && options.message ? String(options.message).slice(0, 500) : null
+  };
+  PropertiesService.getScriptProperties().setProperty('PENDING_' + payload.responseId, JSON.stringify(record));
+  return record;
+}
+
+function deliverPayload_(payload) {
+  var result = postToApp_(payload);
+  if (result.kind === 'success') {
+    PropertiesService.getScriptProperties().deleteProperty('PENDING_' + payload.responseId);
+    notifyN8n_(payload);
+    return;
+  }
+  if (result.kind === 'dead_letter') {
+    deadLetterPayload_(payload, 'app_http_' + result.status, result.responseBody);
+    return;
+  }
+  if (result.kind === 'configuration_error') {
+    savePending_(payload, 0, null, { blocked: true, message: result.message });
+    console.error('[FormBridge] APP INTAKE BLOCKED: ' + result.message + '. Response ' + payload.responseId + ' is preserved and will not consume retries.');
+    return;
+  }
+
+  var nextAttemptAt = new Date(Date.now() + retryDelayMs_(1));
+  savePending_(payload, 1, nextAttemptAt, { message: result.message });
+  Logger.log('[FormBridge] App intake queued for retry: response=' + payload.responseId + ', attempt=1, nextAttemptAt=' + nextAttemptAt.toISOString());
+}
+
+/** Time-driven every 15 minutes; each response is retried no more than 20 times. */
 function retryPending_() {
   var props = PropertiesService.getScriptProperties();
   var all = props.getProperties();
   var replayed = 0;
   var deadLettered = 0;
+  var blocked = 0;
+  var now = Date.now();
+
   Object.keys(all).forEach(function (key) {
     if (key.indexOf('PENDING_') !== 0) { return; }
 
-    var payload;
+    var saved;
     try {
-      payload = JSON.parse(all[key]);
+      saved = JSON.parse(all[key]);
     } catch (err) {
       deadLetterPayload_({ responseId: key.slice('PENDING_'.length), rawPayload: all[key], date: '' }, 'invalid_pending_payload');
       deadLettered += 1;
       return;
     }
 
+    var record = saved && saved.payload ? saved : { payload: saved, attempts: 0 };
+    var payload = record.payload;
+    if (!payload || typeof payload !== 'object') {
+      deadLetterPayload_({ responseId: key.slice('PENDING_'.length), rawPayload: all[key], date: '' }, 'invalid_pending_payload');
+      deadLettered += 1;
+      return;
+    }
+    if (record.blocked) {
+      blocked += 1;
+      return;
+    }
+
+    var normalizedDate = false;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(payload.date || ''))) {
       var leadingDate = String(payload.date || '').match(/^(\d{4}-\d{2}-\d{2})(?:_|$)/);
-      if (leadingDate) {
-        payload.date = leadingDate[1];
-        props.setProperty(key, JSON.stringify(payload));
-        replayed += 1;
-      } else {
+      if (!leadingDate) {
         deadLetterPayload_(payload, 'invalid_pending_date');
         deadLettered += 1;
         return;
       }
+      payload.date = leadingDate[1];
+      normalizedDate = true;
     }
 
-    if (postToN8n_(payload)) {
+    var nextAttempt = record.nextAttemptAt ? Date.parse(record.nextAttemptAt) : 0;
+    if (!normalizedDate && Number.isFinite(nextAttempt) && nextAttempt > now) { return; }
+
+    var result = postToApp_(payload);
+    if (normalizedDate) { replayed += 1; }
+    if (result.kind === 'success') {
       props.deleteProperty(key);
+      notifyN8n_(payload);
+      return;
+    }
+    if (result.kind === 'dead_letter') {
+      deadLetterPayload_(payload, 'app_http_' + result.status, result.responseBody);
+      deadLettered += 1;
+      return;
+    }
+    if (result.kind === 'configuration_error') {
+      record.blocked = true;
+      record.lastError = result.message;
+      props.setProperty(key, JSON.stringify(record));
+      console.error('[FormBridge] APP INTAKE BLOCKED: ' + result.message + '. Response ' + payload.responseId + ' is preserved and will not consume retries.');
+      blocked += 1;
+      return;
+    }
+
+    var attempts = (Number(record.attempts) || 0) + 1;
+    if (attempts >= 20) {
+      deadLetterPayload_(payload, 'app_retry_limit_exhausted', result.message);
+      deadLettered += 1;
+      return;
+    }
+    var retryAt = new Date(Date.now() + retryDelayMs_(attempts));
+    savePending_(payload, attempts, retryAt, { message: result.message });
+  });
+
+  Logger.log('[FormBridge] Pending intake sweep complete: date-normalized/replayed=' + replayed + ', dead-lettered=' + deadLettered + ', blocked=' + blocked);
+}
+
+function unblockPending_() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  var unblocked = 0;
+  Object.keys(all).forEach(function (key) {
+    if (key.indexOf('PENDING_') !== 0) { return; }
+    try {
+      var record = JSON.parse(all[key]);
+      if (record && record.payload && record.blocked) {
+        record.blocked = false;
+        record.attempts = Number(record.attempts) || 0;
+        record.nextAttemptAt = null;
+        props.setProperty(key, JSON.stringify(record));
+        unblocked += 1;
+      }
+    } catch (err) {
+      console.error('[FormBridge] Could not unblock pending property ' + key + ': ' + String(err));
     }
   });
-  Logger.log('[FormBridge] Pending replay complete: date-normalized/replayed=' + replayed + ', dead-lettered=' + deadLettered);
+  Logger.log('[FormBridge] Unblocked pending intake records: ' + unblocked);
 }
 
 function prop_(key) {

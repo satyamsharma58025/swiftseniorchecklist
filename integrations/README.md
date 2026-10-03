@@ -15,8 +15,9 @@ them together. This replaces the old Google-Sheets based workflow
             |---- WhatsApp template senior_daily_checklist ----> Senior Authority  (form link)
 
  Senior fills the form
-    Form --onFormSubmit--> Apps Script --POST--> n8n webhook
-    n8n --POST /api/integrations/form/submit--> App   (statuses updated: the checklist page shows them within 30s)
+    Form --onFormSubmit--> Apps Script --POST--> App /api/integrations/form/submit
+    Apps Script retries app intake locally; n8n is not on the response path
+    Apps Script --(optional)--> n8n notification webhook
     n8n --(optional)--> WhatsApp each employee whose task is Not Done
                         --> POST /api/cron/reminder-sweep/ack  (counts reminder, escalates at threshold)
                         --> WhatsApp supervisor  (escalation_alert)
@@ -30,7 +31,7 @@ them together. This replaces the old Google-Sheets based workflow
 | `n8n/Production_Patch_Forward_Replies_To_App.json` | 2 nodes to paste into your **existing production** workflow so employee replies reach the app (see next section). |
 | `google-form/FormBridge.gs` | Paste into the Apps Script project attached to the Google Form. |
 | `src/app/api/integrations/form/today` | App endpoint n8n reads each morning. |
-| `src/app/api/integrations/form/submit` | App endpoint n8n writes the form answers to. |
+| `src/app/api/integrations/form/submit` | App endpoint Apps Script writes form answers to directly; n8n is optional. |
 | `src/app/api/integrations/whatsapp/inbound` | App endpoint n8n forwards employee WhatsApp replies to. |
 
 ## Fitting into your existing production n8n
@@ -77,6 +78,27 @@ Things the production workflow (`WhatsApp account` credential, phone number id `
 
 ## One-time setup
 
+### Apps Script property names
+
+Configure Script Properties by these names only; property values are environment-specific and must not be committed or included in logs.
+
+| Property name | Use |
+|---|---|
+| `APP_BASE_URL` | App origin for direct form intake. |
+| `APP_SECRET` | App integration secret for direct form intake. |
+| `BRIDGE_SECRET` | Authenticates n8n form-refresh requests. |
+| `N8N_WEBHOOK_URL` | Optional secondary notification endpoint. |
+| `N8N_WEBHOOK_SECRET` | Optional authentication for the secondary notification endpoint. |
+| `FORM_ID` | Active bound form ID. |
+| `FORM_ID_<yyyy-MM-dd>[_<employee>]` | Generated form ID mapping. |
+| `FORM_DATE` | Legacy fallback date. |
+| `FORM_DATE_<formId>` | Date associated with a form ID. |
+| `FORM_SIGNATURE_<formKey>` | Generated form-content signature. |
+| `FORM_URL_<formKey>` | Generated form URL. |
+| `LATEST_FORM_URL` | Most recently generated form URL. |
+| `PENDING_<responseId>` | Retry state for accepted form submissions. |
+| `DEAD_LETTER_<responseId>` | Invalid or permanently rejected submission. |
+
 ### 1. Deploy the app changes
 Push to GitHub; Render redeploys. In Render -> Environment set:
 
@@ -99,22 +121,20 @@ No database migration is needed.
 
 ### 3. Add the Apps Script to the form
 1. In the form: three-dot menu -> **Script editor**. Paste `FormBridge.gs`.
-2. Project Settings -> **Script Properties**, add:
-   - `BRIDGE_SECRET` - any long random string
-   - `N8N_WEBHOOK_SECRET` - a different long random string
-   - `N8N_WEBHOOK_URL` - fill in after step 4, the **production** URL, `https://<your-n8n>/webhook/swift-form-submitted`
+2. Project Settings -> **Script Properties**, configure `APP_BASE_URL`, `APP_SECRET`, and `BRIDGE_SECRET`.
+   `APP_SECRET` must match the app's `CRON_SECRET`. `N8N_WEBHOOK_URL` and `N8N_WEBHOOK_SECRET` are optional.
 3. Select `setup` in the toolbar -> Run -> approve permissions. This installs the on-submit trigger.
 4. Deploy -> New deployment -> type **Web app** -> Execute as **Me**, Who has access **Anyone** -> Deploy. Copy the `/exec` URL.
 
 ### 4. Import the workflow into n8n
 1. Workflows -> Import from file -> `Swift_Senior_Checklist_Form_WhatsApp.workflow.json`.
-2. Create two **Header Auth** credentials and attach them where the nodes show a red warning:
+2. Create the **Header Auth** credentials used by the form-build and optional notification flow:
    - `Swift App Secret (x-cron-secret)`: header name `x-cron-secret`, value = the app's `CRON_SECRET`
-   - `Swift Form Webhook Secret`: header name `x-webhook-secret`, value = `N8N_WEBHOOK_SECRET` from step 3
+   - `Swift Form Webhook Secret` (only when using the optional notification): header name `x-webhook-secret`, value = `N8N_WEBHOOK_SECRET`
 3. On the four WhatsApp nodes, pick your existing WhatsApp credential.
 4. Open **Config (Send Form)**: paste the Apps Script `/exec` URL and `BRIDGE_SECRET`.
 5. Open **Config (Form Submit)**: check the app URL. Leave `NOTIFY_EMPLOYEES` = `false` for now.
-6. Copy the webhook's **Production URL** from the *Webhook: Form Submitted* node into `N8N_WEBHOOK_URL` (step 3.2).
+6. If using optional secondary notifications, copy the webhook's **Production URL** from the *Webhook: Form Submitted* node into `N8N_WEBHOOK_URL`.
 7. Save. **Activate** the workflow (the production webhook only listens while active).
 
 ### 5. WhatsApp templates
@@ -149,8 +169,9 @@ These must exist and be approved in Meta with the language code shown (verify, s
 |---|---|
 | n8n stops with "Missing Config" | `GOOGLE_FORM_URL` not set on Render, or no senior phone anywhere. The error text says which. |
 | "Apps Script did not confirm the form rebuild" | Wrong `/exec` URL, web app access is not "Anyone", `FORM_BRIDGE_SECRET` != `BRIDGE_SECRET`, or you edited the script and did not create a **new deployment version**. |
-| Form updates but the app does not | `N8N_WEBHOOK_URL` is the *test* URL or the workflow is inactive; secret mismatch (webhook returns 403); check Apps Script -> Executions. Failed sends retry every 15 min automatically. |
-| App returns 401 | The `x-cron-secret` credential does not match Render's `CRON_SECRET`. |
+| Form updates but the app does not | Check Apps Script -> Executions and the response's `PENDING_<responseId>` or `DEAD_LETTER_<responseId>` property. Network/429/5xx failures retry at most 20 times over roughly 22-24 hours; 400/404 responses are dead-lettered. |
+| App returns 401 | `APP_SECRET` does not match the app's `CRON_SECRET`. Correct the configuration, then run `unblockPending_()` to resume blocked intake records. |
+| Optional n8n notification fails | App intake has already succeeded. Check the optional webhook configuration separately; the notification failure does not queue or undo form intake. |
 | App returns 404 `NO_CHECKLIST_FOR_DATE` | lock-queue has not run for that date yet. |
 | First call each morning is slow / times out | Render free/starter instances can cold-start. The HTTP nodes have a 90 s timeout and 3 retries. |
 | Employee replies do not show in the app | Production patch not wired, employee has no valid phone in the app, or the employee has several open tasks (then they are flagged "needs manual reconciliation" instead). |

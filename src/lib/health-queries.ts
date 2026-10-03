@@ -14,8 +14,6 @@ type AppsScriptHeartbeatJSON = {
 export async function loadDailyHealthInput(dateUtc: Date): Promise<DailyHealthInput> {
   const dateStr = istDateKey(dateUtc);
   const dateUTC = dbDate(dateStr);
-  const dayStart = dateUTC;
-  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
   // Get generation stats
   const latestSync = await prisma.cronRunLog.findFirst({
@@ -31,6 +29,16 @@ export async function loadDailyHealthInput(dateUtc: Date): Promise<DailyHealthIn
       date: dateUTC,
     },
   });
+
+  const checklistEmployeeIds = await prisma.dailyChecklistItem.findMany({
+    where: { date: dateUTC },
+    select: { taskMaster: { select: { employeeId: true } } },
+  });
+  const checklistExpectedRecipients = new Set(
+    checklistEmployeeIds
+      .map((row) => row.taskMaster?.employeeId)
+      .filter((employeeId): employeeId is string => Boolean(employeeId)),
+  ).size;
 
   // Get dispatch counts per slot
   const dispatchBySlot = await Promise.all(
@@ -53,9 +61,11 @@ export async function loadDailyHealthInput(dateUtc: Date): Promise<DailyHealthIn
         select: { employeeId: true },
       });
 
+      const baseExpected = uniqueEmployees.length || 0;
+
       return {
         slot,
-        expected: uniqueEmployees.length,
+        expected: Math.max(baseExpected, checklistExpectedRecipients),
         sent: countMap.SENT || 0,
         failed: countMap.FAILED || 0,
         failedPermanent: countMap.FAILED_PERMANENT || 0,

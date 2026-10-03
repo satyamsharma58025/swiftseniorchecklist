@@ -287,7 +287,9 @@ export function ChecklistPanel({
                       </div>
 
                       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <label htmlFor={`remarks-${item.id}`} className="text-sm font-semibold text-ink">Senior remark</label>
                         <input
+                          id={`remarks-${item.id}`}
                           type="text"
                           placeholder="Add specific remark for this task..."
                           value={editingRemarks[item.id] !== undefined ? editingRemarks[item.id] : (item.seniorRemarks ?? "")}

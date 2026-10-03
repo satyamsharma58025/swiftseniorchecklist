@@ -20,30 +20,33 @@ function LoginForm() {
     setLoading(true);
     setError(null);
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      remember: String(remember),
-      callbackUrl,
-      redirect: false,
-    });
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        remember: String(remember),
+        callbackUrl,
+        redirect: false,
+      });
 
-    setLoading(false);
+      if (result?.error) {
+        setError("Invalid email or password.");
+        return;
+      }
 
-    if (result?.error) {
-      setError("Invalid email or password.");
-      return;
+      const destination = result?.url ?? callbackUrl;
+      const safeDestination = destination.startsWith("http") ? destination : `${window.location.origin}${destination}`;
+      window.location.assign(safeDestination);
+      router.refresh();
+    } catch {
+      setError("Sign-in is unavailable. Check your connection and retry.");
+    } finally {
+      setLoading(false);
     }
-
-    const destination = result?.url ?? callbackUrl;
-    const safeDestination = destination.startsWith("http") ? destination : `${window.location.origin}${destination}`;
-
-    window.location.assign(safeDestination);
-    router.refresh();
   }
 
   return (
-    <main className="mx-auto flex min-h-[70vh] max-w-md items-center justify-center px-4 py-12">
+    <main id="main-content" className="mx-auto flex min-h-[70vh] max-w-md items-center justify-center px-4 py-12">
       <div className="w-full border-[3px] border-ink bg-white p-7 neo-shadow-lg">
         <div className="mb-8 text-center">
           <span className="sticker bg-hot-pink text-ink">Swift Strips India</span>
@@ -61,6 +64,8 @@ function LoginForm() {
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? "login-error" : undefined}
               className="neo-border w-full bg-paper px-3 py-3 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
               required
             />
@@ -76,6 +81,8 @@ function LoginForm() {
               autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? "login-error" : undefined}
               className="neo-border w-full bg-paper px-3 py-3 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
               required
             />
@@ -92,7 +99,7 @@ function LoginForm() {
           </label>
 
           {error ? (
-            <div className="border-[3px] border-ink bg-hot-pink px-3 py-2 text-sm font-semibold text-ink">{error}</div>
+            <div id="login-error" role="alert" aria-live="assertive" className="border-[3px] border-ink bg-hot-pink px-3 py-2 text-sm font-semibold text-ink">{error}</div>
           ) : null}
 
           <button

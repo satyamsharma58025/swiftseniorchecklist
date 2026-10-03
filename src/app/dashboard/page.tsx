@@ -82,7 +82,7 @@ export default async function DashboardPage() {
   const activeEmployees = employeeStats.length;
 
   return (
-    <main className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
+    <main id="main-content" className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="border-[3px] border-ink bg-ink px-5 py-6 text-paper neo-shadow-lg md:px-7">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">

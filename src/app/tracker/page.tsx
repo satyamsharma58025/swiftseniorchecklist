@@ -55,7 +55,7 @@ export default async function TrackerPage({
   const nextMonth = monthStart.plus({ months: 1 }).toFormat("yyyy-MM");
 
   return (
-    <main className="min-h-screen bg-paper p-4 text-ink md:p-6">
+    <main id="main-content" className="min-h-screen bg-paper p-4 text-ink md:p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

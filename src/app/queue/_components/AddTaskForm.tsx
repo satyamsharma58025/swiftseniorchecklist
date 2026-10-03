@@ -64,7 +64,7 @@ export function AddTaskForm({
         </div>
       </div>
 
-      <form className="grid gap-4 md:grid-cols-3" onSubmit={handleSubmit}>
+      <form className="grid gap-4 md:grid-cols-3" onSubmit={handleSubmit} aria-describedby={status?.type === "error" ? "queue-form-error" : undefined}>
         <div className="space-y-2 md:col-span-1">
           <label htmlFor="employee" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Employee</label>
           <select
@@ -124,6 +124,9 @@ export function AddTaskForm({
 
       {status ? (
         <div
+          id={status.type === "error" ? "queue-form-error" : undefined}
+          role={status.type === "error" ? "alert" : "status"}
+          aria-live={status.type === "error" ? "assertive" : "polite"}
           className={[
             "mt-4 border-[3px] border-ink px-3 py-2 text-sm font-semibold",
             status.type === "success" ? "bg-brand-green text-ink" : "bg-hot-pink text-ink",

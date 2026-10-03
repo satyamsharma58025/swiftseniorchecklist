@@ -122,7 +122,7 @@ export default async function ChecklistDatePage({
   });
 
   return (
-    <main className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
+    <main id="main-content" className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
       <div className="mx-auto max-w-6xl space-y-5">
         <AutoRefresh intervalSeconds={30} />
         <BrandHeader />

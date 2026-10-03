@@ -54,6 +54,22 @@ body {
   letter-spacing: 0;
 }
 
+.skip-link {
+  position: fixed;
+  top: -5rem;
+  left: 0.75rem;
+  z-index: 100;
+  border: 3px solid var(--ink);
+  background: var(--sun-yellow);
+  color: var(--ink);
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+}
+
+.skip-link:focus {
+  top: 0.75rem;
+}
+
 [class~="text-[10px]"],
 [class~="text-[11px]"] {
   font-size: 0.75rem !important;

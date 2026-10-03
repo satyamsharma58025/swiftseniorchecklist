@@ -8,7 +8,7 @@ export default async function HolidaysPage() {
   });
 
   return (
-    <main className="min-h-screen bg-paper p-4 text-ink md:p-6">
+    <main id="main-content" className="min-h-screen bg-paper p-4 text-ink md:p-6">
       <div className="mx-auto max-w-5xl space-y-6">
         <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Admin</p>

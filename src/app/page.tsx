@@ -40,7 +40,7 @@ export default async function HomePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-paper text-ink">
+    <main id="main-content" className="min-h-screen bg-paper text-ink">
       <section className="mx-auto max-w-7xl px-3 py-8 md:px-6 md:py-10">
         <div className="relative overflow-hidden border-[3px] border-ink bg-white p-5 neo-shadow-lg md:p-8">
           <div className="absolute -right-3 top-3 h-20 w-20 rotate-12 border-[3px] border-ink bg-hot-pink" />

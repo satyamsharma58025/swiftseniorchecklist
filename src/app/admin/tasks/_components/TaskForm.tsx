@@ -72,7 +72,7 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
   }
 
   return (
-    <form id="task-form" onSubmit={handleSubmit} className="grid gap-4 border-[3px] border-ink bg-white p-5 neo-shadow-md md:grid-cols-2 md:p-6">
+    <form id="task-form" onSubmit={handleSubmit} aria-describedby={error ? "task-form-error" : undefined} className="grid gap-4 border-[3px] border-ink bg-white p-5 neo-shadow-md md:grid-cols-2 md:p-6">
       <div className="space-y-2">
         <label htmlFor="taskCode" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Task code</label>
         <input
@@ -150,9 +150,11 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
           value={scheduleDetail}
           onChange={(event) => setScheduleDetail(event.target.value)}
           placeholder={scheduleHint}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? "schedule-hint task-form-error" : "schedule-hint"}
           className="neo-border w-full bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:shadow-[4px_4px_0_0_var(--ink)]"
         />
-        <p className="text-xs text-ink/70">{scheduleHint}</p>
+        <p id="schedule-hint" className="text-xs text-ink/70">{scheduleHint}</p>
       </div>
 
       <div className="md:col-span-2 flex items-center justify-between gap-3">
@@ -166,8 +168,8 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
         </button>
       </div>
 
-      {error ? <div className="md:col-span-2 border-[3px] border-ink bg-hot-pink px-3 py-2 text-sm font-semibold text-ink">{error}</div> : null}
-      {success ? <div className="md:col-span-2 border-[3px] border-ink bg-brand-green px-3 py-2 text-sm font-semibold text-ink">{success}</div> : null}
+      {error ? <div id="task-form-error" role="alert" aria-live="assertive" className="md:col-span-2 border-[3px] border-ink bg-hot-pink px-3 py-2 text-sm font-semibold text-ink">{error}</div> : null}
+      {success ? <div role="status" aria-live="polite" className="md:col-span-2 border-[3px] border-ink bg-brand-green px-3 py-2 text-sm font-semibold text-ink">{success}</div> : null}
     </form>
   );
 }

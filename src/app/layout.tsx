@@ -33,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <body className="min-h-full bg-paper text-ink">
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         <AppNav />
         {children}
       </body>

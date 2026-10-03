@@ -19,6 +19,16 @@ export type ChecklistTaskRow = {
   formSubmittedAt?: string | null;
 };
 
+type RetryAction =
+  | { kind: "status"; itemId: string; status: "DONE" | "NOT_DONE" }
+  | { kind: "remark"; itemId: string };
+
+type SaveFeedback = {
+  phase: "pending" | "success" | "error";
+  message: string;
+  retry?: RetryAction;
+};
+
 export function ChecklistPanel({
   items,
   employeeName,
@@ -29,6 +39,7 @@ export function ChecklistPanel({
   const [localItems, setLocalItems] = useState(items);
   const [editingRemarks, setEditingRemarks] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<SaveFeedback | null>(null);
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "DONE" | "NOT_DONE" | "ESCALATED">("ALL");
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -79,6 +90,7 @@ export function ChecklistPanel({
 
     try {
       setSavingId(itemId);
+      setSaveFeedback({ phase: "pending", message: "Saving task status." });
       const response = await fetch(`/api/checklist/item/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -96,7 +108,8 @@ export function ChecklistPanel({
       setLocalItems((current) =>
         current.map((item) => (item.id === updated.id ? { ...item, ...updated, status: updated.status } : item)),
       );
-    } catch (error) {
+      setSaveFeedback({ phase: "success", message: "Task status saved." });
+    } catch {
       setLocalItems((current) =>
         current.map((item) =>
           item.id === itemId
@@ -108,7 +121,11 @@ export function ChecklistPanel({
             : item,
         ),
       );
-      console.error(error);
+        setSaveFeedback({
+          phase: "error",
+          message: "Could not save task status. The previous status was restored.",
+          retry: { kind: "status", itemId, status: nextStatus },
+        });
     } finally {
       setSavingId(null);
     }
@@ -120,6 +137,7 @@ export function ChecklistPanel({
 
     try {
       setSavingId(itemId);
+      setSaveFeedback({ phase: "pending", message: "Saving remark." });
       const response = await fetch(`/api/checklist/item/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -136,10 +154,25 @@ export function ChecklistPanel({
       setLocalItems((current) =>
         current.map((item) => (item.id === updated.id ? { ...item, seniorRemarks: updated.seniorRemarks } : item)),
       );
-    } catch (error) {
-      console.error(error);
+      setSaveFeedback({ phase: "success", message: "Remark saved." });
+    } catch {
+      setSaveFeedback({
+        phase: "error",
+        message: "Could not save remark. Your text is still here; retry when the connection is available.",
+        retry: { kind: "remark", itemId },
+      });
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function retryFailedAction() {
+    const retry = saveFeedback?.retry;
+    if (!retry) return;
+    if (retry.kind === "status") {
+      await updateStatus(retry.itemId, retry.status);
+    } else {
+      await saveRemarkOnly(retry.itemId);
     }
   }
 
@@ -154,6 +187,26 @@ export function ChecklistPanel({
 
   return (
     <div className="space-y-4">
+      {saveFeedback ? (
+        <div
+          className={`neo-border flex flex-wrap items-center justify-between gap-3 p-3 text-sm font-bold ${saveFeedback.phase === "error" ? "bg-hot-pink text-ink" : saveFeedback.phase === "success" ? "bg-electric-lime text-ink" : "bg-sun-yellow text-ink"}`}
+          role={saveFeedback.phase === "error" ? "alert" : "status"}
+          aria-live={saveFeedback.phase === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
+        >
+          <span>{saveFeedback.message}</span>
+          {saveFeedback.retry ? (
+            <button
+              type="button"
+              onClick={retryFailedAction}
+              disabled={savingId !== null}
+              className="neo-press neo-border min-h-11 bg-white px-4 py-2 text-sm font-bold text-ink"
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { value: summary.done, tone: "bg-brand-green", status: "DONE" as const },
@@ -271,14 +324,18 @@ export function ChecklistPanel({
                     <button
                       type="button"
                       onClick={() => updateStatus(item.id, "DONE")}
-                      className="neo-press neo-border bg-brand-green px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink"
+                      disabled={savingId === item.id}
+                      aria-busy={savingId === item.id}
+                      className="neo-press neo-border min-h-11 bg-brand-green px-3 py-2 text-sm font-black text-ink"
                     >
                       Done
                     </button>
                     <button
                       type="button"
                       onClick={() => updateStatus(item.id, "NOT_DONE")}
-                      className="neo-press neo-border bg-hot-pink px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink"
+                      disabled={savingId === item.id}
+                      aria-busy={savingId === item.id}
+                      className="neo-press neo-border min-h-11 bg-hot-pink px-3 py-2 text-sm font-black text-ink"
                     >
                       Not done
                     </button>

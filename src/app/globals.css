@@ -81,6 +81,28 @@ a {
     opacity 0.12s ease;
 }
 
+:where(button, input, select, textarea, a.neo-press, [role="button"]) {
+  min-height: 44px;
+}
+
+:where(button, input, select, textarea, a, [role="button"]):focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--sun-yellow);
+}
+
+[class~="text-ink/60"],
+[class~="text-ink/50"],
+[class~="text-ink/40"] {
+  color: color-mix(in srgb, var(--ink) 70%, transparent) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--ink) 60%, transparent) !important;
+  opacity: 1;
+}
+
 .brand-display {
   font-family: var(--font-display-black), "Arial Black", sans-serif;
   text-transform: uppercase;

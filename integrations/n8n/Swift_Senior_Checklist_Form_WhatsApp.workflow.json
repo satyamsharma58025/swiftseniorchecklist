@@ -70,19 +70,19 @@
             {
               "id": "00000000-0000-0000-0000-0000000aac79",
               "name": "APPS_SCRIPT_WEBAPP_URL",
-              "value": "PASTE_APPS_SCRIPT_WEB_APP_EXEC_URL",
+              "value": "={{ $vars.APPS_SCRIPT_WEBAPP_URL }}",
               "type": "string"
             },
             {
               "id": "00000000-0000-0000-0000-0000000acb68",
               "name": "FORM_BRIDGE_SECRET",
-              "value": "PASTE_SAME_VALUE_AS_BRIDGE_SECRET",
+              "value": "={{ $vars.FORM_BRIDGE_SECRET }}",
               "type": "string"
             },
             {
               "id": "00000000-0000-0000-0000-0000000aea57",
               "name": "FALLBACK_SENIOR_PHONE",
-              "value": "",
+              "value": "={{ $vars.SENIOR_PHONE }}",
               "type": "string"
             },
             {
@@ -116,7 +116,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_APP_SECRET_CRED",
           "name": "Swift App Secret (x-cron-secret)"
         }
       },
@@ -364,7 +363,6 @@
       },
       "credentials": {
         "whatsAppApi": {
-          "id": "gnD3am3fj5pbwlEX",
           "name": "WhatsApp account"
         }
       },
@@ -393,7 +391,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_APP_SECRET_CRED",
           "name": "Swift App Secret (x-cron-secret)"
         }
       },
@@ -424,7 +421,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_APP_SECRET_CRED",
           "name": "Swift App Secret (x-cron-secret)"
         }
       },
@@ -466,7 +462,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_WEBHOOK_SECRET_CRED",
           "name": "Swift Form Webhook Secret"
         }
       },
@@ -526,7 +521,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_APP_SECRET_CRED",
           "name": "Swift App Secret (x-cron-secret)"
         }
       },
@@ -652,7 +646,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_APP_SECRET_CRED",
           "name": "Swift App Secret (x-cron-secret)"
         }
       },
@@ -698,7 +691,6 @@
       },
       "credentials": {
         "whatsAppApi": {
-          "id": "gnD3am3fj5pbwlEX",
           "name": "WhatsApp account"
         }
       },
@@ -727,7 +719,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_APP_SECRET_CRED",
           "name": "Swift App Secret (x-cron-secret)"
         }
       },
@@ -758,7 +749,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_APP_SECRET_CRED",
           "name": "Swift App Secret (x-cron-secret)"
         }
       },
@@ -840,7 +830,6 @@
       },
       "credentials": {
         "whatsAppApi": {
-          "id": "gnD3am3fj5pbwlEX",
           "name": "WhatsApp account"
         }
       },
@@ -869,7 +858,6 @@
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_APP_SECRET_CRED",
           "name": "Swift App Secret (x-cron-secret)"
         }
       },
@@ -1196,17 +1184,6 @@
         [
           {
             "node": "App: Log Supervisor Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split Employee Forms": {
-      "main": [
-        [
-          {
-            "node": "Apps Script: Rebuild Form",
             "type": "main",
             "index": 0
           }

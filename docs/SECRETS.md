@@ -20,7 +20,7 @@ This document lists all secrets and sensitive configuration used in the Swift Se
 | Location | Contains | Type | Status |
 |----------|----------|------|--------|
 | .env.local / Render env vars | All above secrets | Runtime config | ✅ Secure (never committed) |
-| AGENTS.md | CEO phone (919031011111), Satyam phone (919798637485) | Test/reference data | ⚠️ See "Personal Phone Numbers" below |
+| AGENTS.md | CEO phone (${SENIOR_PHONE}), Satyam phone (${SENIOR_PHONE}) | Test/reference data | ⚠️ See "Personal Phone Numbers" below |
 | scripts/ | Any helper scripts | Various | To be scanned |
 | integrations/n8n/ | Webhook URLs, API keys (legacy) | Workflow config | ⚠️ Optional n8n removed from critical path in Phase 3 |
 | integrations/google-form/FormBridge.gs | Script Properties (set manually) | Google Apps Script | ✅ Secure (hosted on Google servers, not in git) |
@@ -29,8 +29,8 @@ This document lists all secrets and sensitive configuration used in the Swift Se
 
 | Number | Person | Use | Status |
 |--------|--------|-----|--------|
-| 919031011111 | Shaurya Sir (CEO) | Test checklist recipient | Documented in AGENTS.md; only for testing |
-| 919798637485 | Satyam Sharma | Fallback senior authority | Documented in AGENTS.md; fallback only |
+| ${SENIOR_PHONE} | Shaurya Sir (CEO) | Test checklist recipient | Documented in AGENTS.md; only for testing |
+| ${SENIOR_PHONE} | Satyam Sharma | Fallback senior authority | Documented in AGENTS.md; fallback only |
 
 **Note**: These are real phone numbers and should NOT be used in production without explicit consent. They are acceptable in documentation for testing purposes only, but must be replaced with test phone numbers in actual deployment.
 

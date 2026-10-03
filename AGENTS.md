@@ -145,7 +145,7 @@ Let’s make today productive! 💪
 ### CEO Shaurya Sir Profile:
 - **Name**: `Shaurya Sir`
 - **Designation**: `CEO`
-- **WhatsApp Phone**: `919031011111`
+- **WhatsApp Phone**: `${SENIOR_PHONE}`
 - **Assigned Active Test Tasks**:
   1. `CEO-01-PROD`: Review Daily Plant Production & Dispatch Summary (HIGH)
   2. `CEO-02-QUAL`: Verify Inventory & Quality Control Exceptions (HIGH)
@@ -156,7 +156,7 @@ Let’s make today productive! 💪
   - `CL-20260927-EO03COMP`
 
 ### Secondary / Fallback Senior Authority:
-- **Satyam Sharma**: `919798637485`
+- **Satyam Sharma**: `${SENIOR_PHONE}`
 
 ---
 
@@ -169,7 +169,7 @@ Let’s make today productive! 💪
 - n8n is optional and is not required for form intake or WhatsApp delivery. The Apps Script posts form submissions directly to the app; the app sends WhatsApp templates directly through Meta's Cloud API.
 - **Optional legacy workflow file**: `integrations/n8n/Swift_Senior_Checklist_Production_Workflow_Fixed.json`
 - **Apps Script Web App**:
-  `https://script.google.com/macros/s/AKfycby8Z8woY3D11xqiueBsmlhs8G5cd4n8cpmLlX7hHd2FAAnpU1Alo7AJc1LCfxIMRg/exec`
+  `${APPS_SCRIPT_WEBAPP_URL}`
 - **Endpoints**:
   - `GET /api/integrations/form/today`: Serves today's tasks and auto-locks if needed. Requires `x-cron-secret`; retained for compatibility and integrations.
   - `POST /api/integrations/form/submit`: Apps Script submission webhook that marks checked tasks as `DONE`.

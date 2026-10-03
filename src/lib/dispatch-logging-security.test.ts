@@ -20,7 +20,7 @@ describe("dispatch logging security", () => {
     });
 
     // Set environment variables for test
-    vi.stubEnv("CRON_SECRET", "cron-secret-abc123def456");
+    vi.stubEnv("CRON_SECRET", "test");
     vi.stubEnv("APP_SECRET", "app-secret-xyz789uvw012");
     vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "eaacToken1234567890abcdefgh");
   });

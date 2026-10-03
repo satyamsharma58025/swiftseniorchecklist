@@ -51,7 +51,16 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-grotesk), Arial, Helvetica, sans-serif;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+}
+
+[class~="text-[10px]"],
+[class~="text-[11px]"] {
+  font-size: 0.75rem !important;
+}
+
+[class*="tracking-"] {
+  letter-spacing: 0.04em !important;
 }
 
 * {
@@ -122,10 +131,10 @@ a {
   border: var(--border-w) solid var(--ink);
   box-shadow: var(--shadow-sm);
   padding: 0.45rem 0.8rem;
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   line-height: 1;
   font-weight: 900;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 

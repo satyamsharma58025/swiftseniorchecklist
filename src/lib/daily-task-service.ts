@@ -1,6 +1,6 @@
 import { toWhatsAppNumber } from "@/lib/business-logic";
 import { cadenceMatches, checklistCode, colorFor, reserveNextQueueCode } from "@/lib/cadence";
-import { dateKey, istDayBounds } from "@/lib/dates";
+import { addDays, dateKey, istDateKey, istDayBounds } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export type DueTaskMaster = {
@@ -129,7 +129,15 @@ export async function resolveAssignedEmployee(
   };
 }
 
-export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskMaster[]> {
+export type DueTaskSet = {
+  tasks: DueTaskMaster[];
+  caughtUp: number;
+  skippedPaused: number;
+  skippedHoliday: number;
+  failed: Array<{ taskCode: string; error: string }>;
+};
+
+export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskSet> {
   const taskMasters = await prisma.taskMaster.findMany({
     where: { active: true },
     include: {
@@ -138,78 +146,127 @@ export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskMaster
     },
   });
 
-  const dueTaskMasters: DueTaskMaster[] = [];
   const targetDateKey = dateKey(targetDate);
+  const settings = await prisma.settings.findUnique({
+    where: { id: 1 },
+    select: { catchUpDays: true },
+  });
+  const catchUpDays = Math.max(0, Math.trunc(settings?.catchUpDays ?? 3));
+  const windowStart = addDays(targetDate, -catchUpDays);
+  const taskMasterIds = taskMasters.map((task) => task.id);
+  const [pauses, holidays, priorItems] = await Promise.all([
+    prisma.taskPause.findMany({
+      where: {
+        taskMasterId: { in: taskMasterIds },
+        startDate: { lte: targetDate },
+        endDate: { gte: windowStart },
+      },
+      select: { taskMasterId: true, startDate: true, endDate: true },
+    }),
+    prisma.holiday.findMany({
+      where: { date: { gte: windowStart, lte: targetDate } },
+      select: { date: true },
+    }),
+    prisma.dailyChecklistItem.findMany({
+      where: { taskMasterId: { in: taskMasterIds }, date: { gte: windowStart, lte: targetDate } },
+      select: { taskMasterId: true, date: true },
+    }),
+  ]);
+
+  const pausesByTask = new Map<string, Array<{ startDate: string; endDate: string }>>();
+  for (const pause of pauses) {
+    const current = pausesByTask.get(pause.taskMasterId) ?? [];
+    current.push({ startDate: dateKey(pause.startDate), endDate: dateKey(pause.endDate) });
+    pausesByTask.set(pause.taskMasterId, current);
+  }
+  const holidayKeys = new Set(holidays.map((holiday) => dateKey(holiday.date)));
+  const existingChecklistKeys = new Set(priorItems.map((item) => `${item.taskMasterId}:${dateKey(item.date)}`));
+  const dueTaskMasters: DueTaskMaster[] = [];
+  const result: DueTaskSet = { tasks: dueTaskMasters, caughtUp: 0, skippedPaused: 0, skippedHoliday: 0, failed: [] };
+
+  const isPaused = (taskMasterId: string, key: string) => (pausesByTask.get(taskMasterId) ?? [])
+    .some((pause) => pause.startDate <= key && pause.endDate >= key);
 
   for (const task of taskMasters) {
-    const isPaused = await prisma.taskPause.findFirst({
-      where: {
-        taskMasterId: task.id,
-        startDate: { lte: targetDate },
-        endDate: { gte: targetDate },
-      },
-    });
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        if (isPaused(task.id, targetDateKey)) {
+          result.skippedPaused += 1;
+          break;
+        }
 
-    if (isPaused) {
-      continue;
+        const startKey = toBusinessDateKey(task.startDate);
+        const endKey = toBusinessDateKey(task.endDate);
+        const withinTargetRange = (!startKey || startKey <= targetDateKey) && (!endKey || endKey >= targetDateKey);
+        if (!withinTargetRange) break;
+
+        if (task.cadence === "DAILY" && holidayKeys.has(targetDateKey)) {
+          result.skippedHoliday += 1;
+          break;
+        }
+
+        let isDue = cadenceMatches(task, targetDate).matches;
+        let caughtUp = false;
+
+        if (!isDue && catchUpDays > 0 && ["MONTHLY", "QUARTERLY", "YEARLY"].includes(task.cadence)) {
+          for (let daysAgo = 1; daysAgo <= catchUpDays; daysAgo += 1) {
+            const dueDate = addDays(targetDate, -daysAgo);
+            const dueDateKey = dateKey(dueDate);
+            if ((startKey && startKey > dueDateKey) || (endKey && endKey < dueDateKey)) continue;
+            if (istDateKey(task.createdAt) > dueDateKey || isPaused(task.id, dueDateKey)) continue;
+            if (!cadenceMatches(task, dueDate).matches) continue;
+            if (existingChecklistKeys.has(`${task.id}:${dueDateKey}`)) break;
+            isDue = true;
+            caughtUp = true;
+            break;
+          }
+        }
+
+        if (!isDue) break;
+
+        const assignedEmployee = await resolveAssignedEmployee(task, targetDate);
+        dueTaskMasters.push({
+          id: task.id,
+          taskCode: task.taskCode,
+          employeeId: assignedEmployee.id,
+          taskDescription: task.taskDescription,
+          cadence: task.cadence,
+          scheduleDetail: task.scheduleDetail,
+          active: task.active,
+          startDate: task.startDate,
+          endDate: task.endDate,
+          priority: task.priority,
+          escalationThreshold: task.escalationThreshold,
+          employee: {
+            id: task.employee.id,
+            name: task.employee.name,
+            phone: task.employee.phone,
+            designation: task.employee.designation,
+            department: task.employee.department,
+            supervisor: task.employee.supervisor ?? null,
+          },
+          reassignments: (task.reassignments ?? []).map((entry) => ({
+            id: entry.id,
+            effectiveDate: entry.effectiveDate,
+            newEmployeeId: entry.newEmployeeId,
+          })),
+          assignedEmployee,
+        });
+        if (caughtUp) result.caughtUp += 1;
+        break;
+      } catch (error) {
+        logTaskFailure(targetDate, task.taskCode, attempt, error);
+        if (attempt === 2) {
+          result.failed.push({ taskCode: task.taskCode, error: errorMessage(error) });
+        }
+      }
     }
-
-    if (task.startDate && toBusinessDateKey(task.startDate) && toBusinessDateKey(task.startDate)! > targetDateKey) {
-      continue;
-    }
-
-    if (task.endDate && toBusinessDateKey(task.endDate) && toBusinessDateKey(task.endDate)! < targetDateKey) {
-      continue;
-    }
-
-    const cadenceResult = cadenceMatches(
-      task as {
-        cadence: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
-        scheduleDetail?: string | null;
-      },
-      targetDate,
-    );
-
-    if (!cadenceResult.matches) {
-      continue;
-    }
-
-    const assignedEmployee = await resolveAssignedEmployee(task, targetDate);
-
-    dueTaskMasters.push({
-      id: task.id,
-      taskCode: task.taskCode,
-      employeeId: assignedEmployee.id,
-      taskDescription: task.taskDescription,
-      cadence: task.cadence,
-      scheduleDetail: task.scheduleDetail,
-      active: task.active,
-      startDate: task.startDate,
-      endDate: task.endDate,
-      priority: task.priority,
-      escalationThreshold: task.escalationThreshold,
-      employee: {
-        id: task.employee.id,
-        name: task.employee.name,
-        phone: task.employee.phone,
-        designation: task.employee.designation,
-        department: task.employee.department,
-        supervisor: task.employee.supervisor ?? null,
-      },
-      reassignments: (task.reassignments ?? []).map((entry) => ({
-        id: entry.id,
-        effectiveDate: entry.effectiveDate,
-        newEmployeeId: entry.newEmployeeId,
-      })),
-      assignedEmployee,
-    });
   }
 
-  return dueTaskMasters;
+  return result;
 }
 
-async function ensureAssignmentQueue(targetDate: Date, dueTasks?: DueTaskMaster[]) {
-  const tasks = dueTasks ?? await getDueTaskMasters(targetDate);
+async function ensureAssignmentQueue(targetDate: Date, tasks: DueTaskMaster[]) {
 
   const created: Array<{ id: string; taskMasterId: string; employeeId: string }> = [];
 
@@ -262,8 +319,7 @@ async function ensureAssignmentQueue(targetDate: Date, dueTasks?: DueTaskMaster[
   return created;
 }
 
-async function materializeDailyChecklist(targetDate: Date, dueTasks?: DueTaskMaster[]) {
-  const tasks = dueTasks ?? await getDueTaskMasters(targetDate);
+async function materializeDailyChecklist(targetDate: Date, tasks: DueTaskMaster[]) {
   const materialized: Array<{ id: string; taskMasterId: string; employeeName: string; created: boolean }> = [];
 
   for (const task of tasks) {
@@ -317,18 +373,18 @@ async function materializeDailyChecklist(targetDate: Date, dueTasks?: DueTaskMas
 }
 
 export async function ensureDailyQueueAndLock(runDate: Date) {
-  const dueTasks = await getDueTaskMasters(runDate);
+  const dueSet = await getDueTaskMasters(runDate);
   const createdThisRun = new Set<string>();
   const summary = {
     created: 0,
     existing: 0,
-    caughtUp: 0,
-    skippedPaused: 0,
-    skippedHoliday: 0,
-    failed: [] as Array<{ taskCode: string; error: string }>,
+    caughtUp: dueSet.caughtUp,
+    skippedPaused: dueSet.skippedPaused,
+    skippedHoliday: dueSet.skippedHoliday,
+    failed: [...dueSet.failed],
   };
 
-  for (const task of dueTasks) {
+  for (const task of dueSet.tasks) {
     let completed = false;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {

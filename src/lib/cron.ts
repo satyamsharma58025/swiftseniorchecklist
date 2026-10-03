@@ -39,6 +39,7 @@ export async function ensureSettings() {
       reminderIntervalHoursHigh: 2,
       maxRemindersPerDayHigh: 4,
       escalationThresholdDefault: 2,
+      catchUpDays: 3,
       escalationTier2Enabled: false,
       assignmentQueueLockTimeIst: "08:30",
       dailyFormSendTimeIst: "09:00",

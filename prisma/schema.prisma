@@ -258,6 +258,7 @@ model Settings {
   reminderIntervalHoursHigh    Int           @default(2)
   maxRemindersPerDayHigh       Int           @default(4)
   escalationThresholdDefault   Int           @default(2)
+  catchUpDays                  Int           @default(3)
   escalationTier2Enabled       Boolean       @default(false)
   assignmentQueueLockTimeIst   String        @default("08:30")
   dailyFormSendTimeIst         String        @default("09:00")

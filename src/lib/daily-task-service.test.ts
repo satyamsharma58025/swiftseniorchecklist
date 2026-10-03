@@ -4,7 +4,9 @@ import { dbDate } from "@/lib/dates";
 const db = vi.hoisted(() => ({
   $transaction: vi.fn(async (callback) => callback(db)),
   taskMaster: { findMany: vi.fn() },
-  taskPause: { findFirst: vi.fn() },
+  taskPause: { findFirst: vi.fn(), findMany: vi.fn() },
+  holiday: { findMany: vi.fn() },
+  settings: { findUnique: vi.fn() },
   employee: { findUnique: vi.fn() },
   assignmentQueueItem: {
     findMany: vi.fn(),
@@ -30,7 +32,7 @@ const db = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
-import { ensureDailyQueueAndLock, getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
+import { ensureDailyQueueAndLock, getDueTaskMasters, getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
 
 const runDate = dbDate("2026-09-30");
 
@@ -47,6 +49,7 @@ function baseTask(overrides: Partial<Record<string, unknown>> = {}) {
     endDate: null,
     priority: "HIGH",
     escalationThreshold: 2,
+    createdAt: dbDate("2020-01-01"),
     organizationId: null,
     employee: { id: "emp-1", name: "Yogesh Tomar", phone: "9876543210", supervisor: null },
     reassignments: [],
@@ -59,6 +62,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.$transaction.mockImplementation(async (callback) => callback(db));
   db.taskPause.findFirst.mockResolvedValue(null);
+  db.taskPause.findMany.mockResolvedValue([]);
+  db.holiday.findMany.mockResolvedValue([]);
+  db.settings.findUnique.mockResolvedValue({ catchUpDays: 3 });
   db.assignmentQueueItem.findMany.mockResolvedValue([]);
   db.assignmentQueueItem.findUnique.mockResolvedValue(null);
   db.dailyChecklistItem.findMany.mockResolvedValue([]);
@@ -265,5 +271,121 @@ describe("ensureDailyQueueAndLock", () => {
     expect(first.failed).toEqual([]);
     expect(second.failed).toEqual([]);
     expect(first.created + first.existing + second.created + second.existing).toBe(2);
+  });
+
+  it.each([
+    ["2026-05-02", 1],
+    ["2026-05-04", 1],
+    ["2026-05-05", 0],
+  ])("catches a monthly day-1 task up at the expected boundary for %s", async (date, expected) => {
+    db.taskMaster.findMany.mockResolvedValue([baseTask({ cadence: "MONTHLY", scheduleDetail: "1" })]);
+
+    const due = await getDueTaskMasters(dbDate(date));
+
+    expect(due.tasks).toHaveLength(expected);
+    expect(due.caughtUp).toBe(expected);
+    expect(db.taskPause.findMany).toHaveBeenCalledOnce();
+    expect(db.holiday.findMany).toHaveBeenCalledOnce();
+  });
+
+  it("catches monthly day 31 on the last day of a 30-day month", async () => {
+    db.taskMaster.findMany.mockResolvedValue([baseTask({ cadence: "MONTHLY", scheduleDetail: "31" })]);
+
+    const due = await getDueTaskMasters(dbDate("2026-05-02"));
+
+    expect(due.tasks).toHaveLength(1);
+    expect(due.caughtUp).toBe(1);
+  });
+
+  it("catches up a yearly 29-Feb task in a leap year", async () => {
+    db.taskMaster.findMany.mockResolvedValue([baseTask({ cadence: "YEARLY", scheduleDetail: "29-Feb" })]);
+
+    const due = await getDueTaskMasters(dbDate("2024-03-02"));
+
+    expect(due.tasks).toHaveLength(1);
+    expect(due.caughtUp).toBe(1);
+  });
+
+  it("does not catch quarterly schedules outside March, June, September, and December", async () => {
+    db.taskMaster.findMany.mockResolvedValue([baseTask({ cadence: "QUARTERLY", scheduleDetail: "1" })]);
+
+    const due = await getDueTaskMasters(dbDate("2026-04-02"));
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.caughtUp).toBe(0);
+  });
+
+  it("does not catch weekly tasks up", async () => {
+    db.taskMaster.findMany.mockResolvedValue([baseTask({ cadence: "WEEKLY", scheduleDetail: "Friday" })]);
+
+    const due = await getDueTaskMasters(dbDate("2026-05-02"));
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.caughtUp).toBe(0);
+  });
+
+  it("does not catch an already-materialized most recent due date", async () => {
+    const task = baseTask({ cadence: "MONTHLY", scheduleDetail: "1" });
+    db.taskMaster.findMany.mockResolvedValue([task]);
+    db.dailyChecklistItem.findMany.mockResolvedValue([{ taskMasterId: task.id, date: dbDate("2026-05-01") }]);
+
+    const due = await getDueTaskMasters(dbDate("2026-05-02"));
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.caughtUp).toBe(0);
+  });
+
+  it("respects task start and end dates while searching for a missed due date", async () => {
+    const startsAfterDue = baseTask({ cadence: "MONTHLY", scheduleDetail: "1", startDate: dbDate("2026-05-02") });
+    const endedBeforeToday = baseTask({ id: "tm-ended", taskCode: "ENDED", cadence: "MONTHLY", scheduleDetail: "1", endDate: dbDate("2026-05-01") });
+    db.taskMaster.findMany.mockResolvedValue([startsAfterDue, endedBeforeToday]);
+
+    const due = await getDueTaskMasters(dbDate("2026-05-02"));
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.caughtUp).toBe(0);
+  });
+
+  it("reports paused tasks in the batched pause result", async () => {
+    const task = baseTask();
+    db.taskMaster.findMany.mockResolvedValue([task]);
+    db.taskPause.findMany.mockResolvedValue([{
+      taskMasterId: task.id,
+      startDate: dbDate("2026-09-30"),
+      endDate: dbDate("2026-09-30"),
+    }]);
+
+    const due = await getDueTaskMasters(runDate);
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.skippedPaused).toBe(1);
+    expect(db.taskPause.findMany).toHaveBeenCalledOnce();
+  });
+
+  it("does not catch up a task created after its due date", async () => {
+    db.taskMaster.findMany.mockResolvedValue([
+      baseTask({ cadence: "MONTHLY", scheduleDetail: "1", createdAt: dbDate("2026-05-02") }),
+    ]);
+
+    const due = await getDueTaskMasters(dbDate("2026-05-02"));
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.caughtUp).toBe(0);
+  });
+
+  it("uses Holiday rows to skip daily tasks and loads pauses and holidays once", async () => {
+    const tasks = Array.from({ length: 50 }, (_, index) => baseTask({
+      id: `tm-${index + 1}`,
+      taskCode: `DAILY-${index + 1}`,
+    }));
+    db.taskMaster.findMany.mockResolvedValue(tasks);
+    db.holiday.findMany.mockResolvedValue([{ date: dbDate("2026-10-02") }]);
+
+    const due = await getDueTaskMasters(dbDate("2026-10-02"));
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.skippedHoliday).toBe(50);
+    expect(db.taskPause.findMany).toHaveBeenCalledOnce();
+    expect(db.holiday.findMany).toHaveBeenCalledOnce();
   });
 });

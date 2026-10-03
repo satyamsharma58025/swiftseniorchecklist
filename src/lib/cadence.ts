@@ -54,11 +54,6 @@ export async function reserveNextQueueCode(
   return queueCode(normalizedDate, nextValue);
 }
 
-function isHoliday(date: string): boolean {
-  const holidaySheet: string[] = ["2026-10-02"];
-  return holidaySheet.includes(date);
-}
-
 function parseYearlyScheduleDetail(value: string): Array<{ day: number; month: number }> | null {
   const parts = value.split("/").map((part) => part.trim()).filter(Boolean);
   if (!parts.length) return null;
@@ -130,8 +125,7 @@ export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string
 
   switch (task.cadence) {
     case "DAILY": {
-      const matches = !isHoliday(date.toISODate() ?? "");
-      return { matches, warning: matches ? undefined : "Holiday excluded for daily cadence" };
+      return { matches: true };
     }
     case "WEEKLY": {
       const matches = (task.scheduleDetail ?? "").toLowerCase() === dayOfWeek.toLowerCase();

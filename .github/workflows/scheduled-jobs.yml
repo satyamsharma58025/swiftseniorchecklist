@@ -1,0 +1,14 @@
+name: scheduled-jobs
+on:
+  schedule:
+    - cron: "30 23 * * *"   # 05:00 IST
+    - cron: "0 2 * * *"     # 07:30 IST backup
+  workflow_dispatch:
+jobs:
+  daily-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -fsS --max-time 180 --retry 5 --retry-delay 30 --retry-all-errors \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_BASE_URL }}/api/cron/daily-sync"

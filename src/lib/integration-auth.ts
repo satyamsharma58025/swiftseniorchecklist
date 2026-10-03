@@ -24,12 +24,20 @@ export function secretsMatch(provided: string | null | undefined, expected: stri
  * Guards machine-to-machine routes (n8n, Render cron). Callers must send the
  * shared CRON_SECRET in the `x-cron-secret` header.
  *
+ * For grace period during secret rotation, accepts either the current CRON_SECRET
+ * or the previous secret (CRON_SECRET_PREVIOUS) if set. This allows a smooth transition
+ * without breaking scheduled jobs during a rotation window.
+ *
  * Returns a 401 response when the secret is missing/wrong, otherwise null.
  */
 export function rejectUnlessIntegrationSecret(request: Request): NextResponse | null {
   const provided = request.headers.get("x-cron-secret");
+  const current = process.env.CRON_SECRET;
+  const previous = process.env.CRON_SECRET_PREVIOUS;
 
-  if (!secretsMatch(provided, process.env.CRON_SECRET)) {
+  const isAuthorized = secretsMatch(provided, current) || (previous && secretsMatch(provided, previous));
+
+  if (!isAuthorized) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
 

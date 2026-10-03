@@ -5,12 +5,12 @@
  *   1. Paste this entire file into Code.gs
  *   2. Script Properties (Project Settings -> Script Properties):
  *        APP_BASE_URL        checklist app origin
- *        APP_SECRET          value matching the app's CRON_SECRET
- *        BRIDGE_SECRET       secret used by the app-side dispatcher to refresh forms
+ *        APP_SECRET          value matching the app's APP_SECRET env var (used for health pings and form submissions)
+ *        BRIDGE_SECRET       secret used by the app-side dispatcher to refresh forms (matches FORM_BRIDGE_SECRET)
  *        N8N_WEBHOOK_URL     optional secondary notification endpoint
  *        N8N_WEBHOOK_SECRET  optional secret for the secondary notification endpoint
  *        INDEPENDENT_DAILY_FORMS  "true" (default: creates independent Google Form each day)
- *   3. Run setup() once to initialize triggers.
+ *   3. Run setup() once to initialize triggers (retryPending every 15 minutes, reportHealth every 6 hours).
  *   4. Deploy as Web App (Execute as: Me, Who has access: Anyone).
  *   5. Set the /exec URL as APPS_SCRIPT_WEBAPP_URL on the app service.
  */
@@ -37,13 +37,16 @@ function setup() {
   // Clean existing project triggers to avoid duplicates
   ScriptApp.getProjectTriggers().forEach(function (t) {
     var fn = t.getHandlerFunction();
-    if (fn === 'retryPending_') {
+    if (fn === 'retryPending_' || fn === 'reportHealth_') {
       ScriptApp.deleteTrigger(t);
     }
   });
 
   // Retry queue every 15 minutes; each item observes its own backoff time.
   ScriptApp.newTrigger('retryPending_').timeBased().everyMinutes(15).create();
+
+  // Report health every 6 hours
+  ScriptApp.newTrigger('reportHealth_').timeBased().everyHours(6).create();
 
   var missing = ['BRIDGE_SECRET', 'APP_BASE_URL', 'APP_SECRET'].filter(function (k) {
     return !prop_(k);
@@ -727,6 +730,81 @@ function unblockPending_() {
   Logger.log('[FormBridge] Unblocked pending intake records: ' + unblocked);
 }
 
+/** Time-driven every 6 hours; reports health of the submission queue to the app. */
+function reportHealth_() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+
+  var pendingCount = 0;
+  var deadLetterCount = 0;
+  var blockedCount = 0;
+  var oldestPendingMs = null;
+
+  Object.keys(all).forEach(function (key) {
+    if (key.indexOf('DEAD_LETTER_') === 0) {
+      deadLetterCount += 1;
+    } else if (key.indexOf('PENDING_') === 0) {
+      var saved;
+      try {
+        saved = JSON.parse(all[key]);
+      } catch (err) {
+        return;
+      }
+      var record = saved && saved.payload ? saved : { payload: saved, attempts: 0, blocked: false };
+      if (record.blocked) {
+        blockedCount += 1;
+      } else {
+        pendingCount += 1;
+        if (record.payload && record.payload.submittedAt) {
+          var submittedMs = Date.parse(record.payload.submittedAt);
+          if (Number.isFinite(submittedMs)) {
+            if (!oldestPendingMs || submittedMs < oldestPendingMs) {
+              oldestPendingMs = submittedMs;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  var oldestPendingAgeMinutes = oldestPendingMs ? Math.floor((Date.now() - oldestPendingMs) / 1000 / 60) : null;
+
+  var payload = {
+    pendingCount: pendingCount,
+    deadLetterCount: deadLetterCount,
+    blockedCount: blockedCount,
+    oldestPendingAgeMinutes: oldestPendingAgeMinutes,
+    scriptVersion: 'v1'
+  };
+
+  var baseUrl = prop_('APP_BASE_URL');
+  var appSecret = prop_('APP_SECRET');
+
+  if (!baseUrl || !appSecret) {
+    console.warn('[FormBridge] Health report skipped: APP_BASE_URL or APP_SECRET is missing');
+    return;
+  }
+
+  try {
+    var res = UrlFetchApp.fetch(String(baseUrl).replace(/\/+$/, '') + '/api/integrations/form/health-ping', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-app-secret': appSecret },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+      followRedirects: false
+    });
+    var code = res.getResponseCode();
+    if (code >= 200 && code < 300) {
+      Logger.log('[FormBridge] Health report sent: pending=' + pendingCount + ', deadLettered=' + deadLetterCount + ', blocked=' + blockedCount + ', oldestPendingAgeMinutes=' + oldestPendingAgeMinutes);
+    } else {
+      console.warn('[FormBridge] Health report failed with HTTP ' + code + ': ' + res.getContentText().slice(0, 500));
+    }
+  } catch (err) {
+    console.warn('[FormBridge] Health report failed: ' + String(err));
+  }
+}
+
 function prop_(key) {
   var v = PropertiesService.getScriptProperties().getProperty(key);
   return v === null || v === undefined || v === '' ? '' : v;
@@ -735,3 +813,4 @@ function prop_(key) {
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
+

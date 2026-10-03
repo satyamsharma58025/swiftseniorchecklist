@@ -140,13 +140,20 @@ export async function GET(request: Request) {
     };
   });
 
-  const seniorName = settings.seniorAuthorityName ?? process.env.SENIOR_AUTHORITY_NAME ?? "Shaurya Sir";
-  const seniorPhone = settings.seniorAuthorityPhone ?? process.env.SENIOR_AUTHORITY_PHONE ?? "919031011111";
+  const seniorName = settings.seniorAuthorityName ?? process.env.SENIOR_AUTHORITY_NAME ?? null;
+  const seniorPhone = settings.seniorAuthorityPhone ?? process.env.SENIOR_AUTHORITY_PHONE ?? null;
   const formUrl = process.env.GOOGLE_FORM_URL?.trim() || null;
-  const seniorItems = filteredItems.filter(
-    (item) => item.employeeName.toLowerCase() === seniorName.toLowerCase() ||
-      (item.employeePhone && item.employeePhone.replace(/\D/g, "").endsWith(seniorPhone.replace(/\D/g, "").slice(-10))),
-  );
+
+  if (!seniorName || !seniorPhone) {
+    console.error("[form/today] Senior authority not configured: seniorName=%s, seniorPhone=%s", seniorName ? "set" : "missing", seniorPhone ? "set" : "missing");
+  }
+
+  const seniorItems = seniorName && seniorPhone
+    ? filteredItems.filter(
+        (item) => item.employeeName.toLowerCase() === seniorName.toLowerCase() ||
+          (item.employeePhone && item.employeePhone.replace(/\D/g, "").endsWith(seniorPhone.replace(/\D/g, "").slice(-10))),
+      )
+    : [];
   const seniorChoices = seniorItems.map((item) => formatChoice({
     checklistCode: item.checklistCode,
     employeeName: item.employeeName,
@@ -161,19 +168,14 @@ export async function GET(request: Request) {
     formUrl,
     formConfigured: Boolean(formUrl),
     formLinkSentToday,
-    senior: {
+    senior: seniorName && seniorPhone ? {
       name: seniorName,
       phone: seniorPhone,
       whatsappNumber: toWhatsAppNumber(seniorPhone),
       taskCount: seniorItems.length,
-      choices: seniorChoices.length > 0 ? seniorChoices : filteredItems.map((item) => formatChoice({
-        checklistCode: item.checklistCode,
-        employeeName: item.employeeName,
-        taskDescription: item.taskDescription,
-        priority: item.priority,
-      })),
+      choices: seniorChoices,
       items: seniorItems,
-    },
+    } : null,
     choices: filteredItems.map((item) => formatChoice({
       checklistCode: item.checklistCode,
       employeeName: item.employeeName,

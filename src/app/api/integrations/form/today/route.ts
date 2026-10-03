@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import { toWhatsAppNumber } from "@/lib/business-logic";
 import { ensureSettings } from "@/lib/cron";
-import { getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
-import { dbDate, istDateKey, istDayBounds } from "@/lib/dates";
+import { ensureDailyQueueAndLock, getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
+import { addDays, dateKey, dbDate, istDateKey, istDayBounds } from "@/lib/dates";
 import { formatChoice } from "@/lib/form-submission";
 import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
@@ -43,6 +43,25 @@ export async function GET(request: Request) {
   const [settings] = await Promise.all([
     ensureSettings(),
   ]);
+
+  const today = istDateKey();
+  const tomorrow = dateKey(addDays(dbDate(today), 1));
+  let generation = { created: 0, existing: 0, failed: [] as Array<{ taskCode: string; error: string }> };
+  if (date >= today && date <= tomorrow) {
+    try {
+      const result = await ensureDailyQueueAndLock(runDate);
+      generation = {
+        created: result.created,
+        existing: result.existing,
+        failed: result.failed,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failure = { taskCode: "GENERATION", error: message };
+      generation.failed.push(failure);
+      console.error(JSON.stringify({ event: "form_today_generation_failure", date, ...failure }));
+    }
+  }
 
   const payload = await getTodaysEmployeeTaskSets(runDate);
   const { items, employees, taskCount, durationMs } = payload;
@@ -164,5 +183,6 @@ export async function GET(request: Request) {
     byEmployee,
     recipients: byEmployee,
     items: filteredItems,
+    generation,
   });
 }

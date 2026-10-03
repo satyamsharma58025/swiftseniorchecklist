@@ -58,6 +58,8 @@ jobs:
     steps:
       - name: Check health endpoint
         run: |
+          # Health must stay green; if the app is inactive for >60 days, the
+          # health summary should also fail the job before we keep shipping.
           RESPONSE=$(curl -fsS --max-time 180 --retry 4 --retry-delay 30 --retry-all-errors \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -w "\n%{http_code}" \

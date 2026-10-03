@@ -137,7 +137,14 @@ describe("health history endpoint", () => {
     }
 
     // Build dispatch map
-    const dispatchByDateSlot = new Map<string, Map<string, any>>();
+    const dispatchByDateSlot = new Map<string, Map<string, {
+      slot: string;
+      expected: number;
+      sent: number;
+      failed: number;
+      failedPermanent: number;
+      skipped: number;
+    }>>();
     for (const log of dispatchLogs) {
       const dateStr = dateKey(log.date);
       if (!dispatchByDateSlot.has(dateStr)) {
@@ -174,6 +181,9 @@ describe("health history endpoint", () => {
     expect(dispatch1).toBeDefined();
     const morning1 = dispatch1?.get("MORNING");
     expect(morning1).toBeDefined();
+    if (!morning1) {
+      throw new Error("Expected MORNING dispatch data for base date");
+    }
     expect(morning1.expected).toBe(5);
     expect(morning1.sent).toBe(1);
     expect(morning1.failed).toBe(1);

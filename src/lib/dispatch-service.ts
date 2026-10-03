@@ -269,7 +269,7 @@ function getFailure(error: unknown): DeliveryFailure {
   return { permanent: false, message: error instanceof Error ? error.message : String(error) };
 }
 
-function loggerFailure(date: Date, slot: DispatchSlot, employeeId: string, phone: string | null, status: string, error: string) {
+export function loggerFailure(date: Date, slot: DispatchSlot, employeeId: string, phone: string | null, status: string, error: string) {
   console.error(JSON.stringify({
     event: "dispatch_delivery_failure",
     date: dateKey(date),

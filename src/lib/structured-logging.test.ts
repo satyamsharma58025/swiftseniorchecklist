@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   maskPhone,
   sanitizeErrorForLogging,
@@ -48,7 +48,7 @@ describe("structured logging", () => {
 
     it("handles empty messages", () => {
       expect(sanitizeErrorForLogging("")).toBe("");
-      expect(sanitizeErrorForLogging(null as any)).toBe("");
+      expect(sanitizeErrorForLogging(null)).toBe("");
     });
 
     it("truncates long messages", () => {

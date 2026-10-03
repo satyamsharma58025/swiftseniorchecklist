@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { Prisma } from "@prisma/client";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 
 // Integration test for /api/integrations/form/health-ping endpoint
@@ -7,7 +8,7 @@ describe("POST /api/integrations/form/health-ping", () => {
     // Ensure settings record exists
     await prisma.settings.upsert({
       where: { id: 1 },
-      create: { id: 1, appsScriptHeartbeat: null },
+      create: { id: 1, appsScriptHeartbeat: Prisma.JsonNull },
       update: {},
     });
   });
@@ -16,7 +17,7 @@ describe("POST /api/integrations/form/health-ping", () => {
     // Clean up
     await prisma.settings.update({
       where: { id: 1 },
-      data: { appsScriptHeartbeat: null },
+      data: { appsScriptHeartbeat: Prisma.JsonNull },
     });
   });
 
@@ -63,14 +64,15 @@ describe("POST /api/integrations/form/health-ping", () => {
     const afterUpdate = await prisma.settings.findFirst({ where: { id: 1 } });
 
     expect(afterUpdate).toBeDefined();
-    expect(afterUpdate?.appsScriptHeartbeat).toBeDefined();
-    if (afterUpdate?.appsScriptHeartbeat) {
-      expect(afterUpdate.appsScriptHeartbeat.pendingCount).toBe(2);
-      expect(afterUpdate.appsScriptHeartbeat.deadLetterCount).toBe(1);
-      expect(afterUpdate.appsScriptHeartbeat.blockedCount).toBe(0);
-      expect(afterUpdate.appsScriptHeartbeat.oldestPendingAgeMinutes).toBe(15);
-      expect(afterUpdate.appsScriptHeartbeat.scriptVersion).toBe("v1");
-      expect(afterUpdate.appsScriptHeartbeat.latestHeartbeatAt).toBeDefined();
+    const heartbeat = afterUpdate?.appsScriptHeartbeat as Record<string, unknown> | null | undefined;
+    expect(heartbeat).toBeDefined();
+    if (heartbeat) {
+      expect(heartbeat.pendingCount).toBe(2);
+      expect(heartbeat.deadLetterCount).toBe(1);
+      expect(heartbeat.blockedCount).toBe(0);
+      expect(heartbeat.oldestPendingAgeMinutes).toBe(15);
+      expect(heartbeat.scriptVersion).toBe("v1");
+      expect(heartbeat.latestHeartbeatAt).toBeDefined();
     }
   });
 
@@ -91,7 +93,7 @@ describe("POST /api/integrations/form/health-ping", () => {
     });
 
     const firstUpdate = await prisma.settings.findFirst({ where: { id: 1 } });
-    const firstHeartbeatTime = firstUpdate?.appsScriptHeartbeat?.latestHeartbeatAt;
+    const firstHeartbeatTime = (firstUpdate?.appsScriptHeartbeat as Record<string, unknown> | null | undefined)?.latestHeartbeatAt;
 
     // Wait a bit to ensure timestamp changes
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -112,14 +114,15 @@ describe("POST /api/integrations/form/health-ping", () => {
     });
 
     const secondUpdate = await prisma.settings.findFirst({ where: { id: 1 } });
+    const secondHeartbeat = secondUpdate?.appsScriptHeartbeat as Record<string, unknown> | null | undefined;
 
-    expect(secondUpdate?.appsScriptHeartbeat).toBeDefined();
-    if (secondUpdate?.appsScriptHeartbeat) {
-      expect(secondUpdate.appsScriptHeartbeat.pendingCount).toBe(3);
-      expect(secondUpdate.appsScriptHeartbeat.deadLetterCount).toBe(2);
-      expect(secondUpdate.appsScriptHeartbeat.blockedCount).toBe(1);
-      expect(secondUpdate.appsScriptHeartbeat.oldestPendingAgeMinutes).toBe(20);
-      expect(secondUpdate.appsScriptHeartbeat.latestHeartbeatAt).not.toBe(firstHeartbeatTime);
+    expect(secondHeartbeat).toBeDefined();
+    if (secondHeartbeat) {
+      expect(secondHeartbeat.pendingCount).toBe(3);
+      expect(secondHeartbeat.deadLetterCount).toBe(2);
+      expect(secondHeartbeat.blockedCount).toBe(1);
+      expect(secondHeartbeat.oldestPendingAgeMinutes).toBe(20);
+      expect(secondHeartbeat.latestHeartbeatAt).not.toBe(firstHeartbeatTime);
     }
   });
 });

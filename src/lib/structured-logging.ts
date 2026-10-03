@@ -20,7 +20,7 @@ export type LogEvent =
 
 export type StructuredLog = {
   event: LogEvent;
-  timestamp: string;
+  timestamp?: string;
   jobName?: string;
   runDate?: string;
   durationMs?: number;
@@ -33,6 +33,7 @@ export type StructuredLog = {
     sent?: number;
     failed?: number;
     skipped?: number;
+    remaining?: number;
   };
   errorCode?: string;
   errorMessage?: string;
@@ -46,27 +47,33 @@ export function maskPhone(phone: string | null | undefined): string {
   if (!phone) return "***";
   const digits = String(phone).replace(/\D/g, "");
   if (digits.length < 4) return "***";
-  return "*".repeat(Math.max(0, digits.length - 4)) + digits.slice(-4);
+  return "****" + digits.slice(-4);
 }
 
 /**
  * Sanitize error messages by removing phone numbers and other sensitive data.
  * Allows errors to be logged safely for debugging.
  */
-export function sanitizeErrorForLogging(message: string, phoneToMask?: string | null): string {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function sanitizeErrorForLogging(message: string | null | undefined, phoneToMask?: string | null): string {
   if (!message) return "";
   let result = message;
 
-  // Mask phone numbers (patterns like 91xxxxxxxxxx, +91xxxxxxxxxx, etc.)
-  result = result.replace(/\b\d{10,}\b/g, "***");
+  result = result.replace(/\b\d{10,15}\b/g, (digits) => maskPhone(digits));
 
-  // Mask specific phone if provided
   if (phoneToMask) {
-    const digits = phoneToMask.replace(/\D/g, "");
-    result = result.replace(new RegExp(digits.replace(/./g, "\\$&"), "g"), maskPhone(phoneToMask));
+    const formatted = String(phoneToMask);
+    const digits = formatted.replace(/\D/g, "");
+    if (digits.length >= 4) {
+      result = result.replace(new RegExp(escapeRegExp(formatted), "g"), maskPhone(formatted));
+      result = result.replace(new RegExp(escapeRegExp(digits), "g"), maskPhone(formatted));
+    }
   }
 
-  return result.slice(0, 500); // Truncate for safety
+  return result.slice(0, 500);
 }
 
 /**
@@ -74,10 +81,9 @@ export function sanitizeErrorForLogging(message: string, phoneToMask?: string | 
  * Safe to output directly; contains no secrets or sensitive data.
  */
 export function logStructured(log: StructuredLog): void {
-  // Ensure timestamp if not provided
-  const finalLog = {
+  const finalLog: StructuredLog = {
     ...log,
-    timestamp: log.timestamp || new Date().toISOString(),
+    timestamp: log.timestamp ?? new Date().toISOString(),
   };
   console.log(JSON.stringify(finalLog));
 }

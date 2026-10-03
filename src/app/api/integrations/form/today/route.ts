@@ -145,7 +145,7 @@ export async function GET(request: Request) {
   const formUrl = process.env.GOOGLE_FORM_URL?.trim() || null;
 
   if (!seniorName || !seniorPhone) {
-    console.error("[form/today] Senior authority not configured: seniorName=%s, seniorPhone=%s", seniorName ? "set" : "missing", seniorPhone ? "set" : "missing");
+    console.warn("[form/today] Senior authority not configured: seniorName=%s, seniorPhone=%s", seniorName ? "set" : "missing", seniorPhone ? "set" : "missing");
   }
 
   const seniorItems = seniorName && seniorPhone

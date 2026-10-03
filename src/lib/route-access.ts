@@ -10,6 +10,10 @@ export function requireRole(role: string | null | undefined, allowedRoles: Route
   return allowedRoles.includes(normalized as RouteRole);
 }
 
+export function canAccessManageMenu(role: string | null | undefined): boolean {
+  return requireRole(role, classifyRoute("/admin/employees").allowedRoles);
+}
+
 export function classifyRoute(pathname: string, method = "GET"): RoutePolicy {
   const normalized = (pathname ?? "/").trim();
   const httpMethod = method.toUpperCase();

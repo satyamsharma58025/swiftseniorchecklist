@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyRoute, requireRole } from "@/lib/route-access";
+import { canAccessManageMenu, classifyRoute, requireRole } from "@/lib/route-access";
 
 describe("classifyRoute", () => {
   it("allows public login and auth endpoints", () => {
@@ -42,5 +42,14 @@ describe("requireRole", () => {
     expect(requireRole("MANAGER", ["MANAGER", "SENIOR"])).toBe(true);
     expect(requireRole("EMPLOYEE", ["MANAGER", "SENIOR"])).toBe(false);
     expect(requireRole("employee", ["MANAGER", "SENIOR", "EMPLOYEE"])).toBe(true);
+  });
+});
+
+describe("canAccessManageMenu", () => {
+  it("follows the existing admin route permissions", () => {
+    expect(canAccessManageMenu("MANAGER")).toBe(true);
+    expect(canAccessManageMenu("SENIOR")).toBe(true);
+    expect(canAccessManageMenu("EMPLOYEE")).toBe(false);
+    expect(canAccessManageMenu(undefined)).toBe(false);
   });
 });

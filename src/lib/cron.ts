@@ -112,7 +112,7 @@ export async function runCronJob<T>(
       },
     });
 
-    return NextResponse.json(result);
+    return result instanceof Response ? result : NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown cron error";
     await prisma.cronRunLog.update({

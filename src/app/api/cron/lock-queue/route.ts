@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { runCronJob } from "@/lib/cron";
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const { date } = body ?? {};
 
   return runCronJob(request, "lock-queue", date, async (runDate) => {

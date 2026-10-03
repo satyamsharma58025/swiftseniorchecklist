@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { cadenceMatches, validateScheduleDetail } from "@/lib/cadence";
+import { istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
@@ -56,6 +57,6 @@ export async function POST(request: Request) {
     cadence: task.cadence,
     scheduleDetail: task.scheduleDetail,
     priority: task.priority,
-    valid: cadenceMatches({ cadence: task.cadence as "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY", scheduleDetail: task.scheduleDetail }, new Date()),
+    valid: cadenceMatches({ cadence: task.cadence as "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY", scheduleDetail: task.scheduleDetail }, istDateKey()),
   }, { status: 201 });
 }

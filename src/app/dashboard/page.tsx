@@ -1,11 +1,11 @@
 import Link from "next/link";
 
-import { getBusinessToday } from "@/lib/business-logic";
+import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function DashboardPage() {
-  const today = getBusinessToday();
-  const date = new Date(`${today}T00:00:00.000Z`);
+  const today = istDateKey();
+  const date = dbDate(today);
 
   const [employees, items] = await Promise.all([
     prisma.employee.findMany({

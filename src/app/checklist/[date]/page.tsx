@@ -5,7 +5,7 @@ import { BrandHeader } from "@/app/checklist/_components/BrandHeader";
 import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
 import { DateControl } from "@/app/checklist/_components/DateControl";
 import { EmployeeTabs } from "@/app/checklist/_components/EmployeeTabs";
-import { getBusinessToday } from "@/lib/business-logic";
+import { addDays, dateKey, dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 const EMPLOYEE_NAMES = [
@@ -33,7 +33,16 @@ export default async function ChecklistDatePage({
 }) {
   const { date } = await params;
   const resolvedParams = (await searchParams) ?? {};
-  const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getBusinessToday();
+  const today = istDateKey();
+  let selectedDate = today;
+  try {
+    dbDate(date);
+    selectedDate = date;
+  } catch {
+    selectedDate = today;
+  }
+  const tomorrow = dateKey(addDays(dbDate(today), 1));
+  const mayGenerate = selectedDate >= today && selectedDate <= tomorrow;
 
   const employees = await prisma.employee.findMany({
     where: { active: true },
@@ -58,7 +67,7 @@ export default async function ChecklistDatePage({
     notFound();
   }
 
-  const targetDate = new Date(`${selectedDate}T00:00:00.000Z`);
+  const targetDate = dbDate(selectedDate);
 
   let rows = await prisma.dailyChecklistItem.findMany({
     where: {
@@ -67,7 +76,7 @@ export default async function ChecklistDatePage({
     orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
   });
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && mayGenerate) {
     const { ensureDailyQueueAndLock } = await import("@/lib/daily-task-service");
     await ensureDailyQueueAndLock(targetDate);
     rows = await prisma.dailyChecklistItem.findMany({
@@ -109,9 +118,7 @@ export default async function ChecklistDatePage({
     pending: rows.filter((row) => row.status === "PENDING").length,
   };
   const dayWindow = Array.from({ length: 14 }, (_, index) => {
-    const target = new Date(targetDate);
-    target.setUTCDate(target.getUTCDate() - 6 + index);
-    return getBusinessToday(target);
+    return dateKey(addDays(targetDate, -6 + index));
   });
 
   return (

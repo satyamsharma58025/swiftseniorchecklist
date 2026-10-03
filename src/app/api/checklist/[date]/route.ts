@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { dbDate, dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
@@ -7,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ date: string }> },
 ) {
   const { date } = await params;
-  const targetDate = new Date(`${date}T00:00:00.000Z`);
+  const targetDate = dbDate(date);
 
   const items = await prisma.dailyChecklistItem.findMany({
     where: { date: targetDate },
@@ -27,7 +28,7 @@ export async function GET(
   });
 
   return NextResponse.json({
-    date,
+    date: dateKey(targetDate),
     items: items.map((item) => ({
       ...item,
       updatedAt: item.updatedAt.toISOString(),

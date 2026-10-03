@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { runCronJob } from "@/lib/cron";
 
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
     const escalations = items.filter((item) => item.escalated);
 
     return NextResponse.json({
-      runDate: runDate.toISOString().slice(0, 10),
+      runDate: dateKey(runDate),
       totals: {
         items: items.length,
         dueForReminder: dueForReminder.length,

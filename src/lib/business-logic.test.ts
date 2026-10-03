@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  getBusinessToday,
   handleNotDone,
   matchesMonthly,
   normalizePhone,
-  parseBusinessDate,
 } from "@/lib/business-logic";
+import { dbDate, istDateKey } from "@/lib/dates";
 
 describe("normalizePhone", () => {
   it("normalizes valid phone strings into +91 format", () => {
@@ -33,19 +32,19 @@ describe("matchesMonthly", () => {
   });
 });
 
-describe("getBusinessToday", () => {
+describe("istDateKey", () => {
   it("returns an ISO-like business date in Asia/Kolkata", () => {
-    const value = getBusinessToday();
+    const value = istDateKey();
     expect(value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("moves to the next business day after midnight in Asia/Kolkata", () => {
-    const value = getBusinessToday(new Date("2026-09-20T18:30:00.000Z"));
+    const value = istDateKey(new Date("2026-09-20T18:30:00.000Z"));
     expect(value).toBe("2026-09-21");
   });
 
-  it("parses a business date at the start of the Asia/Kolkata day", () => {
-    expect(parseBusinessDate("2026-09-21").toISOString().slice(0, 10)).toBe("2026-09-20");
+  it("parses a business date at UTC midnight for database storage", () => {
+    expect(dbDate("2026-09-21").toISOString()).toBe("2026-09-21T00:00:00.000Z");
   });
 });
 

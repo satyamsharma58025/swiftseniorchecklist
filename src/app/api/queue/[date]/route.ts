@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { normalizePhone } from "@/lib/business-logic";
+import { dbDate } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { reserveNextQueueCode } from "@/lib/cadence";
 
@@ -10,7 +11,7 @@ export async function GET(
   { params }: { params: Promise<{ date: string }> },
 ) {
   const { date } = await params;
-  const targetDate = new Date(`${date}T00:00:00.000Z`);
+  const targetDate = dbDate(date);
 
   const items = await prisma.assignmentQueueItem.findMany({
     where: { date: targetDate },
@@ -59,7 +60,7 @@ export async function POST(
     return NextResponse.json({ error: "INVALID_PRIORITY" }, { status: 400 });
   }
 
-  const targetDate = new Date(`${date}T00:00:00.000Z`);
+  const targetDate = dbDate(date);
   const nextQueueCode = await prisma.$transaction(async (tx) => reserveNextQueueCode(tx, targetDate));
   const taskMaster = await prisma.taskMaster.create({
     data: {

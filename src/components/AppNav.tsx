@@ -3,10 +3,10 @@ import Link from "next/link";
 import { getServerSession } from "next-auth/next";
 
 import { authOptions } from "@/auth";
-import { getBusinessToday } from "@/lib/business-logic";
+import { istDateKey } from "@/lib/dates";
 import logo from "@/lib/logo.png";
 
-const today = getBusinessToday();
+const today = istDateKey();
 
 const navGroups = [
   {

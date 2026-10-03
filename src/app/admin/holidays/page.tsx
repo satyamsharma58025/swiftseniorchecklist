@@ -1,3 +1,4 @@
+import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function HolidaysPage() {
@@ -27,7 +28,7 @@ export default async function HolidaysPage() {
               <tbody>
                 {holidays.map((holiday, index) => (
                   <tr key={holiday.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.date.toISOString().slice(0, 10)}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(holiday.date)}</td>
                     <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{holiday.name}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.appliesTo}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.notes ?? "—"}</td>

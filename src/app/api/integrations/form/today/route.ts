@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getBusinessToday, toWhatsAppNumber } from "@/lib/business-logic";
+import { toWhatsAppNumber } from "@/lib/business-logic";
 import { ensureSettings } from "@/lib/cron";
 import { getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
+import { dbDate, istDateKey, istDayBounds } from "@/lib/dates";
 import { formatChoice } from "@/lib/form-submission";
 import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
@@ -28,8 +29,16 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const requested = url.searchParams.get("date");
   const employeeFilter = url.searchParams.get("employee")?.trim();
-  const date = requested && /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : getBusinessToday();
-  const runDate = new Date(`${date}T00:00:00.000Z`);
+  let date = istDateKey();
+  if (requested) {
+    try {
+      dbDate(requested);
+      date = requested;
+    } catch {
+      console.warn("[form/today] Invalid date key; using the current IST date", { requested });
+    }
+  }
+  const runDate = dbDate(date);
 
   const [settings] = await Promise.all([
     ensureSettings(),
@@ -54,8 +63,7 @@ export async function GET(request: Request) {
       })
     : items;
 
-  const dayStartIst = new Date(`${date}T00:00:00+05:30`);
-  const dayEndIst = new Date(`${date}T23:59:59+05:30`);
+  const { start: dayStartIst, end: dayEndIst } = istDayBounds(date);
   const recipientLogs = await prisma.notificationLog.findMany({
     where: {
       templateName: "senior_daily_checklist",

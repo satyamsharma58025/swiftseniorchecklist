@@ -5,6 +5,7 @@ import {
   normalizeCadence,
   normalizeScheduleDetail,
   normalizeTaskMasterRow,
+  parseDateValue,
 } from "@/lib/task-master-import";
 
 describe("task-master import helpers", () => {
@@ -21,6 +22,12 @@ describe("task-master import helpers", () => {
     expect(normalizeScheduleDetail("MONTHLY", "31")).toBe("31");
     expect(normalizeScheduleDetail("QUARTERLY", "15")).toBe("15");
     expect(normalizeScheduleDetail("YEARLY", "15-06")).toBe("15-06");
+  });
+
+  it("parses workbook date values as validated business date keys", () => {
+    expect(parseDateValue("2026-02-28")).toBe("2026-02-28");
+    expect(parseDateValue("29/02/2024")).toBe("2024-02-29");
+    expect(() => parseDateValue("2026-02-30")).toThrow("could not be parsed");
   });
 
   it("parses a real row into normalized task fields", () => {

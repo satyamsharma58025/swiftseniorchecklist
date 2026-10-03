@@ -2,8 +2,9 @@
 
 import * as XLSX from "xlsx";
 
+import { dbDate } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
-import { normalizeHeader } from "@/lib/task-master-import";
+import { normalizeHeader, parseDateValue } from "@/lib/task-master-import";
 
 function asString(value: unknown): string {
   return String(value ?? "").trim();
@@ -44,9 +45,12 @@ function rowToObject(row: Array<string>, headers: Array<string>): Record<string,
 function parseDate(value: unknown): Date | null {
   const text = asString(value);
   if (!text) return null;
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
+  try {
+    const key = parseDateValue(text);
+    return key ? dbDate(key) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveDefaultOrg() {

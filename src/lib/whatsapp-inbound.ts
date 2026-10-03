@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
-import { getBusinessToday, toWhatsAppNumber } from "@/lib/business-logic";
+import { toWhatsAppNumber } from "@/lib/business-logic";
+import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { extractMessageFromWhatsAppPayload } from "@/lib/whatsapp-webhook";
 
@@ -66,7 +67,7 @@ export async function processInboundWhatsAppPayload(
   }
 
   // Checklist rows are stored at UTC midnight of the IST business date.
-  const runDate = new Date(`${getBusinessToday()}T00:00:00.000Z`);
+  const runDate = dbDate(istDateKey());
 
   const openItems = await prisma.dailyChecklistItem.findMany({
     where: { employeeName: matchedEmployee.name, date: runDate, status: { not: "DONE" } },

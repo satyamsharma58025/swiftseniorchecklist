@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { dbDate } from "@/lib/dates";
 
 const db = vi.hoisted(() => ({
   $transaction: vi.fn(async (callback) => callback(db)),
@@ -30,7 +31,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
 import { ensureDailyQueueAndLock, getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
 
-const runDate = new Date("2026-09-30T00:00:00.000Z");
+const runDate = dbDate("2026-09-30");
 
 function baseTask(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -172,9 +173,9 @@ describe("ensureDailyQueueAndLock", () => {
       id: "tm-2",
       employeeId: "emp-old",
       taskCode: "EMP-01",
-      startDate: new Date("2026-09-01T00:00:00.000Z"),
-      endDate: new Date("2026-09-30T00:00:00.000Z"),
-      reassignments: [{ id: "ra-1", taskMasterId: "tm-2", previousEmployeeId: "emp-old", newEmployeeId: "emp-new", effectiveDate: new Date("2026-09-30T00:00:00.000Z") }],
+      startDate: dbDate("2026-09-01"),
+      endDate: dbDate("2026-09-30"),
+      reassignments: [{ id: "ra-1", taskMasterId: "tm-2", previousEmployeeId: "emp-old", newEmployeeId: "emp-new", effectiveDate: dbDate("2026-09-30") }],
     });
     db.taskMaster.findMany.mockResolvedValue([task]);
     db.employee.findUnique.mockResolvedValue({ id: "emp-new", name: "Santosh Guddu", phone: "9876543211", supervisor: null });

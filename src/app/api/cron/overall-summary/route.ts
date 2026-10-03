@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { runCronJob } from "@/lib/cron";
 
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
     ]);
 
     return NextResponse.json({
-      runDate: runDate.toISOString().slice(0, 10),
+      runDate: dateKey(runDate),
       summary: {
         total,
         pending,

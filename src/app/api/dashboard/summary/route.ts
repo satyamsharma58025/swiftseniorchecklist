@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { getBusinessToday } from "@/lib/business-logic";
+import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const today = getBusinessToday();
-  const date = new Date(`${today}T00:00:00.000Z`);
+  const today = istDateKey();
+  const date = dbDate(today);
 
   const items = await prisma.dailyChecklistItem.findMany({
     where: { date },

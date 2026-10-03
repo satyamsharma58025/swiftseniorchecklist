@@ -1,3 +1,4 @@
+import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function TaskPausesPage() {
@@ -28,7 +29,7 @@ export default async function TaskPausesPage() {
                 {pauses.map((pause, index) => (
                   <tr key={pause.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{pause.taskMaster.taskCode} — {pause.taskMaster.taskDescription}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{pause.startDate.toISOString().slice(0, 10)} to {pause.endDate.toISOString().slice(0, 10)}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(pause.startDate)} to {dateKey(pause.endDate)}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{pause.reason}</td>
                   </tr>
                 ))}

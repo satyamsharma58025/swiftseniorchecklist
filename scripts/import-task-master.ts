@@ -2,6 +2,7 @@
 
 import * as XLSX from "xlsx";
 
+import { dbDate } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { normalizeTaskMasterRow, findHeaderKey } from "@/lib/task-master-import";
 
@@ -118,8 +119,8 @@ async function main() {
         cadence: row.data.cadence,
         scheduleDetail: row.data.scheduleDetail,
         active: row.data.active,
-        startDate: row.data.startDate ? new Date(`${row.data.startDate}T00:00:00.000Z`) : null,
-        endDate: row.data.endDate ? new Date(`${row.data.endDate}T00:00:00.000Z`) : null,
+        startDate: row.data.startDate ? dbDate(row.data.startDate) : null,
+        endDate: row.data.endDate ? dbDate(row.data.endDate) : null,
         escalationThreshold: row.data.escalationThreshold,
         priority: "MEDIUM",
       },
@@ -130,8 +131,8 @@ async function main() {
         cadence: row.data.cadence,
         scheduleDetail: row.data.scheduleDetail,
         active: row.data.active,
-        startDate: row.data.startDate ? new Date(`${row.data.startDate}T00:00:00.000Z`) : null,
-        endDate: row.data.endDate ? new Date(`${row.data.endDate}T00:00:00.000Z`) : null,
+        startDate: row.data.startDate ? dbDate(row.data.startDate) : null,
+        endDate: row.data.endDate ? dbDate(row.data.endDate) : null,
         escalationThreshold: row.data.escalationThreshold,
         priority: "MEDIUM",
       },

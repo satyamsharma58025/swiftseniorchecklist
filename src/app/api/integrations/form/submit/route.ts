@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { DateTime } from "luxon";
 
-import { getBusinessToday, toWhatsAppNumber } from "@/lib/business-logic";
+import { toWhatsAppNumber } from "@/lib/business-logic";
 import { colorFor } from "@/lib/cadence";
+import { dbDate, istDateKey } from "@/lib/dates";
 import { planFormUpdates } from "@/lib/form-submission";
 import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
@@ -42,17 +42,16 @@ export async function POST(request: Request) {
 
   const body = parsed.data;
   if (body.date !== undefined) {
-    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(body.date)
-      ? DateTime.fromISO(body.date, { zone: "UTC" })
-      : null;
-    if (!parsedDate?.isValid || parsedDate.toFormat("yyyy-MM-dd") !== body.date) {
+    try {
+      dbDate(body.date);
+    } catch {
       console.error("[form/submit] INVALID_DATE", { date: body.date, responseId: body.responseId });
       return NextResponse.json({ error: "INVALID_DATE" }, { status: 400 });
     }
   }
 
-  const date = body.date ?? getBusinessToday();
-  const runDate = new Date(`${date}T00:00:00.000Z`);
+  const date = body.date ?? istDateKey();
+  const runDate = dbDate(date);
   const eventId = `form:${body.responseId}`;
 
   // Idempotency: the unique eventId means a retry of the same response is a no-op.

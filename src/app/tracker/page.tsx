@@ -1,14 +1,8 @@
 import Link from "next/link";
+import { DateTime } from "luxon";
 
+import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
-
-function monthStart(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0));
-}
-
-function addMonths(date: Date, offset: number) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1, 0, 0, 0, 0));
-}
 
 export default async function TrackerPage({
   searchParams,
@@ -16,13 +10,24 @@ export default async function TrackerPage({
   searchParams?: Promise<{ month?: string }>;
 }) {
   const resolved = (await searchParams) ?? {};
-  const currentMonth = resolved.month ? new Date(`${resolved.month}-01T00:00:00.000Z`) : monthStart(new Date());
-  const start = monthStart(currentMonth);
-  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+  let currentMonth = istDateKey().slice(0, 7);
+  if (resolved.month && /^\d{4}-\d{2}$/.test(resolved.month)) {
+    try {
+      dbDate(`${resolved.month}-01`);
+      currentMonth = resolved.month;
+    } catch {
+      currentMonth = istDateKey().slice(0, 7);
+    }
+  }
+  const monthStart = DateTime.fromISO(`${currentMonth}-01`, { zone: "UTC" });
+  const startKey = `${currentMonth}-01`;
+  const nextMonthStartKey = monthStart.plus({ months: 1 }).toFormat("yyyy-MM-dd");
+  const start = dbDate(startKey);
+  const endExclusive = dbDate(nextMonthStartKey);
 
   const rows = await prisma.dailyChecklistItem.findMany({
     where: {
-      date: { gte: start, lte: end },
+      date: { gte: start, lt: endExclusive },
     },
     select: {
       employeeName: true,
@@ -44,8 +49,8 @@ export default async function TrackerPage({
     };
   });
 
-  const prevMonth = addMonths(currentMonth, -1).toISOString().slice(0, 7);
-  const nextMonth = addMonths(currentMonth, 1).toISOString().slice(0, 7);
+  const prevMonth = monthStart.minus({ months: 1 }).toFormat("yyyy-MM");
+  const nextMonth = monthStart.plus({ months: 1 }).toFormat("yyyy-MM");
 
   return (
     <main className="min-h-screen bg-paper p-4 text-ink md:p-6">
@@ -59,7 +64,7 @@ export default async function TrackerPage({
             <div className="flex items-center gap-2">
               <Link href={`/tracker?month=${prevMonth}`} className="neo-press border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">Prev</Link>
               <span className="border-[3px] border-paper bg-ink px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-paper">
-                {currentMonth.toLocaleString("en-IN", { month: "long", year: "numeric" })}
+                {monthStart.setLocale("en-IN").toFormat("LLLL yyyy")}
               </span>
               <Link href={`/tracker?month=${nextMonth}`} className="neo-press border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">Next</Link>
             </div>

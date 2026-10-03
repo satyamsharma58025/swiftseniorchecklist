@@ -1,3 +1,4 @@
+import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function ReassignmentsPage() {
@@ -50,7 +51,7 @@ export default async function ReassignmentsPage() {
                       </td>
                       <td className="border-[3px] border-ink px-4 py-3 text-ink">{employeeMap.get(record.previousEmployeeId) ?? "Unknown employee"}</td>
                       <td className="border-[3px] border-ink px-4 py-3 text-ink">{employeeMap.get(record.newEmployeeId) ?? "Unknown employee"}</td>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{record.effectiveDate.toISOString().slice(0, 10)}</td>
+                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(record.effectiveDate)}</td>
                       <td className="border-[3px] border-ink px-4 py-3 text-ink">{record.reason}</td>
                     </tr>
                   ))

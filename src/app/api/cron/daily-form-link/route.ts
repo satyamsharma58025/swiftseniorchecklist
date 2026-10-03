@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { dateKey } from "@/lib/dates";
 import { ensureSettings, runCronJob } from "@/lib/cron";
 
 export async function GET(request: Request) {
@@ -11,7 +12,7 @@ export async function GET(request: Request) {
     return {
       seniorName: settings.seniorAuthorityName ?? "Senior Authority",
       seniorPhone: settings.seniorAuthorityPhone ?? null,
-      checklistUrl: `${baseUrl.replace(/\/$/, "")}/checklist/${runDate.toISOString().slice(0, 10)}`,
+      checklistUrl: `${baseUrl.replace(/\/$/, "")}/checklist/${dateKey(runDate)}`,
       taskCount,
     };
   });

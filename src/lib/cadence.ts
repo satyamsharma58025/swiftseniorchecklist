@@ -1,13 +1,11 @@
 import { DateTime } from "luxon";
+import { dbDate, dateKey } from "@/lib/dates";
+
+export { dateKey } from "@/lib/dates";
 
 export type Cadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type ChecklistStatus = "PENDING" | "DONE" | "NOT_DONE";
 export type ColorStatus = "YELLOW" | "GREEN" | "RED" | "ORANGE" | "GREY";
-
-export function dateKey(value: Date | string): string {
-  const parsed = typeof value === "string" ? DateTime.fromISO(value, { zone: "Asia/Kolkata" }) : DateTime.fromJSDate(value, { zone: "Asia/Kolkata" });
-  return parsed.isValid ? parsed.toFormat("yyyy-MM-dd") : "";
-}
 
 export function checklistCode(taskCode: string, date: Date | string): string {
   const key = dateKey(date).replace(/-/g, "");
@@ -32,7 +30,7 @@ export async function reserveNextQueueCode(
   },
   date: Date | string,
 ): Promise<string> {
-  const normalizedDate = typeof date === "string" ? new Date(`${date}T00:00:00.000Z`) : new Date(date);
+  const normalizedDate = dbDate(dateKey(date));
   const dateKeyValue = dateKey(normalizedDate);
 
   if (tx.$executeRaw) {
@@ -74,7 +72,7 @@ function parseYearlyScheduleDetail(value: string): Array<{ day: number; month: n
     }
 
     const day = Number.parseInt(matched[1], 10);
-    const month = DateTime.fromFormat(matched[2], "MMM", { zone: "Asia/Kolkata" }).month;
+    const month = DateTime.fromFormat(matched[2], "MMM", { zone: "UTC" }).month;
     if (!Number.isInteger(day) || day < 1 || day > 31 || !month) {
       return null;
     }
@@ -119,8 +117,10 @@ export function validateScheduleDetail(cadence: Cadence, scheduleDetail?: string
 }
 
 export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string | null }, dateValue: Date | string): { matches: boolean; warning?: string } {
-  const date = typeof dateValue === "string" ? DateTime.fromISO(dateValue, { zone: "Asia/Kolkata" }) : DateTime.fromJSDate(dateValue, { zone: "Asia/Kolkata" });
-  if (!date.isValid) {
+  let date: DateTime;
+  try {
+    date = DateTime.fromJSDate(dbDate(dateKey(dateValue)), { zone: "UTC" });
+  } catch {
     return { matches: false, warning: "Invalid date" };
   }
 
@@ -142,7 +142,7 @@ export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string
       if (!Number.isInteger(requested)) {
         return { matches: false, warning: `Invalid monthly schedule detail: ${task.scheduleDetail ?? ""}` };
       }
-      const lastDay = date.daysInMonth;
+      const lastDay = date.daysInMonth ?? 31;
       const matches = requested === day || (requested > lastDay && day === lastDay);
       return { matches, warning: matches ? undefined : `Month schedule does not match day ${day}` };
     }
@@ -152,7 +152,8 @@ export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string
         return { matches: false, warning: `Invalid quarterly schedule detail: ${task.scheduleDetail ?? ""}` };
       }
       const validQuarterMonths = [3, 6, 9, 12];
-      const matches = validQuarterMonths.includes(month) && (requested === day || (requested > date.daysInMonth && day === date.daysInMonth));
+      const lastDay = date.daysInMonth ?? 31;
+      const matches = validQuarterMonths.includes(month) && (requested === day || (requested > lastDay && day === lastDay));
       return { matches, warning: matches ? undefined : `Quarterly schedule does not match today` };
     }
     case "YEARLY": {
@@ -167,7 +168,7 @@ export function cadenceMatches(task: { cadence: Cadence; scheduleDetail?: string
       }
 
       const result = parts.some(({ day: requestedDay, month: requestedMonth }) => {
-        const monthInfo = DateTime.fromObject({ year: date.year, month: requestedMonth }, { zone: "Asia/Kolkata" });
+        const monthInfo = DateTime.fromObject({ year: date.year, month: requestedMonth }, { zone: "UTC" });
         const lastDay = monthInfo.daysInMonth ?? 31;
         return date.month === requestedMonth && (requestedDay === day || (requestedDay > lastDay && day === lastDay));
       });

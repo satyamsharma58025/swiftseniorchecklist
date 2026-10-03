@@ -1,7 +1,6 @@
-import { DateTime } from "luxon";
-
 import { toWhatsAppNumber } from "@/lib/business-logic";
 import { cadenceMatches, checklistCode, colorFor, reserveNextQueueCode } from "@/lib/cadence";
+import { dateKey, istDayBounds } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export type DueTaskMaster = {
@@ -37,9 +36,11 @@ export type DueTaskMaster = {
 
 function toBusinessDateKey(value: Date | string | null | undefined): string | null {
   if (!value) return null;
-  const date = typeof value === "string" ? new Date(value) : value;
-  const parsed = DateTime.fromJSDate(date, { zone: "Asia/Kolkata" });
-  return parsed.isValid ? parsed.toISODate() : null;
+  try {
+    return dateKey(value);
+  } catch {
+    return null;
+  }
 }
 
 export async function resolveAssignedEmployee(
@@ -69,10 +70,9 @@ export async function resolveAssignedEmployee(
   const reassignments = Array.isArray(task.reassignments) ? task.reassignments : [];
   const effectiveReassignment = reassignments
     .filter((entry) => {
-      const effectiveDate = new Date(entry.effectiveDate);
-      return !Number.isNaN(effectiveDate.getTime()) && effectiveDate <= targetDate;
+      return dateKey(entry.effectiveDate) <= dateKey(targetDate);
     })
-    .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime())[0];
+    .sort((a, b) => dateKey(b.effectiveDate).localeCompare(dateKey(a.effectiveDate)))[0];
 
   if (!effectiveReassignment) {
     return {
@@ -121,6 +121,7 @@ export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskMaster
   });
 
   const dueTaskMasters: DueTaskMaster[] = [];
+  const targetDateKey = dateKey(targetDate);
 
   for (const task of taskMasters) {
     const isPaused = await prisma.taskPause.findFirst({
@@ -135,11 +136,11 @@ export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskMaster
       continue;
     }
 
-    if (task.startDate && toBusinessDateKey(task.startDate) && toBusinessDateKey(task.startDate)! > DateTime.fromJSDate(targetDate, { zone: "Asia/Kolkata" }).toISODate()!) {
+    if (task.startDate && toBusinessDateKey(task.startDate) && toBusinessDateKey(task.startDate)! > targetDateKey) {
       continue;
     }
 
-    if (task.endDate && toBusinessDateKey(task.endDate) && toBusinessDateKey(task.endDate)! < DateTime.fromJSDate(targetDate, { zone: "Asia/Kolkata" }).toISODate()!) {
+    if (task.endDate && toBusinessDateKey(task.endDate) && toBusinessDateKey(task.endDate)! < targetDateKey) {
       continue;
     }
 
@@ -307,8 +308,7 @@ export async function getTodaysEmployeeTaskSets(targetDate: Date) {
     orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
   });
 
-  const dayStart = new Date(`${DateTime.fromJSDate(targetDate, { zone: "Asia/Kolkata" }).toISODate()}T00:00:00+05:30`);
-  const dayEnd = new Date(`${DateTime.fromJSDate(targetDate, { zone: "Asia/Kolkata" }).toISODate()}T23:59:59+05:30`);
+  const { start: dayStart, end: dayEnd } = istDayBounds(dateKey(targetDate));
   const logs = await prisma.notificationLog.findMany({
     where: {
       templateName: "senior_daily_checklist",

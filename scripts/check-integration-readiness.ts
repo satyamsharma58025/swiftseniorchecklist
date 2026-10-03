@@ -1,9 +1,9 @@
+import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { toWhatsAppNumber } from "@/lib/business-logic";
 
 async function main() {
-  const today = new Date();
-  const businessDate = new Date(`${today.toISOString().slice(0, 10)}T00:00:00.000Z`);
+  const businessDate = dbDate(istDateKey());
 
   const [employees, settings, checklistCount] = await Promise.all([
     prisma.employee.findMany({

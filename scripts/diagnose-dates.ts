@@ -3,10 +3,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { DateTime } from "luxon";
 import { PrismaClient } from "@prisma/client";
 
-import { getBusinessToday } from "@/lib/business-logic";
+import { addDays, dateKey, dbDate, istDateKey } from "@/lib/dates";
 import { cadenceMatches } from "@/lib/cadence";
 
 function loadEnvFromFile() {
@@ -40,7 +39,7 @@ function loadEnvFromFile() {
 }
 
 function dbDateKey(value: Date | null): string | null {
-  return value ? value.toISOString().slice(0, 10) : null;
+  return value ? dateKey(value) : null;
 }
 
 async function main() {
@@ -51,9 +50,9 @@ async function main() {
 
   const prisma = new PrismaClient({ log: ["error"] });
   try {
-    const todayKey = getBusinessToday();
-    const today = DateTime.fromISO(todayKey, { zone: "Asia/Kolkata" });
-    const startKey = today.minus({ days: 13 }).toFormat("yyyy-MM-dd");
+    const todayKey = istDateKey();
+    const today = dbDate(todayKey);
+    const startKey = dateKey(addDays(today, -13));
 
     const [checklistMismatches, queueMismatches, lastChecklistRows, failedCronRows, tasks, pauses, checklistDates] = await Promise.all([
       prisma.$queryRaw<Array<{ id: string; storedDate: string; checklistCode: string; codeDate: string }>>`
@@ -111,7 +110,7 @@ async function main() {
 
     const lastDate = lastChecklistRows[0]?.lastDate ?? null;
     const daysSinceLastChecklist = lastDate
-      ? Math.floor(today.diff(DateTime.fromISO(lastDate, { zone: "Asia/Kolkata" }), "days").days)
+      ? Math.floor((today.getTime() - dbDate(lastDate).getTime()) / (24 * 60 * 60 * 1000))
       : null;
     const existingRows = new Set(checklistDates.map((row) => `${row.taskMasterId}:${row.date}`));
     const taskPauses = new Map<string, Array<{ startDate: string; endDate: string }>>();
@@ -123,7 +122,7 @@ async function main() {
 
     const missingDueRows: Array<{ taskMasterId: string; taskCode: string; cadence: string; date: string }> = [];
     for (let offset = 0; offset < 14; offset += 1) {
-      const dayKey = today.minus({ days: 13 - offset }).toFormat("yyyy-MM-dd");
+      const dayKey = dateKey(addDays(today, -13 + offset));
       for (const task of tasks) {
         const startDate = dbDateKey(task.startDate);
         const endDate = dbDateKey(task.endDate);

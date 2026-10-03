@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { z } from "zod";
 
 import { normalizePhone } from "@/lib/business-logic";
+import { dbDate } from "@/lib/dates";
 
 export const HEADER_MAP = {
   taskCode: ["task id", "taskcode", "task code", "task_id"],
@@ -171,7 +172,9 @@ export function parseDateValue(raw: unknown): string | null {
   for (const pattern of patterns) {
     const parsed = DateTime.fromFormat(value, pattern, { zone: "utc" });
     if (parsed.isValid) {
-      return parsed.toISODate();
+      const key = parsed.toISODate();
+      if (key) dbDate(key);
+      return key;
     }
   }
 
@@ -179,7 +182,9 @@ export function parseDateValue(raw: unknown): string | null {
   if (!Number.isNaN(excelLikeNumber) && excelLikeNumber > 0) {
     const date = DateTime.fromSeconds((excelLikeNumber - 25569) * 86400, { zone: "utc" });
     if (date.isValid) {
-      return date.toISODate();
+      const key = date.toISODate();
+      if (key) dbDate(key);
+      return key;
     }
   }
 

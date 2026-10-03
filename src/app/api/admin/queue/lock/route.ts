@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 
 import { authOptions } from "@/auth";
 import { checklistCode, colorFor } from "@/lib/cadence";
+import { dbDate } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "INVALID_DATE" }, { status: 400 });
   }
 
-  const runDate = new Date(`${date}T00:00:00.000Z`);
+  const runDate = dbDate(date);
 
   const queueItems = await prisma.assignmentQueueItem.findMany({
     where: { date: runDate, includeToday: true, locked: false },

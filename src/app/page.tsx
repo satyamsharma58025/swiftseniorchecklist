@@ -1,23 +1,24 @@
 import Link from "next/link";
 
-import { getBusinessToday } from "@/lib/business-logic";
+import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function HomePage() {
-  const today = getBusinessToday();
+  const today = istDateKey();
+  const date = dbDate(today);
 
   const [employees, tasks, done, escalated] = await Promise.all([
     prisma.employee.count({ where: { active: true } }),
-    prisma.dailyChecklistItem.count({ where: { date: new Date(`${today}T00:00:00.000Z`) } }),
+    prisma.dailyChecklistItem.count({ where: { date } }),
     prisma.dailyChecklistItem.count({
       where: {
-        date: new Date(`${today}T00:00:00.000Z`),
+        date,
         status: "DONE",
       },
     }),
     prisma.dailyChecklistItem.count({
       where: {
-        date: new Date(`${today}T00:00:00.000Z`),
+        date,
         escalated: true,
       },
     }),

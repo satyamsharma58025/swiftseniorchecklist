@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AddTaskForm } from "@/app/queue/_components/AddTaskForm";
 import { LockQueueButton } from "@/app/queue/_components/LockQueueButton";
+import { dbDate } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function QueuePage({
@@ -10,7 +11,7 @@ export default async function QueuePage({
   params: Promise<{ date: string }>;
 }) {
   const { date } = await params;
-  const targetDate = new Date(`${date}T00:00:00.000Z`);
+  const targetDate = dbDate(date);
 
   const [items, employees] = await Promise.all([
     prisma.assignmentQueueItem.findMany({

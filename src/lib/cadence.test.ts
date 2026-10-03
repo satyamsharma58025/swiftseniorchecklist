@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { cadenceMatches, checklistCode, colorFor, formatSummaryEntries, reserveNextQueueCode, validateScheduleDetail } from "@/lib/cadence";
+import { dbDate } from "@/lib/dates";
 
 describe("colorFor", () => {
   it("marks EOD cutoff items as red even when still pending", () => {
@@ -49,9 +50,9 @@ describe("reserveNextQueueCode", () => {
 
     expect(execute).toHaveBeenCalledTimes(1);
     expect(upsert).toHaveBeenCalledWith({
-      where: { date: new Date("2026-09-18T00:00:00.000Z") },
+      where: { date: dbDate("2026-09-18") },
       update: {},
-      create: { date: new Date("2026-09-18T00:00:00.000Z"), nextValue: 1 },
+      create: { date: dbDate("2026-09-18"), nextValue: 1 },
     });
     expect(update).toHaveBeenCalledWith({
       where: { id: "seq_1" },
@@ -71,14 +72,14 @@ describe("checklistCode", () => {
 
 describe("daily cadence", () => {
   it("keeps daily tasks active on Sunday instead of excluding them", () => {
-    expect(cadenceMatches({ cadence: "DAILY", scheduleDetail: "Every day" }, new Date("2026-09-20T00:00:00.000Z"))).toMatchObject({ matches: true });
+    expect(cadenceMatches({ cadence: "DAILY", scheduleDetail: "Every day" }, dbDate("2026-09-20"))).toMatchObject({ matches: true });
   });
 });
 
 describe("yearly biannual cadence", () => {
   it("accepts and matches DD-Mon / DD-Mon values", () => {
     expect(validateScheduleDetail("YEARLY", "15-Aug / 15-Feb")).toMatchObject({ valid: true });
-    expect(cadenceMatches({ cadence: "YEARLY", scheduleDetail: "15-Aug / 15-Feb" }, new Date("2026-08-15T00:00:00.000Z"))).toMatchObject({ matches: true });
-    expect(cadenceMatches({ cadence: "YEARLY", scheduleDetail: "15-Aug / 15-Feb" }, new Date("2026-02-15T00:00:00.000Z"))).toMatchObject({ matches: true });
+    expect(cadenceMatches({ cadence: "YEARLY", scheduleDetail: "15-Aug / 15-Feb" }, dbDate("2026-08-15"))).toMatchObject({ matches: true });
+    expect(cadenceMatches({ cadence: "YEARLY", scheduleDetail: "15-Aug / 15-Feb" }, dbDate("2026-02-15"))).toMatchObject({ matches: true });
   });
 });

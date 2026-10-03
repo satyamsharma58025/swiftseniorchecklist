@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { DateTime } from "luxon";
 
 import { colorFor, reserveNextQueueCode } from "@/lib/cadence";
+import { addDays, dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { runCronJob } from "@/lib/cron";
 
@@ -21,10 +21,10 @@ export async function GET(request: Request) {
     });
 
     const itemIds = items.map((item) => item.id);
-    const nextDate = DateTime.fromJSDate(runDate, { zone: "Asia/Kolkata" }).plus({ days: 1 }).toJSDate();
+    const nextDate = addDays(runDate, 1);
 
     if (!itemIds.length) {
-      return NextResponse.json({ runDate: runDate.toISOString().slice(0, 10), marked: 0 });
+      return NextResponse.json({ runDate: dateKey(runDate), marked: 0 });
     }
 
     await prisma.dailyChecklistItem.updateMany({
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({
-      runDate: runDate.toISOString().slice(0, 10),
+      runDate: dateKey(runDate),
       marked: itemIds.length,
       forwarded,
     });

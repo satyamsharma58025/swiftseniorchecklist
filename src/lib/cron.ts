@@ -1,21 +1,18 @@
-import { DateTime } from "luxon";
 import { NextResponse } from "next/server";
 
-import { getBusinessToday } from "@/lib/business-logic";
+import { dbDate, dateKey, istDateKey } from "@/lib/dates";
 import { secretsMatch } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
 
 export type CronRouteResult = NextResponse | Response;
 
-export function normalizeCronDate(dateValue?: string | null, fallbackDate = getBusinessToday()): Date {
+export function normalizeCronDate(dateValue?: string | null, fallbackDate = istDateKey()): Date {
   const raw = (dateValue ?? fallbackDate).trim();
-  const parsed = DateTime.fromISO(raw, { zone: "Asia/Kolkata" }).startOf("day").toJSDate();
-
-  if (Number.isNaN(parsed.getTime())) {
+  try {
+    return dbDate(raw);
+  } catch {
     throw new Error(`Invalid cron date: ${raw}`);
   }
-
-  return parsed;
 }
 
 export async function requireCronAuth(request: Request) {
@@ -88,7 +85,7 @@ export async function runCronJob<T>(
     return NextResponse.json({
       alreadyProcessed: true,
       jobName,
-      date: runDate.toISOString().slice(0, 10),
+      date: dateKey(runDate),
       itemsTouched: existing.itemsTouched ?? 0,
     });
   }

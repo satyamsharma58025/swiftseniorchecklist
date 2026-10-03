@@ -22,6 +22,9 @@ describe("canonical business dates", () => {
   it("uses the Asia/Kolkata calendar date for an instant", () => {
     expect(istDateKey(new Date("2026-10-02T18:30:00.000Z"))).toBe("2026-10-03");
     expect(istDateKey(new Date("2026-10-03T18:29:59.999Z"))).toBe("2026-10-03");
+    expect(istDateKey(new Date("2026-10-03T18:30:00.000Z"))).toBe("2026-10-04");
+    expect(istDateKey(new Date("2026-10-03T05:29:00.000Z"))).toBe("2026-10-03");
+    expect(istDateKey(new Date("2026-10-03T18:30:00.000Z"))).toBe("2026-10-04");
   });
 
   it("constructs a validated UTC-midnight database date", () => {
@@ -32,7 +35,18 @@ describe("canonical business dates", () => {
 
   it("formats Date inputs in UTC and adds whole days", () => {
     expect(dateKey(dbDate("2026-10-03"))).toBe("2026-10-03");
-    expect(dateKey(addDays(dbDate("2026-12-31"), 1))).toBe("2027-01-01");
+  });
+
+  it.each([
+    ["2026-01-31", "2026-02-01"],
+    ["2026-02-28", "2026-03-01"],
+    ["2024-02-28", "2024-02-29"],
+    ["2024-02-29", "2024-03-01"],
+    ["2026-04-30", "2026-05-01"],
+    ["2026-07-31", "2026-08-01"],
+    ["2026-12-31", "2027-01-01"],
+  ])("adds one day after %s", (from, to) => {
+    expect(dateKey(addDays(dbDate(from), 1))).toBe(to);
   });
 
   it("creates a timestamp range for one IST business day", () => {

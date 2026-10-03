@@ -16,6 +16,7 @@ export type DispatchChecklistInput = {
   id: string;
   checklistCode: string;
   taskDescription: string;
+  priority?: "HIGH" | "MEDIUM" | "LOW";
   status: "PENDING" | "NOT_DONE" | "DONE";
 };
 

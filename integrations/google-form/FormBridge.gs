@@ -65,6 +65,9 @@ function doPost(e) {
     if (body.action === 'refresh') {
       return json_(refreshForm_(body));
     }
+    if (body.action === 'link') {
+      return json_(linkForm_(body));
+    }
     if (body.action === 'refresh_all') {
       return json_(refreshAllForms_(body));
     }
@@ -76,6 +79,44 @@ function doPost(e) {
 
 function doGet() {
   return json_({ ok: true, service: 'swift-form-bridge' });
+}
+
+function linkForm_(body) {
+  var dateStr = String(body.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return { ok: false, error: 'invalid_date' };
+  }
+  var employeeName = body.employeeName ? String(body.employeeName).trim() : null;
+  if (!employeeName) {
+    return { ok: false, error: 'employee_required' };
+  }
+
+  var formKey = 'FORM_ID_' + dateStr + '_' + employeeName.replace(/[^a-zA-Z0-9]/g, '_');
+  var formId = prop_(formKey);
+  if (!formId) {
+    return { ok: false, error: 'form_not_found', date: dateStr, employeeName: employeeName };
+  }
+
+  var urlKey = 'FORM_URL_' + formKey;
+  var formUrl = prop_(urlKey);
+  if (!formUrl) {
+    try {
+      var form = FormApp.openById(formId);
+      formUrl = form.getPublishedUrl() || form.getEditUrl();
+      if (formUrl) {
+        var props = PropertiesService.getScriptProperties();
+        props.setProperty(urlKey, formUrl);
+        props.setProperty('FORM_DATE_' + formId, dateStr);
+      }
+    } catch (err) {
+      console.error('[FormBridge] Could not resolve existing form URL for ' + formId + ': ' + String(err));
+    }
+  }
+  if (!formUrl) {
+    return { ok: false, error: 'form_url_not_found', date: dateStr, employeeName: employeeName };
+  }
+
+  return { ok: true, date: dateStr, employeeName: employeeName, formId: formId, formUrl: formUrl, publishedUrl: formUrl };
 }
 
 function refreshForm_(body) {
@@ -120,6 +161,25 @@ function refreshForm_(body) {
       form = FormApp.openById(existingFormId);
     } catch (e) {
       form = null;
+    }
+  }
+
+  if (existingFormId && form && form.getResponses().length > 0) {
+    var preservedUrl = prop_(urlKey) || form.getPublishedUrl() || form.getEditUrl();
+    if (preservedUrl) {
+      props.setProperty('FORM_DATE_' + form.getId(), dateStr);
+      Logger.log('[FormBridge] Preserved existing responses; form choices not changed for ' + form.getId());
+      return {
+        ok: true,
+        date: dateStr,
+        employeeName: employeeName,
+        count: choices.length,
+        formId: form.getId(),
+        formUrl: preservedUrl,
+        publishedUrl: preservedUrl,
+        unchanged: true,
+        preservedResponses: true
+      };
     }
   }
 

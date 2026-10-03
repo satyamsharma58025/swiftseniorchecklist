@@ -32,29 +32,38 @@ function activeRunResponse(jobName: string, runDate: Date) {
 
 function resultMetadata(resultBody: unknown, responseStatus?: number) {
   const body = resultBody && typeof resultBody === "object" ? resultBody as Record<string, unknown> : {};
-  const failed = Array.isArray(body.failed) ? body.failed : [];
-  const failureMessage = failed.map((failure) => {
+  const failedRows = Array.isArray(body.failed) ? body.failed : [];
+  const failedCount = typeof body.failed === "number" ? body.failed : failedRows.length;
+  const failureMessage = failedRows.map((failure) => {
     if (!failure || typeof failure !== "object") return String(failure);
     const entry = failure as Record<string, unknown>;
     return `${String(entry.taskCode ?? "unknown task")}: ${String(entry.error ?? "generation failed")}`;
   }).join("; ");
+  const permanentFailures = Array.isArray(body.permanentFailures) ? body.permanentFailures.map((failure) => {
+    if (!failure || typeof failure !== "object") return String(failure);
+    const entry = failure as Record<string, unknown>;
+    return `${String(entry.employee ?? "unknown employee")}: ${String(entry.error ?? "dispatch failed permanently")}`;
+  }).join("; ") : "";
+  const remaining = typeof body.remaining === "number" ? body.remaining : 0;
   const message = responseStatus && responseStatus >= 400
     ? String(body.error ?? body.message ?? `Runner returned HTTP ${responseStatus}`)
-    : failureMessage;
+    : failureMessage || permanentFailures || (failedCount > 0 ? `${failedCount} dispatch failures` : remaining > 0 ? `${remaining} recipients remain` : "");
   const itemsTouched = typeof body.itemsTouched === "number"
     ? body.itemsTouched
     : typeof body.created === "number" || typeof body.existing === "number"
       ? Number(body.created ?? 0) + Number(body.existing ?? 0)
       : typeof body.added === "number" || typeof body.skipped === "number"
         ? Number(body.added ?? 0) + Number(body.skipped ?? 0)
-        : typeof body.published === "number"
-          ? body.published
-          : typeof body.forwarded === "number"
-            ? body.forwarded
-            : null;
+        : typeof body.sent === "number"
+          ? Number(body.sent) + Number(body.skipped ?? 0)
+          : typeof body.published === "number"
+            ? body.published
+            : typeof body.forwarded === "number"
+              ? body.forwarded
+              : null;
 
   return {
-    status: responseStatus && responseStatus >= 400 ? "failed" : failed.length ? "partial" : "success",
+    status: responseStatus && responseStatus >= 400 ? "failed" : failedCount > 0 || failedRows.length > 0 || remaining > 0 ? "partial" : "success",
     itemsTouched,
     errorMessage: message ? truncateError(message) : null,
   };
@@ -217,6 +226,7 @@ export async function runCronJob<T>(
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }
+
 }
 
 export function normalizeNotificationStatus(raw: unknown): "QUEUED" | "SENT" | "FAILED" | "SKIPPED_NO_PHONE" | "SKIPPED_OUTSIDE_WINDOW" {

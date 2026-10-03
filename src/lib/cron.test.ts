@@ -112,6 +112,30 @@ describe("runCronJob response handling", () => {
     }));
   });
 
+  it("marks incomplete dispatch output partial and persists delivery counts and errors", async () => {
+    await runCronJob(
+      new Request("http://localhost/api/cron/dispatch", { headers: { "x-cron-secret": "test-cron-secret" } }),
+      "dispatch-morning",
+      "2026-10-03",
+      async () => ({
+        planned: 4,
+        sent: 2,
+        skipped: 1,
+        failed: 1,
+        remaining: 1,
+        permanentFailures: [{ employee: "Asha Singh", error: "Template was rejected" }],
+      }),
+    );
+
+    expect(db.cronRunLog.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "partial",
+        itemsTouched: 3,
+        errorMessage: "Asha Singh: Template was rejected",
+      }),
+    }));
+  });
+
   it("short-circuits only successful runs", async () => {
     db.cronRunLog.findUnique.mockResolvedValue({
       id: "successful-run",

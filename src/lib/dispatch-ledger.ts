@@ -153,3 +153,71 @@ export async function claimDispatch(
     return { claimed: false, reason: "claim_race", row };
   }
 }
+
+export async function recordDispatchSkip(
+  input: DispatchClaimInput,
+  status: "SKIPPED_NO_PHONE" | "SKIPPED_NO_TASKS",
+  client: DispatchLedgerClient,
+  now = new Date(),
+): Promise<DispatchLog> {
+  const uniqueWhere = {
+    date_slot_employeeId: { date: input.date, slot: input.slot, employeeId: input.employeeId },
+  };
+  const existing = await client.dispatchLog.findUnique({ where: uniqueWhere });
+  if (existing) {
+    if (existing.status === "SENT") return existing;
+    await client.dispatchLog.updateMany({
+      where: { id: existing.id, status: existing.status },
+      data: { status, phone: input.phone, lastAttemptAt: now, claimedAt: null, lastError: null },
+    });
+    return (await client.dispatchLog.findUnique({ where: uniqueWhere })) ?? existing;
+  }
+
+  try {
+    return await client.dispatchLog.create({
+      data: { ...uniqueWhere.date_slot_employeeId, phone: input.phone, status, attempts: 0, lastAttemptAt: now },
+    });
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const raced = await client.dispatchLog.findUnique({ where: uniqueWhere });
+    if (!raced) throw error;
+    if (raced.status === "SENT") return raced;
+    await client.dispatchLog.updateMany({
+      where: { id: raced.id, status: raced.status },
+      data: { status, phone: input.phone, lastAttemptAt: now, claimedAt: null, lastError: null },
+    });
+    return (await client.dispatchLog.findUnique({ where: uniqueWhere })) ?? raced;
+  }
+}
+
+export async function completeDispatchAttempt(
+  client: DispatchLedgerClient,
+  dispatchLogId: string,
+  update: {
+    status: "SENT" | "FAILED" | "FAILED_PERMANENT";
+    phone?: string;
+    providerMessageId?: string | null;
+    formUrl?: string | null;
+    lastError?: string | null;
+    sentAt?: Date | null;
+    lastAttemptAt: Date;
+  },
+): Promise<boolean> {
+  const result = await client.dispatchLog.updateMany({
+    where: { id: dispatchLogId, status: "CLAIMED" },
+    data: { ...update, claimedAt: null },
+  });
+  return result.count === 1;
+}
+
+export async function markDispatchPermanentFailure(
+  client: DispatchLedgerClient,
+  dispatchLogId: string,
+  error: string,
+  now = new Date(),
+): Promise<void> {
+  await client.dispatchLog.updateMany({
+    where: { id: dispatchLogId, status: { in: ["CLAIMED", "FAILED"] } },
+    data: { status: "FAILED_PERMANENT", lastError: error, lastAttemptAt: now, claimedAt: null },
+  });
+}

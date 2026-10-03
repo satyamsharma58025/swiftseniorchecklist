@@ -19,7 +19,7 @@ export async function loadDailyHealthInput(dateUtc: Date): Promise<DailyHealthIn
   const latestSync = await prisma.cronRunLog.findFirst({
     where: {
       jobName: "daily-sync",
-      runDate: dateStr,
+      runDate: dateUTC,
     },
     orderBy: { finishedAt: "desc" },
   });
@@ -97,7 +97,7 @@ export async function loadDailyHealthInput(dateUtc: Date): Promise<DailyHealthIn
   // Get cron history (last 10 runs of any job on this date)
   const cronHistory = await prisma.cronRunLog.findMany({
     where: {
-      runDate: dateStr,
+      runDate: dateUTC,
     },
     orderBy: { startedAt: "desc" },
     take: 10,

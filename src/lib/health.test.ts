@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+
+import { PrismaClient } from "@prisma/client";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DateTime } from "luxon";
 
 import { buildDailyHealth, type DailyHealthInput } from "@/lib/health";
+import { dbDate } from "@/lib/dates";
 
 const baseInput = (): DailyHealthInput => ({
   generation: { rows: 4, lastDailySyncAt: new Date("2026-10-03T00:30:00.000Z"), lastStatus: "success" },
@@ -34,6 +38,11 @@ const baseInput = (): DailyHealthInput => ({
 
 const atIst = (time: string) => {
   const ist = DateTime.fromFormat(`2026-10-03 ${time}:00`, "yyyy-MM-dd HH:mm:ss", { zone: "Asia/Kolkata" });
+  return ist.toJSDate();
+};
+
+const atIstOn = (date: string, time: string) => {
+  const ist = DateTime.fromFormat(`${date} ${time}:00`, "yyyy-MM-dd HH:mm:ss", { zone: "Asia/Kolkata" });
   return ist.toJSDate();
 };
 
@@ -94,5 +103,175 @@ describe("daily health model", () => {
     expect(health.reasons).toContain("Apps Script heartbeat missing");
     expect(health.slots.MORNING.missing).toBe(1);
     expect(health.slots.MORNING.due.opened).toBe(false);
+  });
+});
+
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+const postgresHealth = describe.skipIf(!testDatabaseUrl);
+
+postgresHealth("daily health with checklist rows and an empty dispatch ledger", () => {
+  let prisma: PrismaClient;
+  let loadDailyHealthInput: typeof import("@/lib/health-queries").loadDailyHealthInput;
+
+  beforeAll(async () => {
+    if (!testDatabaseUrl) throw new Error("TEST_DATABASE_URL is required for this suite");
+    const hostname = new URL(testDatabaseUrl).hostname;
+    if (!["localhost", "127.0.0.1", "postgres"].includes(hostname)) {
+      throw new Error(`Refusing to use non-local TEST_DATABASE_URL host: ${hostname}`);
+    }
+
+    prisma = new PrismaClient({ datasources: { db: { url: testDatabaseUrl } } });
+    vi.doMock("@/lib/prisma", () => ({ prisma }));
+    ({ loadDailyHealthInput } = await import("@/lib/health-queries"));
+    vi.stubEnv("DISPATCH_ENABLED", "true");
+  });
+
+  afterAll(async () => {
+    vi.unstubAllEnvs();
+    await prisma?.$disconnect();
+  });
+
+  async function createFixture(date: string, employeeCount: number) {
+    const dateUtc = dbDate(date);
+    const suffix = randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
+    const employeeIds: string[] = [];
+    const taskMasterIds: string[] = [];
+
+    await prisma.cronRunLog.create({
+      data: {
+        jobName: "daily-sync",
+        runDate: dateUtc,
+        status: "success",
+        startedAt: atIstOn(date, "08:00"),
+        finishedAt: atIstOn(date, "08:05"),
+        itemsTouched: employeeCount,
+      },
+    });
+
+    for (let index = 0; index < employeeCount; index += 1) {
+      const phone = String(9000000000 + index);
+      const employee = await prisma.employee.create({
+        data: {
+          name: `Health Test ${suffix} ${index}`,
+          phone,
+          designation: "Test Operator",
+          department: "Test",
+          active: true,
+        },
+      });
+      employeeIds.push(employee.id);
+
+      const task = await prisma.taskMaster.create({
+        data: {
+          taskCode: `HLTH-${suffix}-${index}`,
+          employeeId: employee.id,
+          taskDescription: `Health regression task ${index}`,
+          cadence: "DAILY",
+          active: true,
+          priority: "MEDIUM",
+        },
+      });
+      taskMasterIds.push(task.id);
+
+      await prisma.dailyChecklistItem.create({
+        data: {
+          checklistCode: `CL-${date.replaceAll("-", "")}-${suffix}-${index}`,
+          date: dateUtc,
+          taskMasterId: task.id,
+          employeeName: employee.name,
+          employeePhone: phone,
+          taskDescription: task.taskDescription,
+          supervisorName: "Health Test Supervisor",
+          escalationThreshold: 2,
+          priority: "MEDIUM",
+        },
+      });
+    }
+
+    return {
+      dateUtc,
+      employeeIds,
+      async cleanup() {
+        await prisma.dispatchLog.deleteMany({ where: { date: dateUtc } });
+        await prisma.dailyChecklistItem.deleteMany({ where: { taskMasterId: { in: taskMasterIds } } });
+        await prisma.taskMaster.deleteMany({ where: { id: { in: taskMasterIds } } });
+        await prisma.employee.deleteMany({ where: { id: { in: employeeIds } } });
+        await prisma.cronRunLog.deleteMany({ where: { jobName: "daily-sync", runDate: dateUtc } });
+      },
+    };
+  }
+
+  async function loadInput(dateUtc: Date, date: string): Promise<DailyHealthInput> {
+    const input = await loadDailyHealthInput(dateUtc);
+    input.intake.appsScript.latestHeartbeatAt = atIstOn(date, "08:00");
+    return input;
+  }
+
+  it("reports all checklist recipients when morning dispatch has no ledger rows", async () => {
+    const date = "2098-06-15";
+    const fixture = await createFixture(date, 20);
+
+    try {
+      expect(await prisma.dispatchLog.count({ where: { date: fixture.dateUtc, slot: "MORNING" } })).toBe(0);
+
+      const morningInput = await loadInput(fixture.dateUtc, date);
+      const degraded = buildDailyHealth(morningInput, atIstOn(date, "09:40"));
+      expect(degraded.slots.MORNING).toMatchObject({ expected: 20, sent: 0, missing: 20 });
+      expect(degraded.status).toBe("DEGRADED");
+
+      const beforeWindowDeadline = buildDailyHealth(morningInput, atIstOn(date, "08:45"));
+      expect(beforeWindowDeadline.slots.MORNING.due).toMatchObject({ opened: true, overdue: false });
+      expect(beforeWindowDeadline.status).toBe("OK");
+
+      const down = buildDailyHealth(morningInput, atIstOn(date, "10:31"));
+      expect(down.status).toBe("DOWN");
+      expect(down.reasons).toContain("morning dispatch incomplete past its down threshold");
+
+      await prisma.dispatchLog.create({
+        data: {
+          date: fixture.dateUtc,
+          slot: "EVENING",
+          employeeId: fixture.employeeIds[0],
+          phone: "9000000000",
+          status: "SENT",
+        },
+      });
+      const expectedBeforeDelete = (await loadDailyHealthInput(fixture.dateUtc)).dispatch.MORNING.expected;
+      await prisma.dispatchLog.deleteMany({ where: { date: fixture.dateUtc } });
+      const expectedAfterDelete = (await loadDailyHealthInput(fixture.dateUtc)).dispatch.MORNING.expected;
+      expect(expectedBeforeDelete).toBe(20);
+      expect(expectedAfterDelete).toBe(expectedBeforeDelete);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("reports evening dispatch as degraded then down with six open checklist recipients", async () => {
+    const date = "2098-06-16";
+    const fixture = await createFixture(date, 6);
+
+    try {
+      await prisma.dispatchLog.createMany({
+        data: fixture.employeeIds.map((employeeId, index) => ({
+          date: fixture.dateUtc,
+          slot: "MORNING" as const,
+          employeeId,
+          phone: String(9000000000 + index),
+          status: "SENT" as const,
+        })),
+      });
+      expect(await prisma.dispatchLog.count({ where: { date: fixture.dateUtc, slot: "EVENING" } })).toBe(0);
+
+      const input = await loadInput(fixture.dateUtc, date);
+      const degraded = buildDailyHealth(input, atIstOn(date, "18:46"));
+      expect(degraded.slots.EVENING).toMatchObject({ expected: 6, sent: 0, missing: 6 });
+      expect(degraded.status).toBe("DEGRADED");
+
+      const down = buildDailyHealth(input, atIstOn(date, "19:31"));
+      expect(down.status).toBe("DOWN");
+      expect(down.reasons).toContain("evening dispatch incomplete past its down threshold");
+    } finally {
+      await fixture.cleanup();
+    }
   });
 });

@@ -202,24 +202,6 @@ export default async function DashboardPage() {
               )}
             </div>
 
-            <div className="neo-border bg-white p-5 neo-shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-ink/70">Delivery health</p>
-              <h2 className="brand-display mt-2 text-2xl text-ink">Operations pulse</h2>
-              <div className="mt-4 space-y-4 text-sm text-ink">
-                <div className="flex items-center justify-between border-b-[3px] border-ink pb-2">
-                  <span>Active employees</span>
-                  <strong>{activeEmployees}</strong>
-                </div>
-                <div className="flex items-center justify-between border-b-[3px] border-ink pb-2">
-                  <span>Pending review</span>
-                  <strong>{totals.pending + totals.notDone}</strong>
-                </div>
-                <div className="flex items-center justify-between border-b-[3px] border-ink pb-2">
-                  <span>Escalated</span>
-                  <strong>{totals.escalated}</strong>
-                </div>
-              </div>
-            </div>
           </aside>
         </section>
       </div>

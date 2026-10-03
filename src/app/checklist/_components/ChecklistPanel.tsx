@@ -33,9 +33,7 @@ export function ChecklistPanel({
   const [searchTerm, setSearchTerm] = useState("");
 
   const summary = useMemo(() => {
-    const total = localItems.length;
     return {
-      total,
       done: localItems.filter((item) => item.status === "DONE").length,
       pending: localItems.filter((item) => item.status === "PENDING").length,
       notDone: localItems.filter((item) => item.status === "NOT_DONE").length,
@@ -158,13 +156,12 @@ export function ChecklistPanel({
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Total", value: summary.total, tone: "bg-paper", status: null },
-          { label: "Done", value: summary.done, tone: "bg-brand-green", status: "DONE" as const },
-          { label: "Pending", value: summary.pending, tone: "bg-sun-yellow", status: "PENDING" as const },
-          { label: "Not done", value: summary.notDone, tone: "bg-hot-pink", status: "NOT_DONE" as const },
+          { value: summary.done, tone: "bg-brand-green", status: "DONE" as const },
+          { value: summary.pending, tone: "bg-sun-yellow", status: "PENDING" as const },
+          { value: summary.notDone, tone: "bg-hot-pink", status: "NOT_DONE" as const },
         ].map((card) => (
-          <div key={card.label} className={`neo-border p-4 neo-shadow-sm ${card.tone}`}>
-            {card.status ? <StatusBadge status={card.status} /> : <p className="text-xs font-bold">{card.label}</p>}
+          <div key={card.status} className={`neo-border p-4 neo-shadow-sm ${card.tone}`}>
+            <StatusBadge status={card.status} />
             <p className="brand-display mt-2 text-3xl leading-none">{card.value}</p>
           </div>
         ))}
@@ -223,7 +220,7 @@ export function ChecklistPanel({
                       <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
                         <span className="sticker bg-paper text-ink">Priority: {item.priority}</span>
                         <StatusBadge status={item.escalated ? "ESCALATED" : item.status} />
-                        <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span>
+                        {item.reminderCount > 0 ? <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span> : null}
                         {item.formSubmittedAt ? (
                           <span className="sticker bg-paper text-ink">
                             Via form {new Date(item.formSubmittedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}

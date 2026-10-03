@@ -190,6 +190,27 @@ model NotificationLog {
   organization      Organization?       @relation(fields: [organizationId], references: [id])
 }
 
+model DispatchLog {
+  id                String         @id @default(cuid())
+  date              DateTime       @db.Date
+  slot              DispatchSlot
+  employeeId        String
+  phone             String
+  status            DispatchStatus @default(CLAIMED)
+  attempts          Int            @default(0)
+  providerMessageId String?
+  formUrl           String?
+  lastError         String?
+  claimedAt         DateTime?
+  sentAt            DateTime?
+  lastAttemptAt     DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([date, slot, employeeId])
+  @@index([date, slot, status])
+}
+
 model ActivityLog {
   id              String             @id @default(cuid())
   checklistItemId String
@@ -342,4 +363,18 @@ enum NotificationStatus {
   FAILED
   SKIPPED_NO_PHONE
   SKIPPED_OUTSIDE_WINDOW
+}
+
+enum DispatchSlot {
+  MORNING
+  EVENING
+}
+
+enum DispatchStatus {
+  CLAIMED
+  SENT
+  FAILED
+  FAILED_PERMANENT
+  SKIPPED_NO_PHONE
+  SKIPPED_NO_TASKS
 }

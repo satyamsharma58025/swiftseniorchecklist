@@ -41,6 +41,12 @@ export function dateKey(value: Date | string): string {
   return key;
 }
 
+export function checklistDateLabel(value: Date | string, today: string = istDateKey()): string {
+  const key = dateKey(value);
+  if (key === today) return "Today";
+  return DateTime.fromISO(key, { zone: "UTC" }).toFormat("cccc, dd LLL yyyy");
+}
+
 export function addDays(date: Date | string, days: number): Date {
   if (!Number.isInteger(days)) {
     throw new Error(`Day offset must be an integer: ${days}`);

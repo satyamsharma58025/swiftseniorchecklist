@@ -6,7 +6,8 @@ import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
 import { DateControl } from "@/app/checklist/_components/DateControl";
 import { EmployeeTabs } from "@/app/checklist/_components/EmployeeTabs";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { addDays, dateKey, dbDate, istDateKey } from "@/lib/dates";
+import { sectionFor } from "@/lib/checklist-sections";
+import { addDays, checklistDateLabel, dateKey, dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export async function generateMetadata({ params }: { params: Promise<{ date: string }> }) {
@@ -80,6 +81,11 @@ export default async function ChecklistDatePage({
       date: targetDate,
     },
     orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
+    include: {
+      taskMaster: {
+        select: { taskCode: true, cadence: true, category: true, scheduleDetail: true },
+      },
+    },
   });
 
   if (rows.length === 0 && mayGenerate) {
@@ -90,8 +96,22 @@ export default async function ChecklistDatePage({
         date: targetDate,
       },
       orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
+      include: {
+        taskMaster: {
+          select: { taskCode: true, cadence: true, category: true, scheduleDetail: true },
+        },
+      },
     });
   }
+
+  const priorOpenItems = await prisma.dailyChecklistItem.findMany({
+    where: {
+      date: addDays(targetDate, -1),
+      status: { in: ["PENDING", "NOT_DONE"] },
+    },
+    select: { taskMasterId: true },
+  });
+  const carriedTaskIds = new Set(priorOpenItems.map((item) => item.taskMasterId));
 
   const employeeSummaries = targetEmployees.map((employee) => {
     const employeeRows = rows.filter((row) => row.employeeName === employee.name);
@@ -167,7 +187,7 @@ export default async function ChecklistDatePage({
 
         <section className="neo-border bg-white p-4 neo-shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">Today</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">{checklistDateLabel(selectedDate, today)}</p>
             <span className="sticker bg-hot-pink text-ink">{selectedDate}</span>
           </div>
           <EmployeeTabs
@@ -203,6 +223,16 @@ export default async function ChecklistDatePage({
               checklistCode: row.checklistCode,
               taskDescription: row.taskDescription,
               employeeName: row.employeeName,
+              cadence: row.taskMaster.cadence,
+              category: row.taskMaster.category,
+              scheduleDetail: row.taskMaster.scheduleDetail,
+              section: sectionFor({
+                cadence: row.taskMaster.cadence,
+                status: row.status,
+                escalated: row.escalated,
+                isQueueOnly: row.taskMaster.taskCode.startsWith("MANUAL-"),
+                isCarriedForward: carriedTaskIds.has(row.taskMasterId),
+              }),
               status: row.status as "PENDING" | "DONE" | "NOT_DONE",
               priority: row.priority as "HIGH" | "MEDIUM" | "LOW",
               reminderCount: row.reminderCount,

@@ -6,8 +6,10 @@ import { describe, expect, it } from "vitest";
 const css = fs.readFileSync(path.join(process.cwd(), "src/app/globals.css"), "utf8");
 
 describe("UI motion preferences", () => {
-  it("uses no infinite animation except the live status pulse", () => {
-    expect(css).not.toMatch(/animation:[^;]*infinite/i);
+  it("allows the marquee loop and live status pulse, but no other infinite CSS animation", () => {
+    const infiniteAnimations = [...css.matchAll(/animation:\s*([^;]*infinite[^;]*);/gi)];
+    expect(infiniteAnimations).toHaveLength(1);
+    expect(infiniteAnimations[0][1]).toContain("marquee 22s linear");
     const liveStatusPage = fs.readFileSync(path.join(process.cwd(), "src/app/checklist/[date]/page.tsx"), "utf8");
     expect(liveStatusPage).toContain("animate-pulse");
   });

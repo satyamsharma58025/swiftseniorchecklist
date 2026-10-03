@@ -1,16 +1,39 @@
 import Link from "next/link";
+import { buildDailyHealth, type DailyHealth } from "@/lib/health";
+import { loadDailyHealthInput } from "@/lib/health-queries";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { dbDate, istDateKey } from "@/lib/dates";
+import { addDays, dateKey, dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = { title: "Dashboard" };
 
-export default async function DashboardPage() {
+type DashboardStatusFilter = "all" | "DONE" | "PENDING" | "NOT_DONE" | "ESCALATED";
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ date?: string; sort?: string; status?: string }>;
+}) {
+  const params = (await searchParams) ?? {};
   const today = istDateKey();
-  const date = dbDate(today);
+  let selectedDate = today;
+  if (params.date) {
+    try {
+      dbDate(params.date);
+      selectedDate = params.date;
+    } catch {
+      selectedDate = today;
+    }
+  }
+  const date = dbDate(selectedDate);
+  const sortOrder = params.sort === "name" ? "name" : "progress";
+  const requestedStatus = params.status;
+  const statusFilter: DashboardStatusFilter = ["DONE", "PENDING", "NOT_DONE", "ESCALATED"].includes(requestedStatus ?? "")
+    ? requestedStatus as DashboardStatusFilter
+    : "all";
 
   const [employees, items] = await Promise.all([
     prisma.employee.findMany({
@@ -27,7 +50,9 @@ export default async function DashboardPage() {
         supervisorName: true,
         status: true,
         escalated: true,
+        priority: true,
         reminderCount: true,
+        taskMaster: { select: { employeeId: true } },
       },
       orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
     }),
@@ -45,33 +70,39 @@ export default async function DashboardPage() {
     progress: number;
   };
 
-  const employeeMap = new Map(employees.map((employee) => [employee.name, employee]));
-  const employeeStats = Array.from(
-    items.reduce((acc: Map<string, Omit<EmployeeStat, "progress">>, item) => {
-      const key = item.employeeName;
-      const current = acc.get(key) ?? {
-        id: employeeMap.get(key)?.id ?? key,
-        name: key,
-        designation: employeeMap.get(key)?.designation ?? "Operations",
-        total: 0,
-        done: 0,
-        pending: 0,
-        notDone: 0,
-        escalated: 0,
-      };
+  const employeeStats = employees.map((employee) => {
+    const employeeRows = items.filter((item) => item.employeeName === employee.name);
+    const total = employeeRows.length;
+    const done = employeeRows.filter((item) => item.status === "DONE").length;
+    const pending = employeeRows.filter((item) => item.status === "PENDING").length;
+    const notDone = employeeRows.filter((item) => item.status === "NOT_DONE").length;
+    const escalated = employeeRows.filter((item) => item.escalated).length;
+    return {
+      id: employee.id,
+      name: employee.name,
+      designation: employee.designation,
+      total,
+      done,
+      pending,
+      notDone,
+      escalated,
+      progress: total === 0 ? 0 : Math.round((done / total) * 100),
+    };
+  });
 
-      current.total += 1;
-      if (item.status === "DONE") current.done += 1;
-      if (item.status === "PENDING") current.pending += 1;
-      if (item.status === "NOT_DONE") current.notDone += 1;
-      if (item.escalated) current.escalated += 1;
-      acc.set(key, current);
-      return acc;
-    }, new Map<string, Omit<EmployeeStat, "progress">>()),
-  ).map(([, value]) => ({
-    ...value,
-    progress: value.total === 0 ? 0 : Math.round((value.done / value.total) * 100),
-  })) as EmployeeStat[];
+  employeeStats.sort((first, second) => sortOrder === "name"
+    ? first.name.localeCompare(second.name)
+    : first.progress - second.progress || first.name.localeCompare(second.name));
+
+  const visibleEmployeeStats = statusFilter === "all"
+    ? employeeStats
+    : employeeStats.filter((employee) => statusFilter === "DONE"
+      ? employee.done > 0
+      : statusFilter === "PENDING"
+        ? employee.pending > 0
+        : statusFilter === "NOT_DONE"
+          ? employee.notDone > 0
+          : employee.escalated > 0);
 
   const totals = {
     total: items.length,
@@ -81,8 +112,45 @@ export default async function DashboardPage() {
     escalated: items.filter((item) => item.escalated).length,
   };
 
-  const escalatedTasks = items.filter((item) => item.escalated);
-  const activeEmployees = employeeStats.length;
+  const attentionItems = items.filter((item) => item.status === "NOT_DONE" || item.escalated);
+  const attentionByEmployee = new Map<string, typeof attentionItems>();
+  for (const item of attentionItems) {
+    const employeeId = item.taskMaster.employeeId;
+    const employeeItems = attentionByEmployee.get(employeeId) ?? [];
+    employeeItems.push(item);
+    attentionByEmployee.set(employeeId, employeeItems);
+  }
+
+  let systemHealth: DailyHealth | null = null;
+  try {
+    const todayInput = await loadDailyHealthInput(dbDate(today));
+    systemHealth = buildDailyHealth(todayInput);
+  } catch {
+    systemHealth = null;
+  }
+
+  const previousDate = dateKey(addDays(date, -1));
+  const nextDate = dateKey(addDays(date, 1));
+  const todayHref = `/dashboard?date=${today}&sort=${sortOrder}`;
+  const dashboardHref = (updates: { date?: string; sort?: string; status?: string }) => {
+    const query = new URLSearchParams({
+      date: updates.date ?? selectedDate,
+      sort: updates.sort ?? sortOrder,
+      status: updates.status ?? statusFilter,
+    });
+    return `/dashboard?${query.toString()}`;
+  };
+  const syncTime = systemHealth?.generation.lastDailySyncAt?.toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const heartbeatAt = systemHealth?.intake.appsScript.latestHeartbeatAt;
+  const heartbeatAge = heartbeatAt
+    ? Math.max(0, Math.floor((Date.now() - heartbeatAt.getTime()) / 60_000))
+    : null;
+
+  const employeesById = new Map(employees.map((employee) => [employee.id, employee]));
 
   return (
     <div className="min-h-screen py-5 text-ink md:py-8">

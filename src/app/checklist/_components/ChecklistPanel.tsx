@@ -4,12 +4,17 @@ import { useMemo, useState } from "react";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import type { ChecklistSection } from "@/lib/checklist-sections";
 
 export type ChecklistTaskRow = {
   id: string;
   checklistCode: string;
   taskDescription: string;
   employeeName: string;
+  cadence?: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | null;
+  category?: string | null;
+  scheduleDetail?: string | null;
+  section?: ChecklistSection;
   status: "PENDING" | "DONE" | "NOT_DONE";
   colorStatus?: string | null;
   priority: "HIGH" | "MEDIUM" | "LOW";

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:ui:shell": "playwright test --config=playwright.u1.config.mjs",
     "check:integration": "tsx scripts/check-integration-readiness.ts"
   },
   "dependencies": {
@@ -26,6 +27,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@sparticuz/chromium": "^153.0.0",
     "@tailwindcss/postcss": "^4",
     "@types/luxon": "^3.7.5",
     "@types/node": "^20",

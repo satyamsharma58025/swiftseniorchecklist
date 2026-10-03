@@ -42,15 +42,6 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen text-ink">
-      <div className="marquee text-xs font-bold" aria-hidden="true">
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2">
-          <span>Swift Strips India</span>
-          <span>Daily operations</span>
-          <span>Checklist review</span>
-          <span>Escalation tracking</span>
-          <span>Senior checklist</span>
-        </div>
-      </div>
       <PageHeader>
       <section className="mx-auto max-w-7xl px-3 py-8 md:px-6 md:py-10">
         <div className="relative overflow-hidden border-[3px] border-ink bg-white p-5 neo-shadow-lg md:p-8">

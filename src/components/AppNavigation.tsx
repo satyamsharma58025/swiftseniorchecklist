@@ -146,7 +146,7 @@ export function AppNavigation({
 
   return (
     <>
-      <header className="sticky top-0 z-40 h-14 border-b-[3px] border-ink bg-paper text-ink md:h-16">
+      <header className="main-nav-row sticky top-0 z-40 h-14 border-b-[3px] border-ink bg-paper text-ink md:h-16">
         <div className="mx-auto flex h-full max-w-7xl items-center justify-between gap-2 px-2 sm:px-3 md:px-6">
           <Link href="/dashboard" className="flex min-w-0 items-center gap-2" aria-label="Swift Senior Checklist dashboard">
             <span className="neo-border flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden bg-electric-lime neo-shadow-sm md:h-10 md:w-10">

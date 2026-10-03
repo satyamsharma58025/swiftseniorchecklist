@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { addDays, dateKey, dbDate, istDateKey, istDayBounds } from "@/lib/dates";
+import { addDays, checklistDateLabel, dateKey, dbDate, istDateKey, istDayBounds } from "@/lib/dates";
 
 function sourceFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -35,6 +35,11 @@ describe("canonical business dates", () => {
 
   it("formats Date inputs in UTC and adds whole days", () => {
     expect(dateKey(dbDate("2026-10-03"))).toBe("2026-10-03");
+  });
+
+  it("labels only the current business date as Today", () => {
+    expect(checklistDateLabel("2026-10-03", "2026-10-03")).toBe("Today");
+    expect(checklistDateLabel("2026-10-02", "2026-10-03")).toBe("Friday, 02 Oct 2026");
   });
 
   it.each([

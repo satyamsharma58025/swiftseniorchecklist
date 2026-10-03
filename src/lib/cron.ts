@@ -6,6 +6,71 @@ import { prisma } from "@/lib/prisma";
 
 export type CronRouteResult = NextResponse | Response;
 
+const STALE_CRON_RUN_MS = 10 * 60 * 1000;
+const MAX_CRON_ERROR_LENGTH = 1000;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+}
+
+function truncateError(value: string): string {
+  return value.slice(0, MAX_CRON_ERROR_LENGTH);
+}
+
+function alreadyProcessedResponse(jobName: string, runDate: Date, itemsTouched: number | null) {
+  return NextResponse.json({
+    alreadyProcessed: true,
+    jobName,
+    date: dateKey(runDate),
+    itemsTouched: itemsTouched ?? 0,
+  });
+}
+
+function activeRunResponse(jobName: string, runDate: Date) {
+  return NextResponse.json({ error: "CRON_ALREADY_RUNNING", jobName, date: dateKey(runDate) }, { status: 409 });
+}
+
+function resultMetadata(resultBody: unknown, responseStatus?: number) {
+  const body = resultBody && typeof resultBody === "object" ? resultBody as Record<string, unknown> : {};
+  const failed = Array.isArray(body.failed) ? body.failed : [];
+  const failureMessage = failed.map((failure) => {
+    if (!failure || typeof failure !== "object") return String(failure);
+    const entry = failure as Record<string, unknown>;
+    return `${String(entry.taskCode ?? "unknown task")}: ${String(entry.error ?? "generation failed")}`;
+  }).join("; ");
+  const message = responseStatus && responseStatus >= 400
+    ? String(body.error ?? body.message ?? `Runner returned HTTP ${responseStatus}`)
+    : failureMessage;
+  const itemsTouched = typeof body.itemsTouched === "number"
+    ? body.itemsTouched
+    : typeof body.created === "number" || typeof body.existing === "number"
+      ? Number(body.created ?? 0) + Number(body.existing ?? 0)
+      : typeof body.added === "number" || typeof body.skipped === "number"
+        ? Number(body.added ?? 0) + Number(body.skipped ?? 0)
+        : typeof body.published === "number"
+          ? body.published
+          : typeof body.forwarded === "number"
+            ? body.forwarded
+            : null;
+
+  return {
+    status: responseStatus && responseStatus >= 400 ? "failed" : failed.length ? "partial" : "success",
+    itemsTouched,
+    errorMessage: message ? truncateError(message) : null,
+  };
+}
+
+export async function addCronResponseFields(
+  response: Response,
+  fields: (body: Record<string, unknown>) => Record<string, unknown>,
+): Promise<Response> {
+  if (response.status >= 400) return response;
+  const body = await response.clone().json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) return response;
+  const record = body as Record<string, unknown>;
+  return NextResponse.json({ ...record, ...fields(record) }, { status: response.status });
+}
+
 export function normalizeCronDate(dateValue?: string | null, fallbackDate = istDateKey()): Date {
   const raw = (dateValue ?? fallbackDate).trim();
   try {
@@ -75,41 +140,66 @@ export async function runCronJob<T>(
   }
 
   const runKey = { jobName, runDate };
-
-  const existing = await prisma.cronRunLog.findUnique({
-    where: {
-      jobName_runDate: runKey,
-    },
-  });
-
-  if (existing && existing.status === "success") {
-    return NextResponse.json({
-      alreadyProcessed: true,
-      jobName,
-      date: dateKey(runDate),
-      itemsTouched: existing.itemsTouched ?? 0,
-    });
+  const now = new Date();
+  let existing = await prisma.cronRunLog.findUnique({ where: { jobName_runDate: runKey } });
+  if (existing?.status === "success") {
+    return alreadyProcessedResponse(jobName, runDate, existing.itemsTouched);
   }
 
-  const started = existing ?? (await prisma.cronRunLog.create({
-    data: {
-      jobName,
-      runDate,
-      status: "running",
-      startedAt: new Date(),
-    },
-  }));
+  let started: { id: string };
+  if (existing) {
+    const isFreshRunning = existing.status === "running" && now.getTime() - existing.startedAt.getTime() <= STALE_CRON_RUN_MS;
+    if (isFreshRunning) return activeRunResponse(jobName, runDate);
+
+    const claimed = await prisma.cronRunLog.updateMany({
+      where: { id: existing.id, status: existing.status, startedAt: existing.startedAt },
+      data: { status: "running", startedAt: now, finishedAt: null, itemsTouched: null, errorMessage: null },
+    });
+    if (claimed.count === 0) {
+      existing = await prisma.cronRunLog.findUnique({ where: { jobName_runDate: runKey } });
+      if (existing?.status === "success") {
+        return alreadyProcessedResponse(jobName, runDate, existing.itemsTouched);
+      }
+      return activeRunResponse(jobName, runDate);
+    }
+    started = { id: existing.id };
+  } else {
+    try {
+      const created = await prisma.cronRunLog.create({
+        data: { jobName, runDate, status: "running", startedAt: now },
+      });
+      started = { id: created.id };
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      existing = await prisma.cronRunLog.findUnique({ where: { jobName_runDate: runKey } });
+      if (!existing) throw error;
+      if (existing.status === "success") {
+        return alreadyProcessedResponse(jobName, runDate, existing.itemsTouched);
+      }
+      const isFreshRunning = existing.status === "running" && now.getTime() - existing.startedAt.getTime() <= STALE_CRON_RUN_MS;
+      if (isFreshRunning) return activeRunResponse(jobName, runDate);
+      const claimed = await prisma.cronRunLog.updateMany({
+        where: { id: existing.id, status: existing.status, startedAt: existing.startedAt },
+        data: { status: "running", startedAt: now, finishedAt: null, itemsTouched: null, errorMessage: null },
+      });
+      if (claimed.count === 0) return activeRunResponse(jobName, runDate);
+      started = { id: existing.id };
+    }
+  }
 
   try {
     const result = await runner(runDate);
+    const resultBody = result instanceof Response ? await result.clone().json().catch(() => null) : result;
+    const metadata = resultMetadata(resultBody, result instanceof Response ? result.status : undefined);
     await prisma.cronRunLog.update({
       where: {
         id: started.id,
       },
       data: {
         finishedAt: new Date(),
-        status: "success",
-        errorMessage: null,
+        status: metadata.status,
+        itemsTouched: metadata.itemsTouched,
+        errorMessage: metadata.errorMessage,
       },
     });
 
@@ -121,7 +211,8 @@ export async function runCronJob<T>(
       data: {
         finishedAt: new Date(),
         status: "failed",
-        errorMessage: message,
+        itemsTouched: 0,
+        errorMessage: truncateError(message),
       },
     });
     return NextResponse.json({ error: message }, { status: 500 });

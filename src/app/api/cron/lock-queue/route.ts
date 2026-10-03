@@ -1,55 +1,9 @@
-import { checklistCode, colorFor } from "@/lib/cadence";
-import { prisma } from "@/lib/prisma";
-import { runCronJob } from "@/lib/cron";
+import { addCronResponseFields } from "@/lib/cron";
+import { POST as dailySync } from "../daily-sync/route";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
-  const { date } = body ?? {};
-
-  return runCronJob(request, "lock-queue", date, async (runDate) => {
-    const queueItems = await prisma.assignmentQueueItem.findMany({
-      where: { date: runDate, includeToday: true, locked: false },
-      include: { employee: { include: { supervisor: true } }, taskMaster: true },
-    });
-
-    let published = 0;
-
-    for (const item of queueItems) {
-      const taskMaster = item.taskMaster;
-      if (!taskMaster) {
-        continue;
-      }
-
-      const exists = await prisma.dailyChecklistItem.findFirst({
-        where: { taskMasterId: taskMaster.id, date: runDate },
-      });
-
-      if (!exists) {
-        await prisma.dailyChecklistItem.create({
-          data: {
-            checklistCode: checklistCode(taskMaster.taskCode, runDate),
-            date: runDate,
-            taskMasterId: taskMaster.id,
-            employeeName: item.employee?.name ?? "Unknown employee",
-            employeePhone: item.employee?.phone ?? null,
-            taskDescription: item.taskDescription,
-            supervisorName: item.employee?.supervisor?.name ?? "Unassigned supervisor",
-            supervisorPhone: item.employee?.supervisor?.phone ?? null,
-            escalationThreshold: taskMaster.escalationThreshold,
-            priority: taskMaster.priority,
-            status: "PENDING",
-            colorStatus: colorFor({ status: "PENDING" }),
-          },
-        });
-      }
-
-      await prisma.assignmentQueueItem.update({
-        where: { id: item.id },
-        data: { locked: true, lockedAt: new Date() },
-      });
-      published += 1;
-    }
-
-    return { published };
-  });
+  const response = await dailySync(request);
+  return addCronResponseFields(response, (body) => ({
+    published: Number(body.created ?? 0) + Number(body.existing ?? 0),
+  }));
 }

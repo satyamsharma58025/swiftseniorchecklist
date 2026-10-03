@@ -3,23 +3,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const db = vi.hoisted(() => ({
   $transaction: vi.fn(),
   taskMaster: { findMany: vi.fn() },
-  taskPause: { findFirst: vi.fn() },
+  taskPause: { findFirst: vi.fn(), findMany: vi.fn() },
+  holiday: { findMany: vi.fn() },
+  settings: { findUnique: vi.fn(), upsert: vi.fn() },
   queueCodeSequence: { upsert: vi.fn(), update: vi.fn() },
   assignmentQueueItem: {
     findFirst: vi.fn(),
+    findUnique: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
+    upsert: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   dailyChecklistItem: {
     findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
+    upsert: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
   },
   cronRunLog: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-  settings: { upsert: vi.fn() },
   notificationLog: { findMany: vi.fn() },
   webhookEvent: { create: vi.fn(), delete: vi.fn(), update: vi.fn() },
   activityLog: { create: vi.fn() },
@@ -104,16 +109,26 @@ beforeEach(() => {
   db.$transaction.mockImplementation(async (callback) => callback(db));
   db.taskMaster.findMany.mockResolvedValue([taskMaster]);
   db.taskPause.findFirst.mockResolvedValue(null);
+  db.taskPause.findMany.mockResolvedValue([]);
+  db.holiday.findMany.mockResolvedValue([]);
+  db.settings.findUnique.mockResolvedValue({ catchUpDays: 3 });
+  db.settings.upsert.mockResolvedValue({ seniorAuthorityName: "Senior Authority", seniorAuthorityPhone: null });
   db.queueCodeSequence.upsert.mockResolvedValue({ id: "sequence-1", nextValue: 1 });
   db.queueCodeSequence.update.mockResolvedValue({});
+  db.assignmentQueueItem.findUnique.mockImplementation(async () => queueRow);
   db.assignmentQueueItem.findFirst.mockResolvedValue(null);
   db.assignmentQueueItem.findMany.mockImplementation(async () => queueRow ? [queueRow] : []);
+  db.assignmentQueueItem.upsert.mockImplementation(async ({ create }) => {
+    queueRow = { ...create, id: "queue-1", employee, taskMaster } as QueueRow;
+    return queueRow;
+  });
   db.assignmentQueueItem.create.mockImplementation(async ({ data }) => {
     queueRow = { ...data, id: "queue-1", employee, taskMaster } as QueueRow;
     return queueRow;
   });
   db.assignmentQueueItem.update.mockResolvedValue({});
-  db.dailyChecklistItem.findFirst.mockResolvedValue(null);
+  db.assignmentQueueItem.updateMany.mockResolvedValue({ count: 1 });
+  db.dailyChecklistItem.findFirst.mockImplementation(async () => checklistRow);
   db.dailyChecklistItem.findMany.mockImplementation(async () => checklistRow ? [checklistRow] : []);
   db.dailyChecklistItem.create.mockImplementation(async ({ data }) => {
     checklistRow = {
@@ -134,7 +149,6 @@ beforeEach(() => {
   });
   db.cronRunLog.create.mockImplementation(async ({ data }) => ({ id: `cron-${data.jobName}` }));
   db.cronRunLog.update.mockResolvedValue({});
-  db.settings.upsert.mockResolvedValue({ seniorAuthorityName: "Senior Authority", seniorAuthorityPhone: null });
   db.notificationLog.findMany.mockResolvedValue([]);
   db.webhookEvent.create.mockResolvedValue({});
   db.webhookEvent.delete.mockResolvedValue({});
@@ -165,7 +179,7 @@ describe("cron-to-form business-date flow", () => {
       body: JSON.stringify({ date: businessDate }),
     }));
     expect(locked.status).toBe(200);
-    expect(await locked.json()).toEqual({ published: 1 });
+    expect(await locked.json()).toMatchObject({ published: 1, created: 0, existing: 1, failed: [] });
     expect(checklistRow).not.toBeNull();
     expect(checklistRow && dateKey(checklistRow.date)).toBe(businessDate);
     expect(checklistRow?.date.toISOString()).toBe("2026-10-03T00:00:00.000Z");

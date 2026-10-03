@@ -18,6 +18,8 @@ const RECIPIENT_CAP = 60;
 const TIME_BUDGET_MS = 240_000;
 const SEND_SPACING_MS = 300;
 const MAX_ERROR_LENGTH = 1000;
+const FORM_BRIDGE_TIMEOUT_MS = 90_000;
+const WHATSAPP_TIMEOUT_MS = 30_000;
 
 type DispatchClient = Pick<PrismaClient, "dailyChecklistItem" | "employee" | "reassignment" | "dispatchLog" | "notificationLog">;
 
@@ -165,12 +167,14 @@ async function requestFormLink(
   recipient: DispatchRecipientRecord,
   choices: string[],
   date: Date,
-  slot: DispatchSlot,
+  remainingBudgetMs: () => number,
   fetcher: typeof fetch,
 ): Promise<string> {
   const bridgeUrl = process.env.APPS_SCRIPT_WEBAPP_URL?.trim();
   const bridgeSecret = process.env.FORM_BRIDGE_SECRET;
   if (!bridgeUrl || !bridgeSecret) throw { permanent: true, message: "APPS_SCRIPT_WEBAPP_URL or FORM_BRIDGE_SECRET is not configured" } satisfies DeliveryFailure;
+  const timeoutMs = remainingBudgetMs();
+  if (timeoutMs <= 0) throw { permanent: false, message: "Dispatch time budget exhausted" } satisfies DeliveryFailure;
 
   let response: Response;
   try {
@@ -185,6 +189,7 @@ async function requestFormLink(
         employeePhone: recipient.phone,
         choices,
       }),
+      signal: AbortSignal.timeout(Math.min(FORM_BRIDGE_TIMEOUT_MS, timeoutMs)),
     });
   } catch (error) {
     throw { permanent: false, message: String(error) } satisfies DeliveryFailure;
@@ -209,11 +214,14 @@ async function sendWhatsApp(
   templateName: string,
   date: Date,
   formUrl: string,
+  remainingBudgetMs: () => number,
   fetcher: typeof fetch,
 ): Promise<string> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!phoneNumberId || !accessToken) throw { permanent: true, message: "WhatsApp Cloud API configuration is missing" } satisfies DeliveryFailure;
+  const timeoutMs = remainingBudgetMs();
+  if (timeoutMs <= 0) throw { permanent: false, message: "Dispatch time budget exhausted" } satisfies DeliveryFailure;
 
   let response: Response;
   try {
@@ -236,6 +244,7 @@ async function sendWhatsApp(
           }],
         },
       }),
+      signal: AbortSignal.timeout(Math.min(WHATSAPP_TIMEOUT_MS, timeoutMs)),
     });
   } catch (error) {
     throw { permanent: false, message: String(error) } satisfies DeliveryFailure;
@@ -280,6 +289,7 @@ export async function runDispatch(options: DispatchRunOptions): Promise<Dispatch
   const maxRecipients = options.maxRecipients ?? RECIPIENT_CAP;
   const timeBudgetMs = options.timeBudgetMs ?? TIME_BUDGET_MS;
   const startedAt = now().getTime();
+  const remainingBudgetMs = () => timeBudgetMs - (now().getTime() - startedAt);
   const dateString = dateKey(options.date);
   const result: DispatchResult = {
     date: dateString,
@@ -366,8 +376,8 @@ export async function runDispatch(options: DispatchRunOptions): Promise<Dispatch
       }
       claimedRowId = claim.row.id;
 
-      const formUrl = await requestFormLink(recipient, choices, options.date, slot, fetcher);
-      const providerMessageId = await sendWhatsApp(phone, templateName, options.date, formUrl, fetcher);
+      const formUrl = await requestFormLink(recipient, choices, options.date, remainingBudgetMs, fetcher);
+      const providerMessageId = await sendWhatsApp(phone, templateName, options.date, formUrl, remainingBudgetMs, fetcher);
       await completeDispatchAttempt(database, claim.row.id, {
         status: "SENT",
         phone,

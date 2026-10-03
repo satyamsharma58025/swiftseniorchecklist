@@ -85,7 +85,7 @@ function successResponse(body: unknown, status = 200) {
 
 function appAndGraphFetch(graphResponses: Response[] = []) {
   const requests: Array<{ url: string; init: RequestInit }> = [];
-  const fetcher = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  const mockFetcher = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = String(input);
     requests.push({ url, init });
     if (url.includes("script.google")) {
@@ -93,8 +93,8 @@ function appAndGraphFetch(graphResponses: Response[] = []) {
       return successResponse({ ok: true, formUrl: `https://forms.google.test/${requestBody.employeeName.replaceAll(" ", "-")}` });
     }
     return graphResponses.shift() ?? successResponse({ messages: [{ id: `wamid-${requests.length}` }] });
-  }) as typeof fetch;
-  return { fetcher, requests };
+  });
+  return { fetcher: mockFetcher as typeof fetch, mockFetcher, requests };
 }
 
 function options(
@@ -141,6 +141,7 @@ describe("dispatch service", () => {
     expect(bridgeBody).toMatchObject({ action: "refresh", date: "2026-10-03", employeeName: "Asha Singh", choices: [expect.stringContaining("CL-20261003-TASK1")] });
     const graphRequest = transport.requests[1];
     expect(graphRequest.url).toBe("https://graph.facebook.com/v21.0/test-phone-id/messages");
+    expect(graphRequest.init.signal).toBeInstanceOf(AbortSignal);
     expect(graphRequest.init.headers).toMatchObject({ authorization: "Bearer test-access-token" });
     const graphBody = JSON.parse(String(graphRequest.init.body));
     expect(graphBody.template).toMatchObject({
@@ -170,6 +171,18 @@ describe("dispatch service", () => {
     const retryResult = await runDispatch(options(retryDb.database, retryTransport.fetcher));
     expect(retryResult).toMatchObject({ sent: 0, failed: 1, permanentFailures: [] });
     expect(Array.from(retryDb.dispatchRows.values())[0]).toMatchObject({ status: "FAILED", attempts: 1 });
+  });
+
+  it("classifies network timeouts as retryable failures", async () => {
+    const employee = { id: "employee-1", name: "Asha Singh", phone: "919876543210" };
+    const db = makeDatabase([makeItem(employee, "TASK1")], [employee]);
+    const transport = appAndGraphFetch();
+    transport.mockFetcher.mockRejectedValueOnce(new DOMException("The operation timed out", "TimeoutError"));
+
+    const result = await runDispatch(options(db.database, transport.fetcher));
+
+    expect(result).toMatchObject({ sent: 0, failed: 1, permanentFailures: [] });
+    expect(Array.from(db.dispatchRows.values())[0]).toMatchObject({ status: "FAILED", attempts: 1 });
   });
 
   it("resumes after the time budget without duplicating a sent recipient", async () => {

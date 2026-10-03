@@ -52,10 +52,10 @@ function resultMetadata(resultBody: unknown, responseStatus?: number) {
     ? body.itemsTouched
     : typeof body.created === "number" || typeof body.existing === "number"
       ? Number(body.created ?? 0) + Number(body.existing ?? 0)
-      : typeof body.added === "number" || typeof body.skipped === "number"
-        ? Number(body.added ?? 0) + Number(body.skipped ?? 0)
-        : typeof body.sent === "number"
-          ? Number(body.sent) + Number(body.skipped ?? 0)
+      : typeof body.sent === "number"
+        ? Number(body.sent) + Number(body.skipped ?? 0)
+        : typeof body.added === "number" || typeof body.skipped === "number"
+          ? Number(body.added ?? 0) + Number(body.skipped ?? 0)
           : typeof body.published === "number"
             ? body.published
             : typeof body.forwarded === "number"

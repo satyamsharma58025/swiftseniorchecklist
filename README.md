@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Swift Senior Checklist
 
-## Getting Started
+Daily operational checklists for Swift Senior Authority and floor employees in
+India (`Asia/Kolkata`). The app materializes daily tasks, collects form
+responses, and dispatches checklist links directly through the WhatsApp Cloud
+API.
 
-First, run the development server:
+## Daily lifecycle
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- `daily-sync` generates and locks today's checklist.
+- GitHub Actions calls `/api/cron/dispatch?slot=auto` every 15 minutes during
+  the morning (08:30–11:30 IST) and evening (18:00–20:00 IST) due windows.
+- The app-side dispatcher selects recipients, refreshes each employee's
+  response-safe Google Form, sends the approved WhatsApp template, and records
+  each attempt in `DispatchLog`.
+- `/api/cron/eod-cutoff` runs at 20:00 IST.
+
+n8n is not required for checklist intake or WhatsApp sending. Google Forms
+submit responses directly to `/api/integrations/form/submit`; outbound
+messages are sent by the app. Existing n8n assets are optional legacy
+integrations.
+
+Dispatch is disabled by default. Enable it with `DISPATCH_ENABLED=true` only
+after configuring the Apps Script web app, Meta templates, and WhatsApp API
+credentials. See [the dispatch runbook](./docs/DISPATCH-RUNBOOK.md) for the
+canary procedure, recovery steps, and template configuration. Scheduling
+behavior and PostgreSQL test instructions are in
+[Scheduled Jobs Operations](./docs/RENDER-CRON-CHECKLIST.md).
+
+## Development
+
+```sh
+npm install
+npx prisma generate
+npx tsc --noEmit
+npm run lint
+npx vitest run
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The real-PostgreSQL integration test requires the local disposable database;
+see the scheduled-jobs document for the exact commands.

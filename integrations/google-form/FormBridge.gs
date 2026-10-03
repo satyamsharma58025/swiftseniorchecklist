@@ -6,13 +6,13 @@
  *   2. Script Properties (Project Settings -> Script Properties):
  *        APP_BASE_URL        checklist app origin
  *        APP_SECRET          value matching the app's CRON_SECRET
- *        BRIDGE_SECRET       secret used by n8n when rebuilding forms
+ *        BRIDGE_SECRET       secret used by the app-side dispatcher to refresh forms
  *        N8N_WEBHOOK_URL     optional secondary notification endpoint
  *        N8N_WEBHOOK_SECRET  optional secret for the secondary notification endpoint
  *        INDEPENDENT_DAILY_FORMS  "true" (default: creates independent Google Form each day)
  *   3. Run setup() once to initialize triggers.
  *   4. Deploy as Web App (Execute as: Me, Who has access: Anyone).
- *   5. Copy the /exec URL into n8n's Config node APPS_SCRIPT_WEBAPP_URL.
+ *   5. Set the /exec URL as APPS_SCRIPT_WEBAPP_URL on the app service.
  */
 
 var DONE_TITLE = 'Tick every task that is DONE today';
@@ -50,12 +50,12 @@ function setup() {
   });
   Logger.log(missing.length
     ? 'Setup completed with warnings. Missing Script Properties: ' + missing.join(', ')
-    : 'Setup successful! Deploy as a Web App (Anyone can access) and paste /exec URL into n8n.');
+    : 'Setup successful! Deploy as a Web App (Anyone can access) and set its /exec URL as APPS_SCRIPT_WEBAPP_URL on the app service.');
 }
 
-// ------------------------------------------------- 1. n8n -> rebuild form ----
+// ----------------------------------------------- app -> refresh form ----
 
-/** Web app entry point. n8n POSTs JSON: { secret, action: 'refresh', date, choices: [...], byEmployee: [...] } */
+/** Web app entry point accepts signed JSON refresh/link actions from the app. */
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);

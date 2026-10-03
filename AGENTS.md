@@ -19,7 +19,7 @@ The system automates the daily operational checklist lifecycle for Swift Senior 
                       |   TaskMaster (Daily Cadence)|
                       +--------------+--------------+
                                      |
-                       (Auto-lock at 08:30 / 09:00 IST)
+                       (Auto-lock at 08:30 IST)
                                      v
                       +-----------------------------+
                       |     DailyChecklistItem      |
@@ -29,8 +29,8 @@ The system automates the daily operational checklist lifecycle for Swift Senior 
                +---------------------+---------------------+
                v                                           v
    +-----------------------+                   +-----------------------+
-   |  Next.js 16 App UI    |                   |   n8n Cloud Workflow  |
-   | (/checklist/[date])   |                   | (09:00 IST Cron/Manual|
+   |  Next.js 16 App UI    |                   | GitHub Actions cron   |
+   | (/checklist/[date])   |                   | 15-minute due ticks  |
    +-----------------------+                   +-----------+-----------+
                                                            |
                                        +-------------------+-------------------+
@@ -46,7 +46,7 @@ The system automates the daily operational checklist lifecycle for Swift Senior 
 ## 2. Daily Automation & Zero-Human-Intervention Rules
 
 1. **Daily Auto-Lock**:
-   - `ensureDailyQueueAndLock(targetDate)` runs automatically when `/api/integrations/form/today` is triggered by n8n or when anyone opens the web app `/checklist/[date]`.
+   - `ensureDailyQueueAndLock(targetDate)` runs automatically when `/api/cron/dispatch` or `/api/integrations/form/today` is triggered, and when anyone opens the web app `/checklist/[date]`.
    - Active tasks from `TaskMaster` with matching cadence are automatically populated into `AssignmentQueueItem`, locked, and converted into `DailyChecklistItem` rows for `date = targetDate` (UTC midnight `YYYY-MM-DDT00:00:00.000Z`).
    - No manual button clicking is required to generate or lock the checklist.
 
@@ -60,8 +60,8 @@ The system automates the daily operational checklist lifecycle for Swift Senior 
 
 - **File**: `integrations/google-form/FormBridge.gs`
 - **Behavior**:
-  - Creates a dedicated, independent Google Form for each date (`Senior Authority Daily Checklist - YYYY-MM-DD`).
-  - Stores `FORM_ID_<dateStr>` in Script Properties so existing responses are **never wiped or overwritten**.
+  - Creates a dedicated employee form for each date (`Daily Checklist — Employee (YYYY-MM-DD)`).
+  - Stores `FORM_ID_<dateStr>_<employee>` in Script Properties; refresh reuses that form and preserves existing responses.
   - Organizes questions into employee sections (`👤 Employee Name (X tasks)`).
   - Every checkbox question format: `👤 [Employee Name] — [Task Title] [PRIORITY] (CL-Code)`.
   - When submitted, `onFormSubmit` extracts all checked `(CL-...)` codes and POSTs them to `/api/integrations/form/submit`.
@@ -70,7 +70,7 @@ The system automates the daily operational checklist lifecycle for Swift Senior 
 
 ## 4. Meta WhatsApp Message Templates
 
-In Meta WhatsApp Business Manager (WABA ID: `1158085794064004`), ensure these 3 templates are approved:
+In Meta WhatsApp Business Manager (WABA ID: `1158085794064004`), the app-side dispatcher requires the two templates below to be approved:
 
 ### Template 1: `senior_daily_checklist`
 - **Category**: `UTILITY`
@@ -98,9 +98,20 @@ Let’s make today productive! 💪
   ```
 - **Variables**:
   - `{{1}}`: Date formatted as `dd-LLL-yyyy` (e.g., `27-Sep-2026`)
-  - `{{2}}`: Google Form short link (e.g., `https://script.google.com/...`)
+  - `{{2}}`: Employee's Google Form URL (unshortened)
 
-### Template 2: `not_done_reminder`
+### Template 2: `checklist_pending_reminder`
+- **Category**: `UTILITY`
+- **Language**: `en_US`
+- **Body**:
+  ```text
+  ⏰ Reminder: your checklist for {{1}} still has open tasks. Please update it here: {{2}}
+  ```
+- **Variables**:
+  - `{{1}}`: Date formatted as `dd-LLL-yyyy`
+  - `{{2}}`: Employee's Google Form URL (unshortened)
+
+### Legacy Template: `not_done_reminder`
 - **Category**: `UTILITY`
 - **Language**: `en`
 - **Body**:
@@ -113,7 +124,7 @@ Let’s make today productive! 💪
   - `{{3}}`: Remarks
   - `{{4}}`: Checklist code (e.g. `CL-20260927-EO01PROD`)
 
-### Template 3: `escalation_alert`
+### Legacy Template: `escalation_alert`
 - **Category**: `UTILITY`
 - **Language**: `en`
 - **Body**:
@@ -149,13 +160,24 @@ Let’s make today productive! 💪
 
 ---
 
-## 6. Integrations & n8n Workflow
+## 6. App-side dispatch and integrations
 
-- **Workflow File**: `integrations/n8n/Swift_Senior_Checklist_Production_Workflow_Fixed.json`
+- **Scheduler**: `.github/workflows/scheduled-jobs.yml`
+- **Dispatcher**: `/api/cron/dispatch?slot=auto`
+- **Dispatch windows**: 08:30–11:30 IST (morning) and 18:00–20:00 IST (evening), polled every 15 minutes.
+- **Delivery ledger**: `DispatchLog`, uniquely keyed by date, slot, and employee ID. See `docs/DISPATCH-RUNBOOK.md`.
+- n8n is optional and is not required for form intake or WhatsApp delivery. The Apps Script posts form submissions directly to the app; the app sends WhatsApp templates directly through Meta's Cloud API.
+- **Optional legacy workflow file**: `integrations/n8n/Swift_Senior_Checklist_Production_Workflow_Fixed.json`
 - **Apps Script Web App**:
   `https://script.google.com/macros/s/AKfycby8Z8woY3D11xqiueBsmlhs8G5cd4n8cpmLlX7hHd2FAAnpU1Alo7AJc1LCfxIMRg/exec`
 - **Endpoints**:
-  - `GET /api/integrations/form/today`: Serves today's tasks and auto-locks if needed. Requires `x-cron-secret`.
-  - `POST /api/integrations/form/submit`: Webhook from Apps Script / n8n marking submitted tasks as `DONE`.
-  - `GET /api/cron/reminder-sweep`: Sweeps tasks marked `NOT_DONE` and sends WhatsApp nudge reminders.
+  - `GET /api/integrations/form/today`: Serves today's tasks and auto-locks if needed. Requires `x-cron-secret`; retained for compatibility and integrations.
+  - `POST /api/integrations/form/submit`: Apps Script submission webhook that marks checked tasks as `DONE`.
+  - `GET /api/cron/reminder-sweep`: Reports non-DONE tasks with reminder/escalation state; it does not send messages.
+  - `GET /api/cron/overall-summary`: Reports checklist status counts.
+  - `GET /api/cron/eod-cutoff`: Marks unfinished tasks NOT_DONE and forwards them to the next day.
 
+`reminder-sweep` and `overall-summary` are read-only reports apart from cron
+history and are safe to schedule, but they are intentionally not scheduled in
+this phase. Without them, only the periodic reports and their history are
+missing; checklist generation and dispatch still work.

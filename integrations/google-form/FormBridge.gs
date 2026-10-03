@@ -730,52 +730,67 @@ function unblockPending_() {
   Logger.log('[FormBridge] Unblocked pending intake records: ' + unblocked);
 }
 
-/** Time-driven every 6 hours; reports health of the submission queue to the app. */
-function reportHealth_() {
-  var props = PropertiesService.getScriptProperties();
-  var all = props.getProperties();
-
+function buildHealthPayload_(properties) {
   var pendingCount = 0;
   var deadLetterCount = 0;
   var blockedCount = 0;
   var oldestPendingMs = null;
+  var all = properties || {};
 
   Object.keys(all).forEach(function (key) {
     if (key.indexOf('DEAD_LETTER_') === 0) {
       deadLetterCount += 1;
-    } else if (key.indexOf('PENDING_') === 0) {
-      var saved;
-      try {
-        saved = JSON.parse(all[key]);
-      } catch (err) {
-        return;
-      }
-      var record = saved && saved.payload ? saved : { payload: saved, attempts: 0, blocked: false };
-      if (record.blocked) {
-        blockedCount += 1;
-      } else {
-        pendingCount += 1;
-        if (record.payload && record.payload.submittedAt) {
-          var submittedMs = Date.parse(record.payload.submittedAt);
-          if (Number.isFinite(submittedMs)) {
-            if (!oldestPendingMs || submittedMs < oldestPendingMs) {
-              oldestPendingMs = submittedMs;
-            }
-          }
+      return;
+    }
+    if (key.indexOf('PENDING_') !== 0) {
+      return;
+    }
+
+    var saved;
+    try {
+      saved = JSON.parse(all[key]);
+    } catch (err) {
+      return;
+    }
+
+    if (!saved || typeof saved !== 'object') {
+      return;
+    }
+
+    var record = saved && saved.payload ? saved : { payload: saved, attempts: 0, blocked: false };
+    if (!record || typeof record !== 'object') {
+      return;
+    }
+
+    if (record.blocked) {
+      blockedCount += 1;
+      return;
+    }
+
+    pendingCount += 1;
+    if (record.payload && record.payload.submittedAt) {
+      var submittedMs = Date.parse(record.payload.submittedAt);
+      if (Number.isFinite(submittedMs)) {
+        if (!oldestPendingMs || submittedMs < oldestPendingMs) {
+          oldestPendingMs = submittedMs;
         }
       }
     }
   });
 
-  var oldestPendingAgeMinutes = oldestPendingMs ? Math.floor((Date.now() - oldestPendingMs) / 1000 / 60) : null;
-
-  var payload = {
+  return {
     pendingCount: pendingCount,
     deadLetterCount: deadLetterCount,
     blockedCount: blockedCount,
-    oldestPendingAgeMinutes: oldestPendingAgeMinutes,
+    oldestPendingAgeMinutes: oldestPendingMs ? Math.floor((Date.now() - oldestPendingMs) / 1000 / 60) : null,
     scriptVersion: 'v1'
   };
+}
+
+/** Time-driven every 6 hours; reports health of the submission queue to the app. */
+function reportHealth_() {
+  var props = PropertiesService.getScriptProperties();
+  var payload = buildHealthPayload_(props.getProperties());
 
   var baseUrl = prop_('APP_BASE_URL');
   var appSecret = prop_('APP_SECRET');
@@ -789,14 +804,14 @@ function reportHealth_() {
     var res = UrlFetchApp.fetch(String(baseUrl).replace(/\/+$/, '') + '/api/integrations/form/health-ping', {
       method: 'post',
       contentType: 'application/json',
-      headers: { 'x-app-secret': appSecret },
+      headers: { 'x-cron-secret': appSecret },
       payload: JSON.stringify(payload),
       muteHttpExceptions: true,
       followRedirects: false
     });
     var code = res.getResponseCode();
     if (code >= 200 && code < 300) {
-      Logger.log('[FormBridge] Health report sent: pending=' + pendingCount + ', deadLettered=' + deadLetterCount + ', blocked=' + blockedCount + ', oldestPendingAgeMinutes=' + oldestPendingAgeMinutes);
+      Logger.log('[FormBridge] Health report sent: pending=' + payload.pendingCount + ', deadLettered=' + payload.deadLetterCount + ', blocked=' + payload.blockedCount + ', oldestPendingAgeMinutes=' + payload.oldestPendingAgeMinutes);
     } else {
       console.warn('[FormBridge] Health report failed with HTTP ' + code + ': ' + res.getContentText().slice(0, 500));
     }

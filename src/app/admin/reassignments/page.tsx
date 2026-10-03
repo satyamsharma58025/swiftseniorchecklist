@@ -26,8 +26,8 @@ export default async function ReassignmentsPage() {
         </header>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Task</th>
@@ -47,13 +47,13 @@ export default async function ReassignmentsPage() {
                 ) : (
                   records.map((record, index) => (
                     <tr key={record.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">
+                      <td data-label="Task" className="border-[3px] border-ink px-4 py-3 text-ink">
                         {record.taskMaster ? `${record.taskMaster.taskCode} — ${record.taskMaster.taskDescription}` : "Unknown task"}
                       </td>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{employeeMap.get(record.previousEmployeeId) ?? "Unknown employee"}</td>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{employeeMap.get(record.newEmployeeId) ?? "Unknown employee"}</td>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(record.effectiveDate)}</td>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{record.reason}</td>
+                      <td data-label="From" className="border-[3px] border-ink px-4 py-3 text-ink">{employeeMap.get(record.previousEmployeeId) ?? "Unknown employee"}</td>
+                      <td data-label="To" className="border-[3px] border-ink px-4 py-3 text-ink">{employeeMap.get(record.newEmployeeId) ?? "Unknown employee"}</td>
+                      <td data-label="Effective date" className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(record.effectiveDate)}</td>
+                      <td data-label="Reason" className="border-[3px] border-ink px-4 py-3 text-ink">{record.reason}</td>
                     </tr>
                   ))
                 )}

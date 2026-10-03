@@ -31,8 +31,8 @@ export default async function ScorecardPage() {
         </header>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
@@ -46,12 +46,12 @@ export default async function ScorecardPage() {
                   <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No employee scorecards" description="Add employees to the roster before reviewing completion." href="/admin/employees" actionLabel="Open employee roster" /></td></tr>
                 ) : summary.map((row, index) => (
                   <tr key={row.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{row.name}</td>
-                    <td className="border-[3px] border-ink px-4 py-3">
+                    <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{row.name}</td>
+                    <td data-label="7-day completion" className="border-[3px] border-ink px-4 py-3">
                       <span className="sticker bg-electric-lime text-ink">{row.completion}%</span>
                     </td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{row.done}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{row.total}</td>
+                    <td data-label="Done" className="border-[3px] border-ink px-4 py-3 text-ink">{row.done}</td>
+                    <td data-label="Total" className="border-[3px] border-ink px-4 py-3 text-ink">{row.total}</td>
                   </tr>
                 ))}
               </tbody>

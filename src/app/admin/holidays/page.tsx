@@ -16,8 +16,8 @@ export default async function HolidaysPage() {
         </header>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Date</th>
@@ -31,10 +31,10 @@ export default async function HolidaysPage() {
                   <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No holidays configured" description="Checklist cadence will continue without holiday exclusions until dates are added." href="/dashboard" actionLabel="Open dashboard" /></td></tr>
                 ) : holidays.map((holiday, index) => (
                   <tr key={holiday.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(holiday.date)}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{holiday.name}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.appliesTo}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.notes ?? "—"}</td>
+                    <td data-label="Date" className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(holiday.date)}</td>
+                    <td data-label="Name" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{holiday.name}</td>
+                    <td data-label="Applies to" className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.appliesTo}</td>
+                    <td data-label="Notes" className="border-[3px] border-ink px-4 py-3 text-ink">{holiday.notes ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

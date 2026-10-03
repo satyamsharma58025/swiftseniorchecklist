@@ -18,8 +18,8 @@ export default async function TemplatesPage() {
         </header>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
@@ -33,10 +33,10 @@ export default async function TemplatesPage() {
                   <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No queue templates yet" description="Generated queue items will appear here after checklist setup." href={`/queue/${istDateKey()}`} actionLabel="Open assignment queue" /></td></tr>
                 ) : templates.map((template, index) => (
                   <tr key={template.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.employee.name}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.taskDescription}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.priority}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.source}</td>
+                    <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 text-ink">{template.employee.name}</td>
+                    <td data-label="Task" className="border-[3px] border-ink px-4 py-3 text-ink">{template.taskDescription}</td>
+                    <td data-label="Priority" className="border-[3px] border-ink px-4 py-3 text-ink">{template.priority}</td>
+                    <td data-label="Queue source" className="border-[3px] border-ink px-4 py-3 text-ink">{template.source}</td>
                   </tr>
                 ))}
               </tbody>

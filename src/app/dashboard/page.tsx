@@ -127,8 +127,8 @@ export default async function DashboardPage() {
               <span className="sticker bg-electric-lime text-ink">{activeEmployees} employees</span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-separate border-spacing-y-2">
+            <div data-table-scroll className="overflow-x-auto">
+              <table data-responsive-table="true" className="min-w-full border-separate border-spacing-y-2">
                 <thead>
                   <tr className="text-left text-[10px] font-black uppercase tracking-[0.18em] text-ink/70">
                     <th className="px-2 py-2">Employee</th>
@@ -150,17 +150,17 @@ export default async function DashboardPage() {
                   ) : (
                     employeeStats.map((employee) => (
                       <tr key={employee.name} className="neo-border bg-paper align-middle">
-                        <td className="px-3 py-3">
+                        <td data-label="Employee" className="px-3 py-3">
                           <div>
                             <p className="text-sm font-black uppercase tracking-[0.04em] text-ink">{employee.name}</p>
                             <p className="text-[10px] uppercase tracking-[0.14em] text-ink/60">{employee.designation}</p>
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-sm font-bold text-ink">{employee.total}</td>
-                        <td className="px-3 py-3 text-sm font-bold text-ink">{employee.done}</td>
-                        <td className="px-3 py-3 text-sm font-bold text-ink">{employee.pending}</td>
-                        <td className="px-3 py-3 text-sm font-bold text-ink">{employee.notDone}</td>
-                        <td className="px-3 py-3">
+                        <td data-label="Tasks" className="px-3 py-3 text-sm font-bold text-ink">{employee.total}</td>
+                        <td data-label="Done" className="px-3 py-3 text-sm font-bold text-ink">{employee.done}</td>
+                        <td data-label="Pending" className="px-3 py-3 text-sm font-bold text-ink">{employee.pending}</td>
+                        <td data-label="Not done" className="px-3 py-3 text-sm font-bold text-ink">{employee.notDone}</td>
+                        <td data-label="Progress" className="px-3 py-3">
                           <div className="flex items-center gap-2">
                             <div className="h-2.5 w-24 border-[2px] border-ink bg-white">
                               <div className="h-full bg-brand-green" style={{ width: `${employee.progress}%` }} />
@@ -168,7 +168,7 @@ export default async function DashboardPage() {
                             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-ink">{employee.progress}%</span>
                           </div>
                         </td>
-                        <td className="px-3 py-3">
+                        <td data-label="Action" className="px-3 py-3">
                           <Link
                             href={`/checklist/${today}?employeeId=${employee.id}`}
                             className="neo-press border-[3px] border-ink bg-white px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-ink"

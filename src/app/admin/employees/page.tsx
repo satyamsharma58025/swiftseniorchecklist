@@ -23,8 +23,8 @@ export default async function AdminEmployeesPage() {
         </header>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Name</th>
@@ -39,11 +39,11 @@ export default async function AdminEmployeesPage() {
                   <tr><td colSpan={5} className="border-[3px] border-ink p-4"><PageEmptyState title="Employee roster is empty" description="Import the active employee roster before assigning tasks." href="/admin/tasks" actionLabel="Open task master" /></td></tr>
                 ) : employees.map((employee, index) => (
                   <tr key={employee.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{employee.name}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{employee.department}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{employee.designation}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{employee.supervisor?.name ?? "—"}</td>
-                    <td className="border-[3px] border-ink px-4 py-3">
+                    <td data-label="Name" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{employee.name}</td>
+                    <td data-label="Department" className="border-[3px] border-ink px-4 py-3 text-ink">{employee.department}</td>
+                    <td data-label="Designation" className="border-[3px] border-ink px-4 py-3 text-ink">{employee.designation}</td>
+                    <td data-label="Supervisor" className="border-[3px] border-ink px-4 py-3 text-ink">{employee.supervisor?.name ?? "—"}</td>
+                    <td data-label="Status" className="border-[3px] border-ink px-4 py-3">
                       <span className={employee.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>
                         {employee.active ? "Active" : "Inactive"}
                       </span>

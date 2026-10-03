@@ -74,8 +74,8 @@ export default async function TrackerPage({
         </header>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
@@ -89,10 +89,10 @@ export default async function TrackerPage({
                   <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No checklist history for this month" description="Choose another month or open today’s dashboard." href="/dashboard" actionLabel="Open dashboard" /></td></tr>
                 ) : summary.map((item, index) => (
                   <tr key={item.employeeName} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{item.employeeName}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{item.done}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{item.total}</td>
-                    <td className="border-[3px] border-ink px-4 py-3">
+                    <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{item.employeeName}</td>
+                    <td data-label="Done" className="border-[3px] border-ink px-4 py-3 text-ink">{item.done}</td>
+                    <td data-label="Total" className="border-[3px] border-ink px-4 py-3 text-ink">{item.total}</td>
+                    <td data-label="Completion" className="border-[3px] border-ink px-4 py-3">
                       <span className="sticker bg-electric-lime text-ink">{item.completion}%</span>
                     </td>
                   </tr>

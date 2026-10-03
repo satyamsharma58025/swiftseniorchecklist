@@ -17,8 +17,8 @@ export default async function TaskPausesPage() {
         </header>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Task</th>
@@ -31,9 +31,9 @@ export default async function TaskPausesPage() {
                   <tr><td colSpan={3} className="border-[3px] border-ink p-4"><PageEmptyState title="No paused tasks" description="This list fills when recurring work is paused for a date range." href="/admin/tasks" actionLabel="Review task master" /></td></tr>
                 ) : pauses.map((pause, index) => (
                   <tr key={pause.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{pause.taskMaster.taskCode} — {pause.taskMaster.taskDescription}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(pause.startDate)} to {dateKey(pause.endDate)}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{pause.reason}</td>
+                    <td data-label="Task" className="border-[3px] border-ink px-4 py-3 text-ink">{pause.taskMaster.taskCode} — {pause.taskMaster.taskDescription}</td>
+                    <td data-label="Date range" className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(pause.startDate)} to {dateKey(pause.endDate)}</td>
+                    <td data-label="Reason" className="border-[3px] border-ink px-4 py-3 text-ink">{pause.reason}</td>
                   </tr>
                 ))}
               </tbody>

@@ -28,8 +28,8 @@ export default async function EscalationsPage() {
         </header>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
@@ -45,17 +45,17 @@ export default async function EscalationsPage() {
                   <tr><td colSpan={6} className="border-[3px] border-ink p-4"><PageEmptyState title="No escalation history" description="Check today’s checklist for tasks that still need review." href={`/checklist/${istDateKey()}`} actionLabel="Open today’s checklist" /></td></tr>
                 ) : logs.map((log, index) => (
                   <tr key={log.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.employeeName}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.taskDescription}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.supervisorName}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.reminderCountAtEscalation}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">
+                    <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.employeeName}</td>
+                    <td data-label="Task" className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.taskDescription}</td>
+                    <td data-label="Supervisor" className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.supervisorName}</td>
+                    <td data-label="Reminder count" className="border-[3px] border-ink px-4 py-3 text-ink">{log.reminderCountAtEscalation}</td>
+                    <td data-label="Tier" className="border-[3px] border-ink px-4 py-3 text-ink">
                       <div className="flex flex-wrap items-center gap-2">
                         <span>{log.escalationTier}</span>
                         <StatusBadge status="ESCALATED" />
                       </div>
                     </td>
-                    <td className="border-[3px] border-ink px-4 py-3">
+                    <td data-label="Resolved" className="border-[3px] border-ink px-4 py-3">
                       <span className={log.resolved ? "sticker bg-brand-green text-ink" : "sticker bg-hot-pink text-ink"}>
                         {log.resolved ? "Resolved" : "Open"}
                       </span>

@@ -33,8 +33,8 @@ export default async function AdminTasksPage() {
         <TaskForm employees={employees} />
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div data-table-scroll className="overflow-x-auto">
+            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Code</th>
@@ -54,11 +54,11 @@ export default async function AdminTasksPage() {
                 ) : (
                   tasks.map((task, index) => (
                     <tr key={task.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                      <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{task.taskCode}</td>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{task.employee.name}</td>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{task.cadence}</td>
-                      <td className="border-[3px] border-ink px-4 py-3 text-ink">{task.priority}</td>
-                      <td className="border-[3px] border-ink px-4 py-3">
+                      <td data-label="Code" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{task.taskCode}</td>
+                      <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 text-ink">{task.employee.name}</td>
+                      <td data-label="Cadence" className="border-[3px] border-ink px-4 py-3 text-ink">{task.cadence}</td>
+                      <td data-label="Priority" className="border-[3px] border-ink px-4 py-3 text-ink">{task.priority}</td>
+                      <td data-label="Status" className="border-[3px] border-ink px-4 py-3">
                         <span className={task.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>
                           {task.active ? "Active" : "Inactive"}
                         </span>

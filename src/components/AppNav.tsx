@@ -39,17 +39,12 @@ export async function AppNav() {
 
   return (
     <nav aria-label="Main navigation" className="sticky top-0 z-40 bg-paper text-ink">
-      <div className="marquee text-[10px] font-black uppercase tracking-[0.28em]">
-        <div className="marquee__track items-center gap-8 px-4 py-2 text-sm">
+      <div className="marquee text-xs font-bold">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2">
           <span>Swift Strips India</span>
-          <span>Daily ops board</span>
-          <span>Checkpoint ready</span>
-          <span>Escalations tracked</span>
-          <span>Senior checklist</span>
-          <span>Swift Strips India</span>
-          <span>Daily ops board</span>
-          <span>Checkpoint ready</span>
-          <span>Escalations tracked</span>
+          <span>Daily operations</span>
+          <span>Checklist review</span>
+          <span>Escalation tracking</span>
           <span>Senior checklist</span>
         </div>
       </div>

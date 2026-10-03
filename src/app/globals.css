@@ -173,41 +173,13 @@ textarea::placeholder {
   color: var(--paper);
 }
 
-.marquee__track {
-  display: flex;
-  width: max-content;
-  white-space: nowrap;
-  animation: marquee 22s linear infinite;
-}
-
-@keyframes marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-.neo-wiggle {
-  animation: wiggle 0.7s ease-in-out infinite alternate;
-}
-
-@keyframes wiggle {
-  0% {
-    transform: rotate(-1deg) translateY(0);
-  }
-  100% {
-    transform: rotate(2deg) translateY(-1px);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .marquee__track,
-  .neo-wiggle,
-  .neo-press {
+  *,
+  *::before,
+  *::after {
     animation: none !important;
     transition: none !important;
+    scroll-behavior: auto !important;
   }
 
   .neo-press:hover,

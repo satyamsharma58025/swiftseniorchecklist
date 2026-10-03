@@ -1,7 +1,7 @@
 export default function Loading() {
   return (
     <main className="min-h-screen bg-paper px-3 py-6 text-ink md:px-6" role="status" aria-label="Loading page" aria-busy="true">
-      <div className="mx-auto max-w-6xl animate-pulse space-y-5">
+      <div className="mx-auto max-w-6xl space-y-5">
         <div className="border-[3px] border-ink bg-white p-5 neo-shadow-lg">
           <div className="h-12 w-32 border-[3px] border-ink bg-electric-lime" />
           <div className="mt-4 h-10 w-3/4 border-[3px] border-ink bg-paper" />

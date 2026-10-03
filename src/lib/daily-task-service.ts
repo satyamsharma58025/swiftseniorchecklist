@@ -34,6 +34,27 @@ export type DueTaskMaster = {
   };
 };
 
+type QueueMaterializationItem = {
+  taskMasterId: string | null;
+  includeToday: boolean;
+  taskDescription: string;
+  priority: DueTaskMaster["priority"];
+  employee: DueTaskMaster["assignedEmployee"];
+  taskMaster: { id: string; taskCode: string; escalationThreshold: number } | null;
+};
+
+type ChecklistCandidate = {
+  taskCode: string;
+  taskMasterId: string;
+  employeeName: string;
+  employeePhone: string | null;
+  taskDescription: string;
+  supervisorName: string;
+  supervisorPhone: string | null;
+  escalationThreshold: number;
+  priority: DueTaskMaster["priority"];
+};
+
 function toBusinessDateKey(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   try {
@@ -319,12 +340,42 @@ async function ensureAssignmentQueue(targetDate: Date, tasks: DueTaskMaster[]) {
   return created;
 }
 
-async function materializeDailyChecklist(targetDate: Date, tasks: DueTaskMaster[]) {
+async function materializeDailyChecklist(
+  targetDate: Date,
+  tasks: DueTaskMaster[],
+  queueItems: QueueMaterializationItem[] = [],
+) {
+  const candidates: ChecklistCandidate[] = [
+    ...tasks.map((task) => ({
+      taskCode: task.taskCode,
+      taskMasterId: task.id,
+      employeeName: task.assignedEmployee.name,
+      employeePhone: task.assignedEmployee.phone,
+      taskDescription: task.taskDescription,
+      supervisorName: task.assignedEmployee.supervisor?.name ?? "Unassigned supervisor",
+      supervisorPhone: task.assignedEmployee.supervisor?.phone ?? null,
+      escalationThreshold: task.escalationThreshold,
+      priority: task.priority,
+    })),
+    ...queueItems.flatMap((item) => item.includeToday && item.taskMasterId && item.taskMaster
+      ? [{
+          taskCode: item.taskMaster.taskCode,
+          taskMasterId: item.taskMasterId,
+          employeeName: item.employee.name,
+          employeePhone: item.employee.phone,
+          taskDescription: item.taskDescription,
+          supervisorName: item.employee.supervisor?.name ?? "Unassigned supervisor",
+          supervisorPhone: item.employee.supervisor?.phone ?? null,
+          escalationThreshold: item.taskMaster.escalationThreshold,
+          priority: item.priority,
+        }]
+      : []),
+  ];
   const materialized: Array<{ id: string; taskMasterId: string; employeeName: string; created: boolean }> = [];
 
-  for (const task of tasks) {
-    const checklistCodeValue = checklistCode(task.taskCode, targetDate);
-    const where = { taskMasterId: task.id, date: targetDate };
+  for (const candidate of candidates) {
+    const checklistCodeValue = checklistCode(candidate.taskCode, targetDate);
+    const where = { taskMasterId: candidate.taskMasterId, date: targetDate };
     let item = await prisma.dailyChecklistItem.findFirst({ where });
     let wasCreated = false;
 
@@ -332,18 +383,18 @@ async function materializeDailyChecklist(targetDate: Date, tasks: DueTaskMaster[
       try {
         item = await prisma.dailyChecklistItem.create({
           data: {
-        checklistCode: checklistCodeValue,
-        date: targetDate,
-        taskMasterId: task.id,
-        employeeName: task.assignedEmployee.name,
-        employeePhone: task.assignedEmployee.phone,
-        taskDescription: task.taskDescription,
-        supervisorName: task.assignedEmployee.supervisor?.name ?? "Unassigned supervisor",
-        supervisorPhone: task.assignedEmployee.supervisor?.phone ?? null,
-        escalationThreshold: task.escalationThreshold,
-        priority: task.priority,
-        status: "PENDING",
-        colorStatus: colorFor({ status: "PENDING" }),
+            checklistCode: checklistCodeValue,
+            date: targetDate,
+            taskMasterId: candidate.taskMasterId,
+            employeeName: candidate.employeeName,
+            employeePhone: candidate.employeePhone,
+            taskDescription: candidate.taskDescription,
+            supervisorName: candidate.supervisorName,
+            supervisorPhone: candidate.supervisorPhone,
+            escalationThreshold: candidate.escalationThreshold,
+            priority: candidate.priority,
+            status: "PENDING",
+            colorStatus: colorFor({ status: "PENDING" }),
           },
         });
         wasCreated = true;
@@ -354,11 +405,11 @@ async function materializeDailyChecklist(targetDate: Date, tasks: DueTaskMaster[
       }
     }
 
-    materialized.push({ id: item.id, taskMasterId: task.id, employeeName: task.assignedEmployee.name, created: wasCreated });
+    materialized.push({ id: item.id, taskMasterId: candidate.taskMasterId, employeeName: candidate.employeeName, created: wasCreated });
 
     await prisma.assignmentQueueItem.updateMany({
       where: {
-        taskMasterId: task.id,
+        taskMasterId: candidate.taskMasterId,
         date: targetDate,
         locked: false,
       },
@@ -374,6 +425,12 @@ async function materializeDailyChecklist(targetDate: Date, tasks: DueTaskMaster[
 
 export async function ensureDailyQueueAndLock(runDate: Date) {
   const dueSet = await getDueTaskMasters(runDate);
+  const dueTaskIds = new Set(dueSet.tasks.map((task) => task.id));
+  const queuedItems = await prisma.assignmentQueueItem.findMany({
+    where: { date: runDate, includeToday: true, taskMasterId: { not: null } },
+    include: { employee: { include: { supervisor: true } }, taskMaster: true },
+  });
+  const queuedOnly = queuedItems.filter((item) => item.taskMasterId && item.taskMaster && !dueTaskIds.has(item.taskMasterId));
   const createdThisRun = new Set<string>();
   const summary = {
     created: 0,
@@ -384,26 +441,35 @@ export async function ensureDailyQueueAndLock(runDate: Date) {
     failed: [...dueSet.failed],
   };
 
-  for (const task of dueSet.tasks) {
+  const candidates: Array<{ taskCode: string; task: DueTaskMaster | null; queueItem: QueueMaterializationItem | null }> = [
+    ...dueSet.tasks.map((task) => ({ taskCode: task.taskCode, task, queueItem: null })),
+    ...queuedOnly.map((item) => ({ taskCode: item.taskMaster!.taskCode, task: null, queueItem: item as QueueMaterializationItem })),
+  ];
+
+  for (const candidate of candidates) {
     let completed = false;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        await ensureAssignmentQueue(runDate, [task]);
-        const [result] = await materializeDailyChecklist(runDate, [task]);
+        if (candidate.task) await ensureAssignmentQueue(runDate, [candidate.task]);
+        const [result] = await materializeDailyChecklist(
+          runDate,
+          candidate.task ? [candidate.task] : [],
+          candidate.queueItem ? [candidate.queueItem] : [],
+        );
         if (!result) throw new Error("Task materialization returned no checklist row");
 
-        if (result.created || createdThisRun.has(task.id)) {
+        if (result.created || createdThisRun.has(result.taskMasterId)) {
           summary.created += 1;
-          createdThisRun.add(task.id);
+          createdThisRun.add(result.taskMasterId);
         } else {
           summary.existing += 1;
         }
         completed = true;
         break;
       } catch (error) {
-        logTaskFailure(runDate, task.taskCode, attempt, error);
+        logTaskFailure(runDate, candidate.taskCode, attempt, error);
         if (attempt === 2) {
-          summary.failed.push({ taskCode: task.taskCode, error: errorMessage(error) });
+          summary.failed.push({ taskCode: candidate.taskCode, error: errorMessage(error) });
         }
       }
     }

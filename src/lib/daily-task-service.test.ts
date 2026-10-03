@@ -238,6 +238,66 @@ describe("ensureDailyQueueAndLock", () => {
     expect(result).toMatchObject({ created: 1, existing: 0, failed: [] });
   });
 
+  it("does not reserve a queue code when the task/date queue item already exists", async () => {
+    const task = baseTask();
+    db.taskMaster.findMany.mockResolvedValue([task]);
+    db.assignmentQueueItem.findUnique.mockResolvedValue({
+      id: "queue-existing",
+      taskMasterId: task.id,
+      date: runDate,
+      employeeId: task.employeeId,
+    });
+
+    const result = await ensureDailyQueueAndLock(runDate);
+
+    expect(result).toMatchObject({ created: 1, failed: [] });
+    expect(db.assignmentQueueItem.upsert).not.toHaveBeenCalled();
+    expect(db.queueCodeSequence.upsert).not.toHaveBeenCalled();
+  });
+
+  it("materializes an included queue row even when its task is not due today", async () => {
+    const targetDate = dbDate("2026-10-04");
+    db.taskMaster.findMany.mockResolvedValue([]);
+    db.assignmentQueueItem.findMany.mockResolvedValue([{
+      id: "forwarded-queue-1",
+      queueCode: "Q-20261004-0001",
+      date: targetDate,
+      employeeId: "emp-1",
+      taskDescription: "Finish the forwarded weekly inspection",
+      source: "AUTO",
+      taskMasterId: "tm-weekly",
+      includeToday: true,
+      priority: "HIGH",
+      locked: false,
+      employee: {
+        id: "emp-1",
+        name: "Yogesh Tomar",
+        phone: "9876543210",
+        designation: "Employee",
+        department: "Operations",
+        supervisor: null,
+      },
+      taskMaster: { id: "tm-weekly", taskCode: "WEEKLY-01", escalationThreshold: 2 },
+    }]);
+
+    const result = await ensureDailyQueueAndLock(targetDate);
+
+    expect(result).toMatchObject({ created: 1, existing: 0, caughtUp: 0, failed: [] });
+    expect(db.dailyChecklistItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        checklistCode: "CL-20261004-WEEKLY01",
+        date: targetDate,
+        taskMasterId: "tm-weekly",
+        taskDescription: "Finish the forwarded weekly inspection",
+        employeeName: "Yogesh Tomar",
+      }),
+    });
+    expect(db.assignmentQueueItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { taskMasterId: "tm-weekly", date: targetDate, locked: false },
+      data: { locked: true, lockedAt: expect.any(Date) },
+    }));
+  });
+
   it("converges concurrent runs to one queue row and one checklist row", async () => {
     const task = baseTask();
     const queues = new Map<string, Record<string, unknown>>();

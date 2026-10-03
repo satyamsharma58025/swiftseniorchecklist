@@ -2,8 +2,14 @@ import Link from "next/link";
 
 import { AddTaskForm } from "@/app/queue/_components/AddTaskForm";
 import { LockQueueButton } from "@/app/queue/_components/LockQueueButton";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { dbDate } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+
+export async function generateMetadata({ params }: { params: Promise<{ date: string }> }) {
+  const { date } = await params;
+  return { title: `Assignment queue ${date}` };
+}
 
 export default async function QueuePage({
   params,
@@ -41,8 +47,9 @@ export default async function QueuePage({
   };
 
   return (
-    <main id="main-content" className="min-h-screen bg-paper p-4 text-ink md:p-6">
+    <div className="min-h-screen py-4 text-ink md:py-6">
       <div className="mx-auto max-w-5xl space-y-6">
+        <PageHeader>
         <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -54,6 +61,7 @@ export default async function QueuePage({
             </Link>
           </div>
         </header>
+        </PageHeader>
 
         <section className="grid gap-4 md:grid-cols-3">
           <div className="neo-border bg-white p-5 neo-shadow-sm">
@@ -105,6 +113,6 @@ export default async function QueuePage({
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

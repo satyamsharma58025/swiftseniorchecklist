@@ -1,5 +1,8 @@
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { prisma } from "@/lib/prisma";
+
+export const metadata = { title: "Employees" };
 
 export default async function AdminEmployeesPage() {
   const employees = await prisma.employee.findMany({
@@ -8,8 +11,9 @@ export default async function AdminEmployeesPage() {
   });
 
   return (
-    <main id="main-content" className="min-h-screen bg-paper p-4 text-ink md:p-6">
+    <div className="min-h-screen py-4 text-ink md:py-6">
       <div className="mx-auto max-w-6xl space-y-6">
+        <PageHeader>
         <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -21,6 +25,7 @@ export default async function AdminEmployeesPage() {
             </p>
           </div>
         </header>
+        </PageHeader>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
           <div data-table-scroll className="overflow-x-auto">
@@ -55,6 +60,6 @@ export default async function AdminEmployeesPage() {
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

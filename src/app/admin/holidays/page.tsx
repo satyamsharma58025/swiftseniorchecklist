@@ -1,6 +1,9 @@
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+
+export const metadata = { title: "Holiday calendar" };
 
 export default async function HolidaysPage() {
   const holidays = await prisma.holiday.findMany({
@@ -8,12 +11,14 @@ export default async function HolidaysPage() {
   });
 
   return (
-    <main id="main-content" className="min-h-screen bg-paper p-4 text-ink md:p-6">
+    <div className="min-h-screen py-4 text-ink md:py-6">
       <div className="mx-auto max-w-5xl space-y-6">
+        <PageHeader>
         <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Admin</p>
           <h1 className="brand-display mt-2 text-4xl">Holiday calendar</h1>
         </header>
+        </PageHeader>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
           <div data-table-scroll className="overflow-x-auto">
@@ -42,6 +47,6 @@ export default async function HolidaysPage() {
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

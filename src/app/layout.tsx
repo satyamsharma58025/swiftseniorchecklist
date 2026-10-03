@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Archivo_Black, Geist_Mono, Space_Grotesk } from "next/font/google";
 
+import { AppFooter } from "@/components/AppFooter";
 import { AppNav } from "@/components/AppNav";
 import "./globals.css";
 
@@ -21,7 +22,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Swift Senior Checklist",
+  title: {
+    default: "Dashboard",
+    template: "%s · Swift Senior Checklist",
+  },
   description: "Daily checklist and escalation management dashboard",
 };
 
@@ -33,9 +37,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <body className="min-h-full bg-paper text-ink">
-        <a className="skip-link" href="#main-content">Skip to main content</a>
+        <a className="skip-link" href="#main">Skip to main content</a>
         <AppNav />
-        {children}
+        <main id="main" className="mx-auto min-h-screen min-w-0 w-full max-w-screen-2xl bg-paper px-3 text-ink md:px-6">
+          {children}
+        </main>
+        <AppFooter />
       </body>
     </html>
   );

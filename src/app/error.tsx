@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useTransition } from "react";
 
+import { PageHeader } from "@/components/ui/PageHeader";
+
 export default function ErrorPage({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const [isPending, startTransition] = useTransition();
 
   return (
-    <main id="main-content" className="mx-auto flex min-h-[60vh] max-w-3xl items-center px-4 py-10" aria-labelledby="error-title">
+    <PageHeader>
+    <div className="mx-auto flex min-h-[60vh] max-w-3xl items-center px-4 py-10" aria-labelledby="error-title">
       <section className="neo-border w-full bg-hot-pink p-6 text-ink neo-shadow-lg">
         <p className="text-xs font-bold uppercase">Something went wrong</p>
         <h1 id="error-title" className="brand-display mt-2 text-3xl">Page unavailable</h1>
@@ -20,6 +23,7 @@ export default function ErrorPage({ reset }: { error: Error & { digest?: string 
         </div>
         <p className="sr-only" role="status" aria-live="polite">{isPending ? "Retrying page load." : ""}</p>
       </section>
-    </main>
+    </div>
+    </PageHeader>
   );
 }

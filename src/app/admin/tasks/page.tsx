@@ -1,6 +1,9 @@
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TaskForm } from "@/app/admin/tasks/_components/TaskForm";
 import { prisma } from "@/lib/prisma";
+
+export const metadata = { title: "Task master" };
 
 export default async function AdminTasksPage() {
   const [tasks, employees] = await Promise.all([
@@ -16,8 +19,9 @@ export default async function AdminTasksPage() {
   ]);
 
   return (
-    <main id="main-content" className="min-h-screen bg-paper p-4 text-ink md:p-6">
+    <div className="min-h-screen py-4 text-ink md:py-6">
       <div className="mx-auto max-w-6xl space-y-6">
+        <PageHeader>
         <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -29,6 +33,7 @@ export default async function AdminTasksPage() {
             </div>
           </div>
         </header>
+        </PageHeader>
 
         <TaskForm employees={employees} />
 
@@ -71,6 +76,6 @@ export default async function AdminTasksPage() {
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

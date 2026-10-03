@@ -4,6 +4,8 @@ import { signIn } from "next-auth/react";
 import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { PageHeader } from "@/components/ui/PageHeader";
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -46,7 +48,8 @@ function LoginForm() {
   }
 
   return (
-    <main id="main-content" className="mx-auto flex min-h-[70vh] max-w-md items-center justify-center px-4 py-12">
+    <PageHeader>
+    <div className="mx-auto flex min-h-[70vh] max-w-md items-center justify-center px-4 py-12">
       <div className="w-full border-[3px] border-ink bg-white p-7 neo-shadow-lg">
         <div className="mb-8 text-center">
           <span className="sticker bg-hot-pink text-ink">Swift Strips India</span>
@@ -111,7 +114,8 @@ function LoginForm() {
           </button>
         </form>
       </div>
-    </main>
+    </div>
+    </PageHeader>
   );
 }
 

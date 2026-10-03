@@ -14,21 +14,21 @@ function collectPageFiles(directory: string): string[] {
 const appDirectory = path.join(process.cwd(), "src/app");
 const pages = collectPageFiles(appDirectory);
 
-function assertMainTarget(filePath: string) {
-  const source = fs.readFileSync(filePath, "utf8");
-  if (source.includes("<main")) {
-    expect(source, filePath).toMatch(/<main\b[^>]*\bid="main-content"/);
-  }
-}
-
 describe("route accessibility landmarks", () => {
-  it("provides a skip link and main target on every rendered page", () => {
+  it("provides a skip link, one root main target, and a PageHeader on every route", () => {
     const layout = fs.readFileSync(path.join(appDirectory, "layout.tsx"), "utf8");
-    expect(layout).toContain('href="#main-content"');
-    for (const page of pages) assertMainTarget(page);
+    expect(layout).toContain('href="#main"');
+    expect(layout).toMatch(/<main\s+id="main"/);
+    for (const page of pages) {
+      const source = fs.readFileSync(page, "utf8");
+      expect(source, page).toContain("PageHeader");
+      expect(source, page).not.toMatch(/<main\b/);
+    }
 
     for (const boundary of ["loading.tsx", "error.tsx", "not-found.tsx"]) {
-      assertMainTarget(path.join(appDirectory, boundary));
+      const source = fs.readFileSync(path.join(appDirectory, boundary), "utf8");
+      expect(source, boundary).toContain("PageHeader");
+      expect(source, boundary).not.toMatch(/<main\b/);
     }
   });
 });

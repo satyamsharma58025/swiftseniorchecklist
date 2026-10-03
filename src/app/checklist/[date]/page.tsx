@@ -5,8 +5,14 @@ import { BrandHeader } from "@/app/checklist/_components/BrandHeader";
 import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
 import { DateControl } from "@/app/checklist/_components/DateControl";
 import { EmployeeTabs } from "@/app/checklist/_components/EmployeeTabs";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { addDays, dateKey, dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+
+export async function generateMetadata({ params }: { params: Promise<{ date: string }> }) {
+  const { date } = await params;
+  return { title: `Checklist ${date}` };
+}
 
 const EMPLOYEE_NAMES = [
   "Yogesh Tomar",
@@ -122,10 +128,10 @@ export default async function ChecklistDatePage({
   });
 
   return (
-    <main id="main-content" className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
+    <div className="min-h-screen py-5 text-ink md:py-8">
       <div className="mx-auto max-w-6xl space-y-5">
         <AutoRefresh intervalSeconds={30} />
-        <BrandHeader />
+        <PageHeader><BrandHeader /></PageHeader>
 
         <section className="neo-border bg-white p-4 neo-shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -213,6 +219,6 @@ export default async function ChecklistDatePage({
           <div className="brand-rule h-2 border-[3px] border-ink" />
         </footer>
       </div>
-    </main>
+    </div>
   );
 }

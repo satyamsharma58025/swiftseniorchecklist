@@ -2,8 +2,11 @@ import Link from "next/link";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+
+export const metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const today = istDateKey();
@@ -82,8 +85,9 @@ export default async function DashboardPage() {
   const activeEmployees = employeeStats.length;
 
   return (
-    <main id="main-content" className="min-h-screen bg-paper px-3 py-5 text-ink md:px-6 md:py-8">
+    <div className="min-h-screen py-5 text-ink md:py-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        <PageHeader>
         <header className="border-[3px] border-ink bg-ink px-5 py-6 text-paper neo-shadow-lg md:px-7">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
@@ -101,6 +105,7 @@ export default async function DashboardPage() {
             </div>
           </div>
         </header>
+        </PageHeader>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {[
@@ -210,6 +215,6 @@ export default async function DashboardPage() {
           </aside>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

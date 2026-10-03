@@ -3,8 +3,11 @@ import { DateTime } from "luxon";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+
+export const metadata = { title: "Employee tracker" };
 
 export default async function TrackerPage({
   searchParams,
@@ -55,8 +58,9 @@ export default async function TrackerPage({
   const nextMonth = monthStart.plus({ months: 1 }).toFormat("yyyy-MM");
 
   return (
-    <main id="main-content" className="min-h-screen bg-paper p-4 text-ink md:p-6">
+    <div className="min-h-screen py-4 text-ink md:py-6">
       <div className="mx-auto max-w-6xl space-y-6">
+        <PageHeader>
         <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -72,6 +76,7 @@ export default async function TrackerPage({
             </div>
           </div>
         </header>
+        </PageHeader>
 
         <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
           <div data-table-scroll className="overflow-x-auto">
@@ -102,6 +107,6 @@ export default async function TrackerPage({
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

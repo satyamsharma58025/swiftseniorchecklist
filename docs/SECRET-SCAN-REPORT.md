@@ -9,6 +9,10 @@ Scanned on 2026-10-03. Secret values are intentionally omitted from this report.
 - Tracked text paths, target JSON/patch files, and contents of both tracked zip archives were searched for Apps Script URLs, webhook verification token references, form bridge secret references, fallback/personal phone patterns, and n8n credential references. Only locations and classifications are retained below.
 - Rows marked `HEAD` are present in tracked files at the scan commit and therefore also in repository history. `History-only` means absent from the current tracked tree. Archive locations refer to the archive entry and its internal line number.
 
+## Pre-commit note
+
+Before committing integration or configuration changes, run Gitleaks over the full checkout and history with redaction enabled. Review only the reported file and line, never paste secret values into issues, logs, or this report. Rotate an active credential if it was committed; removing a value from the working tree does not remove it from Git history.
+
 | File and line(s) | Secret type | Present in HEAD or history-only | Rotation required |
 | --- | --- | --- | --- |
 | `src/lib/dispatch-logging-security.test.ts:23` | Test-only cron-secret fixture; Gitleaks generic API key | HEAD and history (commit `e20cca2`) | No; replace the fixture with a non-secret test value |

@@ -1,0 +1,20 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documented placeholders and n8n variable expressions are not credentials."
+regexes = [
+  '''\$\{(?:FORM_BRIDGE_SECRET|APPS_SCRIPT_WEBAPP_URL|WHATSAPP_VERIFY_TOKEN|SENIOR_PHONE)\}''',
+  '''=\{\{\s*\$vars\.(?:FORM_BRIDGE_SECRET|APPS_SCRIPT_WEBAPP_URL|WHATSAPP_VERIFY_TOKEN|SENIOR_PHONE)\s*\}\}''',
+  '''\{\{\s*\$vars\.(?:FORM_BRIDGE_SECRET|APPS_SCRIPT_WEBAPP_URL|WHATSAPP_VERIFY_TOKEN|SENIOR_PHONE)\s*\}\}''',
+]
+
+[[allowlists]]
+description = "Generated Next.js manifests are not source and must never be committed."
+paths = ['''(^|/).next/''']
+
+[[allowlists]]
+description = "Historical synthetic test fixture removed from HEAD; history is intentionally not rewritten."
+commits = ["e20cca2c512fd1640046f14d7448e8940bd7d2bd"]
+paths = ["src/lib/dispatch-logging-security.test.ts"]
+regexes = ['''generic-api-key''']

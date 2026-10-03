@@ -41,4 +41,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 *.dump
+*.sql.gz
 diag-output.txt
+.vscode/

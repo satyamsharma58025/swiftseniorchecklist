@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { secretsMatch } from "@/lib/integration-auth";
+import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -35,11 +35,9 @@ function isValidHeartbeatPayload(value: unknown): value is AppsScriptHealthPingP
 }
 
 export async function POST(request: NextRequest) {
-  const headerSecret = request.headers.get("x-cron-secret");
-  const expectedSecret = process.env.CRON_SECRET ?? "";
-
-  if (!secretsMatch(headerSecret, expectedSecret)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = rejectUnlessIntegrationSecret(request);
+  if (denied) {
+    return denied;
   }
 
   try {

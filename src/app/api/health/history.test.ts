@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { GET as getHistory } from "./history/route";
 import { dbDate, dateKey } from "@/lib/dates";
 
 // Test for /api/health/history endpoint logic
@@ -201,5 +203,20 @@ describe("health history endpoint", () => {
       },
     });
     expect(cronRuns.length).toBe(0);
+  });
+
+  it("returns the recent health history via the API route without exposing PII", async () => {
+    vi.stubEnv("CRON_SECRET", "history-secret");
+    const response = await getHistory(new NextRequest("http://localhost/api/health/history?days=7", {
+      headers: { "x-cron-secret": "history-secret" },
+    }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.windowDays).toBe(7);
+    expect(body.totals.cronRuns).toBeGreaterThanOrEqual(3);
+    expect(body.totals.dispatchLogs).toBeGreaterThanOrEqual(10);
+    expect(body).not.toHaveProperty("employees");
+    expect(JSON.stringify(body)).not.toContain("9198765432");
   });
 });

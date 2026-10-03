@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { secretsMatch } from "@/lib/integration-auth";
+import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { buildDailyHealth } from "@/lib/health";
 import { loadDailyHealthInput } from "@/lib/health-queries";
 import { istDateKey, dbDate } from "@/lib/dates";
@@ -61,12 +61,9 @@ function buildTextSummary(health: Awaited<ReturnType<typeof buildDailyHealth>>):
 }
 
 export async function GET(request: NextRequest) {
-  // Verify secret
-  const headerSecret = request.headers.get("x-cron-secret");
-  const cronSecret = process.env.CRON_SECRET || "";
-
-  if (!secretsMatch(headerSecret, cronSecret)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = rejectUnlessIntegrationSecret(request);
+  if (denied) {
+    return denied;
   }
 
   try {

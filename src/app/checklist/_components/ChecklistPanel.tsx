@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { colorFor } from "@/lib/cadence";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export type ChecklistTaskRow = {
   id: string;
@@ -158,13 +158,13 @@ export function ChecklistPanel({
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Total", value: summary.total, tone: "bg-paper" },
-          { label: "Done", value: summary.done, tone: "bg-electric-lime" },
-          { label: "Pending", value: summary.pending, tone: "bg-sun-yellow" },
-          { label: "Not done", value: summary.notDone, tone: "bg-hot-pink" },
+          { label: "Total", value: summary.total, tone: "bg-paper", status: null },
+          { label: "Done", value: summary.done, tone: "bg-brand-green", status: "DONE" as const },
+          { label: "Pending", value: summary.pending, tone: "bg-sun-yellow", status: "PENDING" as const },
+          { label: "Not done", value: summary.notDone, tone: "bg-hot-pink", status: "NOT_DONE" as const },
         ].map((card) => (
           <div key={card.label} className={`neo-border p-4 neo-shadow-sm ${card.tone}`}>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-ink/70">{card.label}</p>
+            {card.status ? <StatusBadge status={card.status} /> : <p className="text-xs font-bold">{card.label}</p>}
             <p className="brand-display mt-2 text-3xl leading-none">{card.value}</p>
           </div>
         ))}
@@ -206,24 +206,14 @@ export function ChecklistPanel({
       ) : (
         <div className="space-y-3">
           {filteredItems.map((item) => {
-            const color = (item.colorStatus ?? colorFor({ status: item.status, escalated: item.escalated, reminderCount: item.reminderCount })) as string;
-            const colorClasses: Record<string, string> = {
-              YELLOW: "bg-sun-yellow",
-              GREEN: "bg-brand-green",
-              RED: "bg-hot-pink",
-              ORANGE: "bg-brand-saffron",
-              GREY: "bg-ink",
-            };
-
             return (
               <div key={item.id} className="neo-border bg-white p-4 neo-shadow-sm">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="flex items-start gap-3">
-                    <span className={`mt-1 h-4 w-4 border-[3px] border-ink ${colorClasses[color] ?? "bg-ink"}`} />
                     <div className="flex-1">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
                         <span className="sticker bg-sun-yellow text-[11px] font-black uppercase tracking-[0.14em] text-ink">
-                          👤 {item.employeeName}
+                          {item.employeeName}
                         </span>
                         <span className="sticker bg-paper font-mono text-[10px] font-bold text-ink">
                           {item.checklistCode}
@@ -232,11 +222,8 @@ export function ChecklistPanel({
                       <p className="text-lg font-black uppercase tracking-[0.04em] text-ink">{item.taskDescription}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
                         <span className="sticker bg-paper text-ink">Priority: {item.priority}</span>
-                        <span className={item.status === "DONE" ? "sticker bg-electric-lime text-ink" : item.status === "NOT_DONE" ? "sticker bg-hot-pink text-ink" : "sticker bg-sun-yellow text-ink"}>
-                          Status: {item.status}
-                        </span>
+                        <StatusBadge status={item.escalated ? "ESCALATED" : item.status} />
                         <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span>
-                        <span className={item.escalated ? "sticker bg-ink text-paper" : "sticker bg-paper text-ink"}>{item.escalated ? "Escalated" : "Active"}</span>
                         {item.formSubmittedAt ? (
                           <span className="sticker bg-paper text-ink">
                             Via form {new Date(item.formSubmittedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}

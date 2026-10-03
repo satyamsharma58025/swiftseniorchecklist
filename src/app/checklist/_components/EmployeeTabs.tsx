@@ -11,14 +11,6 @@ export type EmployeeSummary = {
   escalated: number;
 };
 
-function statusColorClasses(employee: EmployeeSummary) {
-  if (employee.escalated > 0) return "bg-ink";
-  if (employee.notDone > 0) return "bg-hot-pink";
-  if (employee.pending > 0) return "bg-sun-yellow";
-  if (employee.done === employee.total && employee.total > 0) return "bg-brand-green";
-  return "bg-cyber-cyan";
-}
-
 export function EmployeeTabs({
   date,
   employees,
@@ -44,8 +36,7 @@ export function EmployeeTabs({
           ].join(" ")}
         >
           <span className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 border-[2px] border-ink bg-electric-lime" />
-            <span>👥 All Employees</span>
+            <span>All Employees</span>
             {allSummary ? (
               <span
                 className={
@@ -73,7 +64,6 @@ export function EmployeeTabs({
               ].join(" ")}
             >
               <span className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 border-[2px] border-ink ${statusColorClasses(employee)}`} />
                 <span>{employee.name}</span>
                 <span className={isActive ? "border-[2px] border-paper bg-white px-1.5 py-0.5 text-[10px] text-ink" : "border-[2px] border-ink bg-paper px-1.5 py-0.5 text-[10px] text-ink"}>
                   {employee.done}/{employee.total}

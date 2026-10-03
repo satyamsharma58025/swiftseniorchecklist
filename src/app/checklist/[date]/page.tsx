@@ -5,6 +5,7 @@ import { BrandHeader } from "@/app/checklist/_components/BrandHeader";
 import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
 import { DateControl } from "@/app/checklist/_components/DateControl";
 import { EmployeeTabs } from "@/app/checklist/_components/EmployeeTabs";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { addDays, dateKey, dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -151,9 +152,9 @@ export default async function ChecklistDatePage({
               <span className={lastFormSubmission ? "sticker bg-electric-lime text-ink" : "sticker bg-sun-yellow text-ink"}>
                 {lastFormSubmission ? "Responses Tracked" : "Awaiting submission"}
               </span>
-              <span className="sticker bg-paper text-ink">Done {dayTotals.done}</span>
-              <span className="sticker bg-hot-pink text-ink">Not done {dayTotals.notDone}</span>
-              <span className="sticker bg-paper text-ink">Pending {dayTotals.pending}</span>
+              <span className="inline-flex items-center gap-2"><StatusBadge status="DONE" /><strong>{dayTotals.done}</strong></span>
+              <span className="inline-flex items-center gap-2"><StatusBadge status="NOT_DONE" /><strong>{dayTotals.notDone}</strong></span>
+              <span className="inline-flex items-center gap-2"><StatusBadge status="PENDING" /><strong>{dayTotals.pending}</strong></span>
               <span className="sticker bg-sun-yellow text-ink">
                 Remarks Logged: {rows.filter((r) => Boolean(r.seniorRemarks)).length}
               </span>

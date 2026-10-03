@@ -1,3 +1,4 @@
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { prisma } from "@/lib/prisma";
 
 export default async function EscalationsPage() {
@@ -44,7 +45,12 @@ export default async function EscalationsPage() {
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.taskDescription}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.supervisorName}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.reminderCountAtEscalation}</td>
-                    <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.escalationTier}</td>
+                    <td className="border-[3px] border-ink px-4 py-3 text-ink">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{log.escalationTier}</span>
+                        <StatusBadge status="ESCALATED" />
+                      </div>
+                    </td>
                     <td className="border-[3px] border-ink px-4 py-3">
                       <span className={log.resolved ? "sticker bg-brand-green text-ink" : "sticker bg-hot-pink text-ink"}>
                         {log.resolved ? "Resolved" : "Open"}

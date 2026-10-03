@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DateTime } from "luxon";
 
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -77,7 +78,7 @@ export default async function TrackerPage({
               <thead className="bg-ink text-paper">
                 <tr>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
-                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Done</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left"><StatusBadge status="DONE" /></th>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Total</th>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Completion</th>
                 </tr>

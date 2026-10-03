@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -102,14 +103,14 @@ export default async function DashboardPage() {
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {[
-            { label: "Total Tasks", value: totals.total, tone: "bg-paper" },
-            { label: "Completed", value: totals.done, tone: "bg-electric-lime" },
-            { label: "Pending", value: totals.pending, tone: "bg-sun-yellow" },
-            { label: "Not Done", value: totals.notDone, tone: "bg-hot-pink" },
-            { label: "Escalated", value: totals.escalated, tone: "bg-cyber-cyan" },
+            { label: "Total tasks", value: totals.total, tone: "bg-paper", status: null },
+            { label: "Done", value: totals.done, tone: "bg-brand-green", status: "DONE" as const },
+            { label: "Pending", value: totals.pending, tone: "bg-sun-yellow", status: "PENDING" as const },
+            { label: "Not done", value: totals.notDone, tone: "bg-hot-pink", status: "NOT_DONE" as const },
+            { label: "Escalated", value: totals.escalated, tone: "bg-ink text-paper", status: "ESCALATED" as const },
           ].map((card) => (
             <div key={card.label} className={`neo-border p-5 neo-shadow-sm ${card.tone}`}>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-ink/70">{card.label}</p>
+              {card.status ? <StatusBadge status={card.status} /> : <p className="text-xs font-bold">{card.label}</p>}
               <p className="brand-display mt-3 text-4xl leading-none">{card.value}</p>
             </div>
           ))}
@@ -193,6 +194,7 @@ export default async function DashboardPage() {
                     <div key={`${item.employeeName}-${item.taskDescription}`} className="neo-border bg-hot-pink p-3">
                       <p className="text-sm font-black uppercase tracking-[0.04em] text-ink">{item.employeeName}</p>
                       <p className="mt-1 text-xs text-ink/80">{item.taskDescription}</p>
+                      <StatusBadge status="ESCALATED" className="mt-2" />
                       <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-ink/70">Supervisor: {item.supervisorName}</p>
                     </div>
                   ))}

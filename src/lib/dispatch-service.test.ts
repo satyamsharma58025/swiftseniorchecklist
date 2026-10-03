@@ -240,7 +240,7 @@ describe("dispatch service", () => {
     expect(disabledDb.dispatchLog.create).not.toHaveBeenCalled();
   });
 
-  it("uses existing evening forms and marks completed employees as skipped", async () => {
+  it("refreshes evening forms with only open choices and marks completed employees as skipped", async () => {
     const completed = { id: "employee-done", name: "Completed Employee", phone: "919876543210" };
     const open = { id: "employee-open", name: "Open Employee", phone: "919876543211" };
     const db = makeDatabase([makeItem(completed, "DONE", "DONE"), makeItem(open, "OPEN", "NOT_DONE")], [completed, open]);
@@ -251,7 +251,7 @@ describe("dispatch service", () => {
     expect(result).toMatchObject({ planned: 2, sent: 1, skipped: 1, failed: 0 });
     expect(Array.from(db.dispatchRows.values()).map((row) => row.status)).toContain("SKIPPED_NO_TASKS");
     const bridgeBody = JSON.parse(String(transport.requests[0].init.body));
-    expect(bridgeBody).toMatchObject({ action: "link", choices: [expect.stringContaining("CL-20261003-OPEN")] });
+    expect(bridgeBody).toMatchObject({ action: "refresh", choices: [expect.stringContaining("CL-20261003-OPEN")] });
     expect(bridgeBody.choices).toHaveLength(1);
     expect(transport.requests[1].init.body).not.toContain("test-bridge-secret");
   });

@@ -172,38 +172,32 @@ async function requestFormLink(
   const bridgeSecret = process.env.FORM_BRIDGE_SECRET;
   if (!bridgeUrl || !bridgeSecret) throw { permanent: true, message: "APPS_SCRIPT_WEBAPP_URL or FORM_BRIDGE_SECRET is not configured" } satisfies DeliveryFailure;
 
-  const actions = slot === "MORNING" ? ["refresh"] : ["link", "refresh"];
-  for (const action of actions) {
-    let response: Response;
-    try {
-      response = await fetcher(bridgeUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          secret: bridgeSecret,
-          action,
-          date: dateKey(date),
-          employeeName: recipient.employeeName,
-          employeePhone: recipient.phone,
-          choices,
-        }),
-      });
-    } catch (error) {
-      throw { permanent: false, message: String(error) } satisfies DeliveryFailure;
-    }
-
-    const body = await responseBody(response);
-    if (!response.ok || body.ok !== true) {
-      const message = failureMessage(body, `Apps Script returned HTTP ${response.status}`);
-      if (action === "link" && body.error === "form_not_found") continue;
-      throw { permanent: !isTransientStatus(response.status), message } satisfies DeliveryFailure;
-    }
-    const link = body.formUrl ?? body.publishedUrl;
-    if (typeof link === "string" && link) return link;
-    throw { permanent: true, message: "Apps Script returned no form URL" } satisfies DeliveryFailure;
+  let response: Response;
+  try {
+    response = await fetcher(bridgeUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        secret: bridgeSecret,
+        action: "refresh",
+        date: dateKey(date),
+        employeeName: recipient.employeeName,
+        employeePhone: recipient.phone,
+        choices,
+      }),
+    });
+  } catch (error) {
+    throw { permanent: false, message: String(error) } satisfies DeliveryFailure;
   }
 
-  throw { permanent: true, message: "Apps Script form is not available" } satisfies DeliveryFailure;
+  const body = await responseBody(response);
+  if (!response.ok || body.ok !== true) {
+    const message = failureMessage(body, `Apps Script returned HTTP ${response.status}`);
+    throw { permanent: !isTransientStatus(response.status), message } satisfies DeliveryFailure;
+  }
+  const link = body.formUrl ?? body.publishedUrl;
+  if (typeof link === "string" && link) return link;
+  throw { permanent: true, message: "Apps Script returned no form URL" } satisfies DeliveryFailure;
 }
 
 function dateParameter(date: Date): string {

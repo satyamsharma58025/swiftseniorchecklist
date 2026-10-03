@@ -16,6 +16,7 @@ const db = vi.hoisted(() => ({
   dailyChecklistItem: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
+    create: vi.fn(),
     upsert: vi.fn(),
   },
   notificationLog: {
@@ -65,6 +66,7 @@ beforeEach(() => {
   db.notificationLog.findMany.mockResolvedValue([]);
   db.assignmentQueueItem.upsert.mockResolvedValue({ id: "queue-1", taskMasterId: "tm-1", date: runDate, locked: true });
   db.dailyChecklistItem.upsert.mockResolvedValue({ id: "item-1", taskMasterId: "tm-1", date: runDate, status: "PENDING" });
+  db.dailyChecklistItem.create.mockImplementation(async ({ data }) => ({ id: `item-${data.taskMasterId}`, ...data }));
   db.queueCodeSequence.upsert.mockResolvedValue({ id: "seq-1", nextValue: 1 });
   db.queueCodeSequence.update.mockResolvedValue({});
   db.assignmentQueueItem.updateMany.mockResolvedValue({ count: 1 });
@@ -130,42 +132,36 @@ describe("ensureDailyQueueAndLock", () => {
     ];
 
     db.taskMaster.findMany.mockResolvedValue(tasks);
-    db.dailyChecklistItem.findMany.mockResolvedValue([
-      { id: "item-existing", taskMasterId: "tm-1", date: runDate, employeeName: "Yogesh Tomar", status: "DONE", seniorRemarks: "done" },
-      { id: "item-2", taskMasterId: "tm-2", date: runDate, employeeName: "Yogesh Tomar", status: "PENDING", seniorRemarks: null },
-      { id: "item-3", taskMasterId: "tm-3", date: runDate, employeeName: "Yogesh Tomar", status: "PENDING", seniorRemarks: null },
-    ]);
+    const existingItem = { id: "item-existing", taskMasterId: "tm-1", date: runDate, employeeName: "Yogesh Tomar", status: "DONE", seniorRemarks: "done" };
+    db.dailyChecklistItem.findFirst.mockImplementation(async ({ where }) => where.taskMasterId === "tm-1" ? existingItem : null);
 
     const result = await ensureDailyQueueAndLock(runDate);
 
     expect(db.assignmentQueueItem.upsert).toHaveBeenCalledTimes(3);
-    expect(db.dailyChecklistItem.upsert).toHaveBeenCalledTimes(3);
-    expect(result).toHaveLength(3);
+    expect(db.dailyChecklistItem.create).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ created: 2, existing: 1, failed: [] });
   });
 
   it("is idempotent across repeated runs and preserves existing statuses", async () => {
     const task = baseTask({ id: "tm-1", taskCode: "CEO-01-PROD" });
     db.taskMaster.findMany.mockResolvedValue([task]);
-    db.assignmentQueueItem.findMany.mockResolvedValue([]);
-    db.dailyChecklistItem.findMany.mockResolvedValue([
-      { id: "existing", taskMasterId: "tm-1", date: runDate, status: "DONE", seniorRemarks: "Already done", employeeName: "Yogesh Tomar" },
-    ]);
-
-    db.dailyChecklistItem.findMany.mockResolvedValue([
-      { id: "existing", taskMasterId: "tm-1", date: runDate, status: "DONE", seniorRemarks: "Already done", employeeName: "Yogesh Tomar" },
-    ]);
+    let queueItem: Record<string, unknown> | null = null;
+    const checklistItem = { id: "existing", taskMasterId: "tm-1", date: runDate, status: "DONE", seniorRemarks: "Already done", employeeName: "Yogesh Tomar" };
+    db.assignmentQueueItem.findUnique.mockImplementation(async () => queueItem);
+    db.assignmentQueueItem.upsert.mockImplementation(async ({ create }) => {
+      queueItem = { id: "queue-existing", ...create };
+      return queueItem;
+    });
+    db.dailyChecklistItem.findFirst.mockResolvedValue(checklistItem);
 
     const first = await ensureDailyQueueAndLock(runDate);
-    db.dailyChecklistItem.findMany.mockResolvedValue([
-      { id: "existing", taskMasterId: "tm-1", date: runDate, status: "DONE", seniorRemarks: "Already done", employeeName: "Yogesh Tomar" },
-    ]);
     const second = await ensureDailyQueueAndLock(runDate);
 
-    expect(first).toHaveLength(1);
-    expect(second).toHaveLength(1);
-    expect(db.assignmentQueueItem.upsert).toHaveBeenCalledTimes(2);
-    expect(db.dailyChecklistItem.upsert).toHaveBeenCalledTimes(2);
-    expect(db.dailyChecklistItem.upsert.mock.calls[0][0].update).toEqual({});
+    expect(first).toMatchObject({ created: 0, existing: 1, failed: [] });
+    expect(second).toEqual(first);
+    expect(db.assignmentQueueItem.upsert).toHaveBeenCalledTimes(1);
+    expect(db.queueCodeSequence.upsert).toHaveBeenCalledTimes(1);
+    expect(db.dailyChecklistItem.create).not.toHaveBeenCalled();
   });
 
   it("respects reassignment and date range rules", async () => {
@@ -187,5 +183,87 @@ describe("ensureDailyQueueAndLock", () => {
         create: expect.objectContaining({ employeeId: "emp-new" }),
       }),
     );
+  });
+
+  it("isolates a repeated task failure in the middle of 50 tasks", async () => {
+    const tasks = Array.from({ length: 50 }, (_, index) => baseTask({
+      id: `tm-${index + 1}`,
+      taskCode: `TASK-${String(index + 1).padStart(2, "0")}`,
+      employee: { id: "emp-1", name: "Yogesh Tomar", phone: "9876543210", supervisor: null },
+    }));
+    const stored = new Map<string, Record<string, unknown>>();
+    db.taskMaster.findMany.mockResolvedValue(tasks);
+    db.dailyChecklistItem.findFirst.mockImplementation(async ({ where }) => stored.get(where.taskMasterId) ?? null);
+    db.dailyChecklistItem.create.mockImplementation(async ({ data }) => {
+      if (data.taskMasterId === "tm-25") throw new Error("injected task failure");
+      const row = { id: `item-${data.taskMasterId}`, ...data };
+      stored.set(data.taskMasterId, row);
+      return row;
+    });
+
+    const logError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const result = await ensureDailyQueueAndLock(runDate);
+
+    expect(stored.size).toBe(49);
+    expect(result).toMatchObject({ created: 49, existing: 0 });
+    expect(result.failed).toEqual([{ taskCode: "TASK-25", error: "injected task failure" }]);
+    expect(db.dailyChecklistItem.create.mock.calls.filter(([call]) => call.data.taskMasterId === "tm-25")).toHaveLength(2);
+    expect(logError).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(logError.mock.calls[0][0]))).toMatchObject({
+      event: "daily_checklist_task_failure",
+      taskCode: "TASK-25",
+      attempt: 1,
+    });
+    logError.mockRestore();
+  });
+
+  it("recovers a queue P2002 by rereading the task/date row", async () => {
+    const task = baseTask();
+    const existingQueue = { id: "queue-raced", taskMasterId: task.id, date: runDate };
+    db.taskMaster.findMany.mockResolvedValue([task]);
+    db.assignmentQueueItem.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existingQueue);
+    db.assignmentQueueItem.upsert.mockRejectedValue({ code: "P2002" });
+
+    const result = await ensureDailyQueueAndLock(runDate);
+
+    expect(db.assignmentQueueItem.findUnique).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ created: 1, existing: 0, failed: [] });
+  });
+
+  it("converges concurrent runs to one queue row and one checklist row", async () => {
+    const task = baseTask();
+    const queues = new Map<string, Record<string, unknown>>();
+    const checklists = new Map<string, Record<string, unknown>>();
+    db.taskMaster.findMany.mockResolvedValue([task]);
+    db.assignmentQueueItem.findUnique.mockImplementation(async ({ where }) => queues.get(where.taskMasterId_date.taskMasterId) ?? null);
+    db.assignmentQueueItem.upsert.mockImplementation(async ({ where, create }) => {
+      const key = where.taskMasterId_date.taskMasterId;
+      const existing = queues.get(key);
+      if (existing) return existing;
+      const row = { id: `queue-${key}`, ...create };
+      queues.set(key, row);
+      return row;
+    });
+    db.dailyChecklistItem.findFirst.mockImplementation(async ({ where }) => checklists.get(where.taskMasterId) ?? null);
+    db.dailyChecklistItem.create.mockImplementation(async ({ data }) => {
+      const key = data.taskMasterId;
+      if (checklists.has(key)) throw { code: "P2002" };
+      const row = { id: `item-${key}`, ...data };
+      checklists.set(key, row);
+      return row;
+    });
+
+    const [first, second] = await Promise.all([
+      ensureDailyQueueAndLock(runDate),
+      ensureDailyQueueAndLock(runDate),
+    ]);
+
+    expect(queues.size).toBe(1);
+    expect(checklists.size).toBe(1);
+    expect(first.failed).toEqual([]);
+    expect(second.failed).toEqual([]);
+    expect(first.created + first.existing + second.created + second.existing).toBe(2);
   });
 });

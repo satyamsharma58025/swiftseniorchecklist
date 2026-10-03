@@ -43,6 +43,24 @@ function toBusinessDateKey(value: Date | string | null | undefined): string | nu
   }
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function logTaskFailure(targetDate: Date, taskCode: string, attempt: number, error: unknown) {
+  console.error(JSON.stringify({
+    event: "daily_checklist_task_failure",
+    date: dateKey(targetDate),
+    taskCode,
+    attempt,
+    error: errorMessage(error),
+  }));
+}
+
 export async function resolveAssignedEmployee(
   task: {
     employeeId: string;
@@ -190,39 +208,53 @@ export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskMaster
   return dueTaskMasters;
 }
 
-export async function ensureAssignmentQueue(targetDate: Date) {
-  const dueTasks = await getDueTaskMasters(targetDate);
+async function ensureAssignmentQueue(targetDate: Date, dueTasks?: DueTaskMaster[]) {
+  const tasks = dueTasks ?? await getDueTaskMasters(targetDate);
 
   const created: Array<{ id: string; taskMasterId: string; employeeId: string }> = [];
 
-  for (const task of dueTasks) {
-    const queueCode = await prisma.$transaction(async (tx) => reserveNextQueueCode(tx, targetDate));
-    const queueItem = await prisma.assignmentQueueItem.upsert({
-      where: {
-        taskMasterId_date: {
-          taskMasterId: task.id,
-          date: targetDate,
-        },
-      },
-      create: {
-        queueCode,
-        date: targetDate,
-        employeeId: task.assignedEmployee.id,
-        taskDescription: task.taskDescription,
-        source: "AUTO",
+  for (const task of tasks) {
+    const where = {
+      taskMasterId_date: {
         taskMasterId: task.id,
-        includeToday: true,
-        priority: task.priority,
-        locked: false,
+        date: targetDate,
       },
-      update: {
-        employeeId: task.assignedEmployee.id,
-        taskDescription: task.taskDescription,
-        source: "AUTO",
-        includeToday: true,
-        priority: task.priority,
-      },
-    });
+    };
+    const existing = await prisma.assignmentQueueItem.findUnique({ where });
+    if (existing) {
+      created.push({ id: existing.id, taskMasterId: task.id, employeeId: task.assignedEmployee.id });
+      continue;
+    }
+
+    const queueCode = await prisma.$transaction(async (tx) => reserveNextQueueCode(tx, targetDate));
+    let queueItem;
+    try {
+      queueItem = await prisma.assignmentQueueItem.upsert({
+        where,
+        create: {
+          queueCode,
+          date: targetDate,
+          employeeId: task.assignedEmployee.id,
+          taskDescription: task.taskDescription,
+          source: "AUTO",
+          taskMasterId: task.id,
+          includeToday: true,
+          priority: task.priority,
+          locked: false,
+        },
+        update: {
+          employeeId: task.assignedEmployee.id,
+          taskDescription: task.taskDescription,
+          source: "AUTO",
+          includeToday: true,
+          priority: task.priority,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      queueItem = await prisma.assignmentQueueItem.findUnique({ where });
+      if (!queueItem) throw error;
+    }
 
     created.push({ id: queueItem.id, taskMasterId: task.id, employeeId: task.assignedEmployee.id });
   }
@@ -230,20 +262,20 @@ export async function ensureAssignmentQueue(targetDate: Date) {
   return created;
 }
 
-export async function materializeDailyChecklist(targetDate: Date) {
-  const dueTasks = await getDueTaskMasters(targetDate);
-  const created: Array<{ id: string; taskMasterId: string; employeeName: string }> = [];
+async function materializeDailyChecklist(targetDate: Date, dueTasks?: DueTaskMaster[]) {
+  const tasks = dueTasks ?? await getDueTaskMasters(targetDate);
+  const materialized: Array<{ id: string; taskMasterId: string; employeeName: string; created: boolean }> = [];
 
-  for (const task of dueTasks) {
+  for (const task of tasks) {
     const checklistCodeValue = checklistCode(task.taskCode, targetDate);
-    const item = await prisma.dailyChecklistItem.upsert({
-      where: {
-        taskMasterId_date: {
-          taskMasterId: task.id,
-          date: targetDate,
-        },
-      },
-      create: {
+    const where = { taskMasterId: task.id, date: targetDate };
+    let item = await prisma.dailyChecklistItem.findFirst({ where });
+    let wasCreated = false;
+
+    if (!item) {
+      try {
+        item = await prisma.dailyChecklistItem.create({
+          data: {
         checklistCode: checklistCodeValue,
         date: targetDate,
         taskMasterId: task.id,
@@ -256,11 +288,17 @@ export async function materializeDailyChecklist(targetDate: Date) {
         priority: task.priority,
         status: "PENDING",
         colorStatus: colorFor({ status: "PENDING" }),
-      },
-      update: {},
-    });
+          },
+        });
+        wasCreated = true;
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+        item = await prisma.dailyChecklistItem.findFirst({ where });
+        if (!item) throw error;
+      }
+    }
 
-    created.push({ id: item.id, taskMasterId: task.id, employeeName: task.assignedEmployee.name });
+    materialized.push({ id: item.id, taskMasterId: task.id, employeeName: task.assignedEmployee.name, created: wasCreated });
 
     await prisma.assignmentQueueItem.updateMany({
       where: {
@@ -275,28 +313,48 @@ export async function materializeDailyChecklist(targetDate: Date) {
     });
   }
 
-  return created;
+  return materialized;
 }
 
 export async function ensureDailyQueueAndLock(runDate: Date) {
-  await ensureAssignmentQueue(runDate);
-  await materializeDailyChecklist(runDate);
+  const dueTasks = await getDueTaskMasters(runDate);
+  const createdThisRun = new Set<string>();
+  const summary = {
+    created: 0,
+    existing: 0,
+    caughtUp: 0,
+    skippedPaused: 0,
+    skippedHoliday: 0,
+    failed: [] as Array<{ taskCode: string; error: string }>,
+  };
 
-  const items = await prisma.dailyChecklistItem.findMany({
-    where: { date: runDate },
-    orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
-    select: {
-      id: true,
-      checklistCode: true,
-      employeeName: true,
-      employeePhone: true,
-      taskDescription: true,
-      priority: true,
-      status: true,
-    },
-  });
+  for (const task of dueTasks) {
+    let completed = false;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        await ensureAssignmentQueue(runDate, [task]);
+        const [result] = await materializeDailyChecklist(runDate, [task]);
+        if (!result) throw new Error("Task materialization returned no checklist row");
 
-  return items;
+        if (result.created || createdThisRun.has(task.id)) {
+          summary.created += 1;
+          createdThisRun.add(task.id);
+        } else {
+          summary.existing += 1;
+        }
+        completed = true;
+        break;
+      } catch (error) {
+        logTaskFailure(runDate, task.taskCode, attempt, error);
+        if (attempt === 2) {
+          summary.failed.push({ taskCode: task.taskCode, error: errorMessage(error) });
+        }
+      }
+    }
+    if (!completed) continue;
+  }
+
+  return summary;
 }
 
 export async function getTodaysEmployeeTaskSets(targetDate: Date) {

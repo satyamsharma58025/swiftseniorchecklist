@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { toWhatsAppNumber } from "@/lib/business-logic";
-import { secretsMatch } from "@/lib/integration-auth";
+import { rejectUnlessIntegrationSecret, secretsMatch } from "@/lib/integration-auth";
 
 describe("secretsMatch", () => {
   it("accepts an exact match only", () => {
@@ -15,6 +15,37 @@ describe("secretsMatch", () => {
     expect(secretsMatch("abc123", undefined)).toBe(false);
     expect(secretsMatch("", "")).toBe(false);
     expect(secretsMatch(null, null)).toBe(false);
+  });
+
+  it("accepts CRON_SECRET_PREVIOUS during rotation windows", () => {
+    const previous = "rotated-old-secret";
+    const request = new Request("http://localhost/api/health", {
+      headers: { "x-cron-secret": previous },
+    });
+
+    process.env.CRON_SECRET = "rotated-new-secret";
+    process.env.CRON_SECRET_PREVIOUS = previous;
+
+    expect(rejectUnlessIntegrationSecret(request)).toBeNull();
+
+    delete process.env.CRON_SECRET;
+    delete process.env.CRON_SECRET_PREVIOUS;
+  });
+
+  it("throttles more than 10 failed requests per IP per minute", async () => {
+    process.env.CRON_SECRET = "expected-secret";
+    delete process.env.CRON_SECRET_PREVIOUS;
+
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      response = rejectUnlessIntegrationSecret(new Request("http://localhost/api/health", {
+        headers: { "x-cron-secret": "wrong-secret", "x-forwarded-for": "198.51.100.44" },
+      }));
+    }
+
+    expect(response?.status).toBe(429);
+    expect(await response?.json()).toEqual({ error: "Unauthorized" });
+    delete process.env.CRON_SECRET;
   });
 });
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { dbDate, dateKey, istDateKey } from "@/lib/dates";
-import { secretsMatch } from "@/lib/integration-auth";
+import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
 import { prisma } from "@/lib/prisma";
 
 export type CronRouteResult = NextResponse | Response;
@@ -90,13 +90,11 @@ export function normalizeCronDate(dateValue?: string | null, fallbackDate = istD
 }
 
 export async function requireCronAuth(request: Request) {
-  const provided = request.headers.get("x-cron-secret");
-  const expected = process.env.CRON_SECRET;
-
-  if (!expected || !secretsMatch(provided, expected)) {
+  const response = rejectUnlessIntegrationSecret(request);
+  if (response) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }),
+      response,
     };
   }
 

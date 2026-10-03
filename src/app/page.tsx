@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChartColumnIncreasing, ClipboardList, Siren, Zap } from "lucide-react";
 
 import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
@@ -32,10 +33,10 @@ export default async function HomePage() {
   ];
 
   const features = [
-    { href: `/checklist/${today}`, label: "Checklist", accent: "bg-electric-lime", emoji: "🧾" },
-    { href: `/queue/${today}`, label: "Queue", accent: "bg-hot-pink", emoji: "⚡" },
-    { href: "/tracker", label: "Tracker", accent: "bg-cyber-cyan", emoji: "📈" },
-    { href: "/escalations", label: "Escalations", accent: "bg-sun-yellow", emoji: "🚨" },
+    { href: `/checklist/${today}`, label: "Checklist", accent: "bg-electric-lime", Icon: ClipboardList },
+    { href: `/queue/${today}`, label: "Queue", accent: "bg-hot-pink", Icon: Zap },
+    { href: "/tracker", label: "Tracker", accent: "bg-cyber-cyan", Icon: ChartColumnIncreasing },
+    { href: "/escalations", label: "Escalations", accent: "bg-sun-yellow", Icon: Siren },
   ];
 
   return (
@@ -82,7 +83,7 @@ export default async function HomePage() {
           {features.map((feature, index) => (
             <Link key={feature.href} href={feature.href} className={`${feature.accent} neo-press group relative overflow-hidden border-[3px] border-ink p-5 neo-shadow-md`}>
               <div className="mb-6 flex items-start justify-between">
-                <span className="text-3xl">{feature.emoji}</span>
+                <feature.Icon aria-hidden="true" size={32} strokeWidth={2.5} />
                 <span className="sticker bg-white text-ink">0{index + 1}</span>
               </div>
               <p className="brand-display text-3xl text-ink">{feature.label}</p>

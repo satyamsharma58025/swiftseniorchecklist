@@ -1,0 +1,80 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Inspect Phase 4 baseline",
+			"type": "shell",
+			"command": "git --no-pager log -5 --oneline --decorate && git status --short",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Health model tests",
+			"type": "shell",
+			"command": "npx vitest run src/lib/health.test.ts",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Lint check",
+			"type": "shell",
+			"command": "npm run lint",
+			"isBackground": false,
+			"problemMatcher": [
+				"$eslint-stylish"
+			]
+		},
+		{
+			"label": "TypeScript check",
+			"type": "shell",
+			"command": "npx tsc --noEmit",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			]
+		},
+		{
+			"label": "Full vitest suite",
+			"type": "shell",
+			"command": "npx vitest run 2>&1 | tail -100",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Create migration dir",
+			"type": "shell",
+			"command": "mkdir -p /workspaces/swiftseniorchecklist/prisma/migrations/20261004000000_add_apps_script_heartbeat",
+			"isBackground": false
+		},
+		{
+			"label": "Create health dir",
+			"type": "shell",
+			"command": "mkdir -p /workspaces/swiftseniorchecklist/src/app/api/health/daily",
+			"isBackground": false
+		},
+		{
+			"label": "Create health-ping dir",
+			"type": "shell",
+			"command": "mkdir -p /workspaces/swiftseniorchecklist/src/app/api/integrations/form/health-ping",
+			"isBackground": false
+		},
+		{
+			"label": "Prisma generate",
+			"type": "shell",
+			"command": "npx prisma generate",
+			"isBackground": false
+		},
+		{
+			"label": "Full vitest",
+			"type": "shell",
+			"command": "npx vitest run 2>&1 | tail -120",
+			"isBackground": false
+		},
+		{
+			"label": "Commit Task 2",
+			"type": "shell",
+			"command": "cd /workspaces/swiftseniorchecklist && git add -A && git commit -m 'Task 2: Health endpoints and GitHub Actions watchdog\n\n- Add /api/health/daily endpoint (x-cron-secret protected) with JSON and text output\n- JSON response includes generation, dispatch slots, cron history, intake, and Apps Script heartbeat\n- Text format provides human-readable one-page summary for watchdog logs\n- Endpoint returns 503 when status is DOWN, 200 otherwise\n- Add POST /api/integrations/form/health-ping for Apps Script heartbeat reports\n- Store heartbeat in Settings.appsScriptHeartbeat (JSON field) with migration\n- Add health check watchdog jobs to GitHub Actions workflow at 09:40, 10:40, 18:50, 19:40 IST\n- Watchdog fails the workflow when health endpoint returns DOWN\n- Create health-queries.ts to load DB state for health model\n- All responses mask sensitive data; no secrets or full phone numbers exposed\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>'",
+			"isBackground": false
+		}
+	]
+}

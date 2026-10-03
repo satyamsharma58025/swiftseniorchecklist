@@ -6,6 +6,10 @@ on:
     - cron: "*/15 3-6 * * *" # Dispatch ticks, 08:30-12:15 IST
     - cron: "*/15 12-14 * * *" # Dispatch ticks, 17:30-20:15 IST
     - cron: "30 14 * * *"   # 20:00 IST EOD cutoff
+    - cron: "10 4 * * *"    # 09:40 IST watchdog
+    - cron: "10 5 * * *"    # 10:40 IST watchdog
+    - cron: "20 13 * * *"   # 18:50 IST watchdog
+    - cron: "10 14 * * *"   # 19:40 IST watchdog
   workflow_dispatch:
 jobs:
   daily-sync:
@@ -42,3 +46,35 @@ jobs:
           curl -fsS --max-time 180 --retry 4 --retry-delay 30 --retry-all-errors \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.APP_BASE_URL }}/api/cron/eod-cutoff"
+
+  watchdog:
+    if: >-
+      github.event_name == 'schedule' &&
+      (github.event.schedule == '10 4 * * *' ||
+       github.event.schedule == '10 5 * * *' ||
+       github.event.schedule == '20 13 * * *' ||
+       github.event.schedule == '10 14 * * *')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check health endpoint
+        run: |
+          RESPONSE=$(curl -fsS --max-time 180 --retry 4 --retry-delay 30 --retry-all-errors \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -w "\n%{http_code}" \
+            "${{ secrets.APP_BASE_URL }}/api/health/daily?format=text" 2>&1)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          TEXT=$(echo "$RESPONSE" | head -n -1)
+          
+          echo "=== Health Status ===" 
+          echo "$TEXT"
+          echo "=== HTTP Status: $HTTP_CODE ==="
+          
+          if [ "$HTTP_CODE" = "503" ]; then
+            echo "ERROR: Health endpoint returned DOWN status"
+            exit 1
+          fi
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "ERROR: Health endpoint returned HTTP $HTTP_CODE"
+            exit 1
+          fi

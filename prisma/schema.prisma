@@ -288,6 +288,7 @@ model Settings {
   updatedAt                    DateTime      @updatedAt
   seniorAuthorityName          String?
   seniorAuthorityPhone         String?
+  appsScriptHeartbeat          Json?
   organizationId               String?
   organization                 Organization? @relation(fields: [organizationId], references: [id])
 }

@@ -46,13 +46,27 @@ services:
         sync: false
 
   - type: cron
-    name: cron-generate-queue
+    name: cron-daily-sync
     runtime: node
     plan: starter
     region: singapore
-    schedule: "30 0 * * *" # 06:00 IST
+    schedule: "30 23 * * *" # 05:00 IST
     buildCommand: npm install
-    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/generate-queue" -H "x-cron-secret: $CRON_SECRET"'
+    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/daily-sync" -H "x-cron-secret: $CRON_SECRET"'
+    envVars:
+      - key: APP_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-daily-sync-backup
+    runtime: node
+    plan: starter
+    region: singapore
+    schedule: "0 2 * * *" # 07:30 IST
+    buildCommand: npm install
+    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/daily-sync" -H "x-cron-secret: $CRON_SECRET"'
     envVars:
       - key: APP_BASE_URL
         sync: false
@@ -66,21 +80,7 @@ services:
     region: singapore
     schedule: "0 */2 * * *"
     buildCommand: npm install
-    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/reminder-sweep" -H "x-cron-secret: $CRON_SECRET"'
-    envVars:
-      - key: APP_BASE_URL
-        sync: false
-      - key: CRON_SECRET
-        sync: false
-
-  - type: cron
-    name: cron-lock-queue
-    runtime: node
-    plan: starter
-    region: singapore
-    schedule: "0 3 * * *" # 08:30 IST - must run BEFORE the 09:00 IST form send, it is what creates the day's checklist rows
-    buildCommand: npm install
-    startCommand: 'curl -sf -X POST "$APP_BASE_URL/api/cron/lock-queue" -H "x-cron-secret: $CRON_SECRET"'
+    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/reminder-sweep" -H "x-cron-secret: $CRON_SECRET"'
     envVars:
       - key: APP_BASE_URL
         sync: false
@@ -94,7 +94,7 @@ services:
     region: singapore
     schedule: "30 14 * * *" # 20:00 IST
     buildCommand: npm install
-    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/eod-cutoff" -H "x-cron-secret: $CRON_SECRET"'
+    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/eod-cutoff" -H "x-cron-secret: $CRON_SECRET"'
     envVars:
       - key: APP_BASE_URL
         sync: false
@@ -108,21 +108,7 @@ services:
     region: singapore
     schedule: "0 15 * * *" # 20:30 IST
     buildCommand: npm install
-    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/overall-summary" -H "x-cron-secret: $CRON_SECRET"'
-    envVars:
-      - key: APP_BASE_URL
-        sync: false
-      - key: CRON_SECRET
-        sync: false
-
-  - type: cron
-    name: cron-daily-form-link
-    runtime: node
-    plan: starter
-    region: singapore
-    schedule: "0 1 * * *" # 06:30 IST
-    buildCommand: npm install
-    startCommand: 'curl -sf -X GET "$APP_BASE_URL/api/cron/daily-form-link" -H "x-cron-secret: $CRON_SECRET"'
+    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/overall-summary" -H "x-cron-secret: $CRON_SECRET"'
     envVars:
       - key: APP_BASE_URL
         sync: false

@@ -3,12 +3,42 @@ on:
   schedule:
     - cron: "30 23 * * *"   # 05:00 IST
     - cron: "0 2 * * *"     # 07:30 IST backup
+    - cron: "*/15 3-6 * * *" # Dispatch ticks, 08:30-12:15 IST
+    - cron: "*/15 12-14 * * *" # Dispatch ticks, 17:30-20:15 IST
+    - cron: "30 14 * * *"   # 20:00 IST EOD cutoff
   workflow_dispatch:
 jobs:
   daily-sync:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.schedule == '30 23 * * *' ||
+      github.event.schedule == '0 2 * * *'
     runs-on: ubuntu-latest
     steps:
       - run: |
           curl -fsS --max-time 180 --retry 5 --retry-delay 30 --retry-all-errors \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.APP_BASE_URL }}/api/cron/daily-sync"
+
+  dispatch:
+    if: >-
+      github.event_name == 'schedule' &&
+      (github.event.schedule == '*/15 3-6 * * *' ||
+       github.event.schedule == '*/15 12-14 * * *')
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -fsS --max-time 180 --retry 4 --retry-delay 30 --retry-all-errors \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_BASE_URL }}/api/cron/dispatch?slot=auto"
+
+  eod-cutoff:
+    if: >-
+      github.event_name == 'schedule' &&
+      github.event.schedule == '30 14 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -fsS --max-time 180 --retry 4 --retry-delay 30 --retry-all-errors \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_BASE_URL }}/api/cron/eod-cutoff"

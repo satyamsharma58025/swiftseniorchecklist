@@ -164,6 +164,7 @@ function refreshForm_(body) {
 
   form.setAcceptingResponses(true);
   var publishedUrl = form.getPublishedUrl() || form.getEditUrl();
+  props.setProperty('FORM_DATE_' + form.getId(), dateStr);
   props.setProperty('FORM_DATE', dateStr);
   props.setProperty('LATEST_FORM_URL', publishedUrl);
   props.setProperty(signatureKey, signature);
@@ -359,8 +360,14 @@ function refreshAllForms_(body) {
 // --------------------------------------------- 2. form submit -> n8n -> app ---
 
 function onFormSubmit_(e) {
-  var payload = buildPayload_(e.response);
+  var formId = e.source && typeof e.source.getId === 'function' ? e.source.getId() : '';
+  var payload = buildPayload_(e.response, formId);
   Logger.log('[FormBridge] Received submission for date: ' + payload.date + ', responseId: ' + payload.responseId + ', doneCount: ' + payload.doneRaw.length);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) {
+    deadLetterPayload_(payload, 'invalid_submission_date');
+    return;
+  }
+
   if (!postToN8n_(payload)) {
     // n8n or the network was down: keep it and retry every 15 minutes.
     PropertiesService.getScriptProperties().setProperty('PENDING_' + payload.responseId, JSON.stringify(payload));
@@ -368,7 +375,27 @@ function onFormSubmit_(e) {
   }
 }
 
-function buildPayload_(response) {
+function resolveSubmissionDate_(formId, properties) {
+  var keyedDate = formId ? properties['FORM_DATE_' + formId] : '';
+  if (keyedDate) {
+    return String(keyedDate);
+  }
+
+  var keys = Object.keys(properties || {});
+  for (var i = 0; i < keys.length; i++) {
+    if (String(properties[keys[i]]) !== String(formId)) {
+      continue;
+    }
+    var match = keys[i].match(/^FORM_ID_(\d{4}-\d{2}-\d{2})(?:_|$)/);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return String(properties.FORM_DATE || '');
+}
+
+function buildPayload_(response, formId) {
   var doneCodes = [];
   var individualRemarks = [];
   var generalRemarks = '';
@@ -411,15 +438,8 @@ function buildPayload_(response) {
   }
   var finalRemarksText = combinedRemarks.join('\n');
 
-  var formDate = prop_('FORM_DATE');
   var props = PropertiesService.getScriptProperties().getProperties();
-  var editUrl = response.getEditResponseUrl() || '';
-  for (var k in props) {
-    if (k.indexOf('FORM_ID_') === 0 && editUrl.indexOf(props[k]) !== -1) {
-      formDate = k.replace('FORM_ID_', '');
-      break;
-    }
-  }
+  var formDate = resolveSubmissionDate_(formId, props);
 
   var payload = {
     responseId: response.getId(),
@@ -429,6 +449,18 @@ function buildPayload_(response) {
     date: formDate
   };
   return payload;
+}
+
+function deadLetterPayload_(payload, reason) {
+  var responseId = String(payload.responseId || 'unknown');
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('DEAD_LETTER_' + responseId, JSON.stringify({
+    payload: payload,
+    reason: reason,
+    deadLetteredAt: new Date().toISOString()
+  }));
+  props.deleteProperty('PENDING_' + responseId);
+  Logger.log('[FormBridge] Dead-lettered response ' + responseId + ': ' + reason + ', date=' + String(payload.date || ''));
 }
 
 function postToN8n_(payload) {
@@ -460,12 +492,38 @@ function postToN8n_(payload) {
 function retryPending_() {
   var props = PropertiesService.getScriptProperties();
   var all = props.getProperties();
+  var replayed = 0;
+  var deadLettered = 0;
   Object.keys(all).forEach(function (key) {
     if (key.indexOf('PENDING_') !== 0) { return; }
-    if (postToN8n_(JSON.parse(all[key]))) {
+
+    var payload;
+    try {
+      payload = JSON.parse(all[key]);
+    } catch (err) {
+      deadLetterPayload_({ responseId: key.slice('PENDING_'.length), rawPayload: all[key], date: '' }, 'invalid_pending_payload');
+      deadLettered += 1;
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(payload.date || ''))) {
+      var leadingDate = String(payload.date || '').match(/^(\d{4}-\d{2}-\d{2})(?:_|$)/);
+      if (leadingDate) {
+        payload.date = leadingDate[1];
+        props.setProperty(key, JSON.stringify(payload));
+        replayed += 1;
+      } else {
+        deadLetterPayload_(payload, 'invalid_pending_date');
+        deadLettered += 1;
+        return;
+      }
+    }
+
+    if (postToN8n_(payload)) {
       props.deleteProperty(key);
     }
   });
+  Logger.log('[FormBridge] Pending replay complete: date-normalized/replayed=' + replayed + ', dead-lettered=' + deadLettered);
 }
 
 function prop_(key) {

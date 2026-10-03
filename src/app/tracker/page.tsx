@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DateTime } from "luxon";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -84,7 +85,9 @@ export default async function TrackerPage({
                 </tr>
               </thead>
               <tbody>
-                {summary.map((item, index) => (
+                {summary.length === 0 ? (
+                  <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No checklist history for this month" description="Choose another month or open today’s dashboard." href="/dashboard" actionLabel="Open dashboard" /></td></tr>
+                ) : summary.map((item, index) => (
                   <tr key={item.employeeName} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
                     <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{item.employeeName}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{item.done}</td>

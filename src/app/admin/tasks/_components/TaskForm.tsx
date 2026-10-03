@@ -72,7 +72,7 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-4 border-[3px] border-ink bg-white p-5 neo-shadow-md md:grid-cols-2 md:p-6">
+    <form id="task-form" onSubmit={handleSubmit} className="grid gap-4 border-[3px] border-ink bg-white p-5 neo-shadow-md md:grid-cols-2 md:p-6">
       <div className="space-y-2">
         <label htmlFor="taskCode" className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Task code</label>
         <input

@@ -1,3 +1,4 @@
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { TaskForm } from "@/app/admin/tasks/_components/TaskForm";
 import { prisma } from "@/lib/prisma";
 
@@ -47,7 +48,7 @@ export default async function AdminTasksPage() {
                 {tasks.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="border-[3px] border-ink px-4 py-10 text-center text-ink/75">
-                      No recurring tasks are configured yet. Use the form above to add the first task.
+                      <PageEmptyState title="No recurring tasks configured" description="Use the task form above to create the first recurring task." href="#task-form" actionLabel="Go to task form" />
                     </td>
                   </tr>
                 ) : (

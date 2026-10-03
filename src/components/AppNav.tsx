@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth/next";
 
 import { authOptions } from "@/auth";
+import { BreadcrumbTrail } from "@/components/ui/BreadcrumbTrail";
 import { istDateKey } from "@/lib/dates";
 import logo from "@/lib/logo.png";
 
@@ -37,7 +38,7 @@ export async function AppNav() {
   const session = await getServerSession(authOptions);
 
   return (
-    <nav className="sticky top-0 z-40 bg-paper text-ink">
+    <nav aria-label="Main navigation" className="sticky top-0 z-40 bg-paper text-ink">
       <div className="marquee text-[10px] font-black uppercase tracking-[0.28em]">
         <div className="marquee__track items-center gap-8 px-4 py-2 text-sm">
           <span>Swift Strips India</span>
@@ -127,6 +128,7 @@ export async function AppNav() {
           </div>
         </div>
       </div>
+      <BreadcrumbTrail />
     </nav>
   );
 }

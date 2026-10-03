@@ -1,3 +1,4 @@
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminEmployeesPage() {
@@ -34,7 +35,9 @@ export default async function AdminEmployeesPage() {
                 </tr>
               </thead>
               <tbody>
-                {employees.map((employee, index) => (
+                {employees.length === 0 ? (
+                  <tr><td colSpan={5} className="border-[3px] border-ink p-4"><PageEmptyState title="Employee roster is empty" description="Import the active employee roster before assigning tasks." href="/admin/tasks" actionLabel="Open task master" /></td></tr>
+                ) : employees.map((employee, index) => (
                   <tr key={employee.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
                     <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{employee.name}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{employee.department}</td>

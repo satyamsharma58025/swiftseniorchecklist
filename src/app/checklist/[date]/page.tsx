@@ -191,6 +191,7 @@ export default async function ChecklistDatePage({
           <ChecklistPanel
             key={displayedRows.map((row) => `${row.id}:${row.updatedAt.getTime()}`).join("|")}
             employeeName={isAll ? "All Employees" : selectedEmployee?.name ?? "Employee"}
+            emptyHref={`/queue/${selectedDate}`}
             items={displayedRows.map((row) => ({
               id: row.id,
               checklistCode: row.checklistCode,

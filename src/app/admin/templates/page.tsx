@@ -1,3 +1,5 @@
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import { istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function TemplatesPage() {
@@ -27,7 +29,9 @@ export default async function TemplatesPage() {
                 </tr>
               </thead>
               <tbody>
-                {templates.map((template, index) => (
+                {templates.length === 0 ? (
+                  <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No queue templates yet" description="Generated queue items will appear here after checklist setup." href={`/queue/${istDateKey()}`} actionLabel="Open assignment queue" /></td></tr>
+                ) : templates.map((template, index) => (
                   <tr key={template.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.employee.name}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{template.taskDescription}</td>

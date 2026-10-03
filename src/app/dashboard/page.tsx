@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -142,7 +143,9 @@ export default async function DashboardPage() {
                 <tbody>
                   {employeeStats.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-2 py-6 text-sm text-ink/75">No employee tasks scheduled for this date yet.</td>
+                      <td colSpan={7} className="px-2 py-6">
+                        <PageEmptyState title="No checklist rows today" description="Open the assignment queue to check task generation and assignments." href={`/queue/${today}`} actionLabel="Open assignment queue" />
+                      </td>
                     </tr>
                   ) : (
                     employeeStats.map((employee) => (
@@ -187,7 +190,9 @@ export default async function DashboardPage() {
               <h2 className="brand-display mt-2 text-2xl text-ink">Escalations</h2>
 
               {escalatedTasks.length === 0 ? (
-                <p className="mt-4 text-sm text-ink/75">No escalations on this date.</p>
+                <div className="mt-4">
+                  <PageEmptyState title="No escalations today" description="Review the checklist for open or not-done tasks." href={`/checklist/${today}`} actionLabel="Review checklist" />
+                </div>
               ) : (
                 <div className="mt-4 space-y-3">
                   {escalatedTasks.map((item) => (

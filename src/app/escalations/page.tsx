@@ -1,4 +1,6 @@
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import { istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function EscalationsPage() {
@@ -39,7 +41,9 @@ export default async function EscalationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log, index) => (
+                {logs.length === 0 ? (
+                  <tr><td colSpan={6} className="border-[3px] border-ink p-4"><PageEmptyState title="No escalation history" description="Check today’s checklist for tasks that still need review." href={`/checklist/${istDateKey()}`} actionLabel="Open today’s checklist" /></td></tr>
+                ) : logs.map((log, index) => (
                   <tr key={log.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.employeeName}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{log.checklistItem.taskDescription}</td>

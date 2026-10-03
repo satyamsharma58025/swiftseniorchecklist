@@ -1,3 +1,4 @@
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -26,7 +27,9 @@ export default async function TaskPausesPage() {
                 </tr>
               </thead>
               <tbody>
-                {pauses.map((pause, index) => (
+                {pauses.length === 0 ? (
+                  <tr><td colSpan={3} className="border-[3px] border-ink p-4"><PageEmptyState title="No paused tasks" description="This list fills when recurring work is paused for a date range." href="/admin/tasks" actionLabel="Review task master" /></td></tr>
+                ) : pauses.map((pause, index) => (
                   <tr key={pause.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{pause.taskMaster.taskCode} — {pause.taskMaster.taskDescription}</td>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(pause.startDate)} to {dateKey(pause.endDate)}</td>

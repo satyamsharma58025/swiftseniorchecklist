@@ -1,3 +1,4 @@
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -40,7 +41,7 @@ export default async function ReassignmentsPage() {
                 {records.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="border-[3px] border-ink px-4 py-8 text-center text-ink/75">
-                      No reassignment records yet.
+                      <PageEmptyState title="No reassignment history" description="Task ownership changes will be listed here after they are recorded." href="/admin/tasks" actionLabel="Review task master" />
                     </td>
                   </tr>
                 ) : (

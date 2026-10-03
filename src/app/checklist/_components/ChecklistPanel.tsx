@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
 
 export type ChecklistTaskRow = {
   id: string;
@@ -32,9 +33,11 @@ type SaveFeedback = {
 export function ChecklistPanel({
   items,
   employeeName,
+  emptyHref = "/dashboard",
 }: {
   items: ChecklistTaskRow[];
   employeeName: string;
+  emptyHref?: string;
 }) {
   const [localItems, setLocalItems] = useState(items);
   const [editingRemarks, setEditingRemarks] = useState<Record<string, string>>({});
@@ -178,10 +181,12 @@ export function ChecklistPanel({
 
   if (!localItems.length) {
     return (
-      <div className="neo-border bg-paper p-8 text-center text-ink neo-shadow-sm">
-        <p className="brand-display text-3xl text-ink">No tasks assigned</p>
-        <p className="mt-3 text-sm text-ink/75">No tasks assigned to {employeeName} on this date.</p>
-      </div>
+      <PageEmptyState
+        title="No tasks assigned"
+        description={`No tasks assigned to ${employeeName} on this date.`}
+        href={emptyHref}
+        actionLabel="Open assignment queue"
+      />
     );
   }
 

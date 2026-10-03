@@ -1,3 +1,4 @@
+import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { dateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -26,7 +27,9 @@ export default async function HolidaysPage() {
                 </tr>
               </thead>
               <tbody>
-                {holidays.map((holiday, index) => (
+                {holidays.length === 0 ? (
+                  <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No holidays configured" description="Checklist cadence will continue without holiday exclusions until dates are added." href="/dashboard" actionLabel="Open dashboard" /></td></tr>
+                ) : holidays.map((holiday, index) => (
                   <tr key={holiday.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
                     <td className="border-[3px] border-ink px-4 py-3 text-ink">{dateKey(holiday.date)}</td>
                     <td className="border-[3px] border-ink px-4 py-3 font-black text-ink">{holiday.name}</td>

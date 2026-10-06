@@ -128,6 +128,20 @@ afterEach(() => {
 });
 
 describe("dispatch service", () => {
+  it("accepts the BRIDGE_SECRET env name used in production", async () => {
+    vi.stubEnv("FORM_BRIDGE_SECRET", "");
+    vi.stubEnv("BRIDGE_SECRET", "production-bridge-secret");
+    const employee = { id: "employee-1", name: "Asha Singh", phone: "919876543210" };
+    const item = makeItem(employee, "TASK1");
+    const db = makeDatabase([item], [employee]);
+    const transport = appAndGraphFetch();
+
+    await runDispatch(options(db.database, transport.fetcher));
+
+    const bridgeBody = JSON.parse(String(transport.requests[0].init.body));
+    expect(bridgeBody.secret).toBe("production-bridge-secret");
+  });
+
   it("refreshes a morning form and sends the approved template directly", async () => {
     const employee = { id: "employee-1", name: "Asha Singh", phone: "919876543210" };
     const item = makeItem(employee, "TASK1");

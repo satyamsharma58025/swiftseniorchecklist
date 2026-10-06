@@ -163,6 +163,10 @@ function isTransientStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
+function configuredBridgeSecret(): string | undefined {
+  return process.env.FORM_BRIDGE_SECRET?.trim() || process.env.BRIDGE_SECRET?.trim() || undefined;
+}
+
 async function requestFormLink(
   recipient: DispatchRecipientRecord,
   choices: string[],
@@ -171,8 +175,8 @@ async function requestFormLink(
   fetcher: typeof fetch,
 ): Promise<string> {
   const bridgeUrl = process.env.APPS_SCRIPT_WEBAPP_URL?.trim();
-  const bridgeSecret = process.env.FORM_BRIDGE_SECRET;
-  if (!bridgeUrl || !bridgeSecret) throw { permanent: true, message: "APPS_SCRIPT_WEBAPP_URL or FORM_BRIDGE_SECRET is not configured" } satisfies DeliveryFailure;
+  const bridgeSecret = configuredBridgeSecret();
+  if (!bridgeUrl || !bridgeSecret) throw { permanent: true, message: "APPS_SCRIPT_WEBAPP_URL or bridge secret is not configured" } satisfies DeliveryFailure;
   const timeoutMs = remainingBudgetMs();
   if (timeoutMs <= 0) throw { permanent: false, message: "Dispatch time budget exhausted" } satisfies DeliveryFailure;
 

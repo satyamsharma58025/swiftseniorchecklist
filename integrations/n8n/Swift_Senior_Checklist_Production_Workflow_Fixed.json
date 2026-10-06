@@ -29,7 +29,7 @@
             {
               "id": "verify-token-check",
               "leftValue": "={{ $json.query['hub.verify_token'] }}",
-              "rightValue": "={{ $vars.WHATSAPP_VERIFY_TOKEN }}",
+              "rightValue": "swiftstrips_wa_2026",
               "operator": {
                 "type": "string",
                 "operation": "equals"
@@ -329,7 +329,7 @@
           "name": "Google Sheets account"
         }
       },
-      "notes": "Reads your existing Contacts sheet (ID | Name | Number, header row 3, data from row 4) — the same one the Tasks sheet's dropdown and phone-lookup formula already use."
+      "notes": "Reads your existing Contacts sheet (ID | Name | Number, header row 3, data from row 4) \u2014 the same one the Tasks sheet's dropdown and phone-lookup formula already use."
     },
     {
       "parameters": {
@@ -395,7 +395,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `⚠️ I couldn't find \"${$json['contact_name']}\" in the Contacts sheet, so I haven't created the task. Please add them there first or resend using the exact name.` }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `\u26a0\ufe0f I couldn't find \"${$json['contact_name']}\" in the Contacts sheet, so I haven't created the task. Please add them there first or resend using the exact name.` }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -421,7 +421,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || $json;\nconst entry = body?.entry?.[0];\nconst change = entry?.changes?.[0];\nconst value = change?.value;\nconst message = value?.messages?.[0];\n\n// EDIT THIS LIST — currently set to YOUR number only, for testing\nconst BOSS_NUMBERS = [String($vars.SENIOR_PHONE ?? '')];\n\nif (!message || message.type !== 'audio') {\n  return [{ json: { is_boss_voice: false } }];\n}\n\nconst fromNumber = (message.from || '').toString().trim();\nconst isBoss = BOSS_NUMBERS.includes(fromNumber);\n\nreturn [{\n  json: {\n    is_boss_voice: isBoss,\n    from_number: fromNumber,\n    audio_id: message.audio?.id || '',\n    mime_type: message.audio?.mime_type || 'audio/ogg'\n  }\n}];"
+        "jsCode": "const body = $json.body || $json;\nconst entry = body?.entry?.[0];\nconst change = entry?.changes?.[0];\nconst value = change?.value;\nconst message = value?.messages?.[0];\n\n// Embedded for copy-paste import without re-entering the live bypass number.\nconst BOSS_NUMBERS = ['919798637485'];\n\nif (!message || message.type !== 'audio') {\n  return [{ json: { is_boss_voice: false } }];\n}\n\nconst fromNumber = (message.from || '').toString().trim();\nconst isBoss = BOSS_NUMBERS.includes(fromNumber);\n\nreturn [{\n  json: {\n    is_boss_voice: isBoss,\n    from_number: fromNumber,\n    audio_id: message.audio?.id || '',\n    mime_type: message.audio?.mime_type || 'audio/ogg'\n  }\n}];"
       },
       "id": "a07f14d6-0a25-42c0-8741-64b5f51e11e6",
       "name": "Extract Voice Task1",
@@ -837,7 +837,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `✅ Task added for ${$json['Contact Name']}: \"${$json['Task']}\" (ID ${$json['Task ID']}), due ${$json['Due Date']}. They'll get the WhatsApp notification automatically within a minute.` }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `\u2705 Task added for ${$json['Contact Name']}: \"${$json['Task']}\" (ID ${$json['Task ID']}), due ${$json['Due Date']}. They'll get the WhatsApp notification automatically within a minute.` }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -878,7 +878,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `⚠️ Task \"${$json['Task']}\" for ${$json['Contact Name']} was added (ID ${$json['Task ID'] || 'pending'}), but no phone number came through. Check that ${$json['Contact Name']} has a Number set in the Contacts sheet.` }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: `\u26a0\ufe0f Task \"${$json['Task']}\" for ${$json['Contact Name']} was added (ID ${$json['Task ID'] || 'pending'}), but no phone number came through. Check that ${$json['Contact Name']} has a Number set in the Contacts sheet.` }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -919,7 +919,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: '⚠️ Sorry, I could not clearly understand that task from the voice note. Please try again, clearly stating: the person\\'s name, what needs to be done, and the deadline.' }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $json['from_number'],\n  type: 'text',\n  text: { body: '\u26a0\ufe0f Sorry, I could not clearly understand that task from the voice note. Please try again, clearly stating: the person\\'s name, what needs to be done, and the deadline.' }\n}) }}",
         "options": {
           "response": {
             "response": {
@@ -945,7 +945,7 @@
     },
     {
       "parameters": {
-        "content": "## 🎙️ Boss Voice Note -> New Task (matched to your real sheet)\nBoss sends a WhatsApp VOICE NOTE. Wire the first node from your existing 'Meta Webhook Receive (POST)'. Gemini transcribes + extracts {contact_name, task, due_date, frequency}. We then match contact_name against your real Contacts sheet (exact match required, since your Phone Number formula uses MATCH exact-text) to get the canonical name, write it plus Task/Due Date/Frequency into the next blank row, and tick the Send checkbox (col G). Task ID and Phone Number are left to your existing formulas.\n\nWe deliberately do NOT send the assignee a WhatsApp message ourselves — your existing 'On Sheet Row Update' poll-trigger workflow already does that automatically the moment Phone Number populates and Status isn't 'Sent'. Adding our own send here would double-message people. We only confirm to the boss.\n\nSETUP: (1) Gemini API key + n8n HTTP Query Auth credential named 'Gemini API'. (2) Verify 'Convert Audio to Base64' node type for your n8n version. (3) HEADROOM: Contact Name dropdown validation only covers rows up to B149 (you're at 135) and Task ID/Phone formulas are filled to row 216 — extend both down a few hundred rows soon so this doesn't quietly stop working. (4) Currently testing with only your own number in BOSS_NUMBERS.",
+        "content": "## \ud83c\udf99\ufe0f Boss Voice Note -> New Task (matched to your real sheet)\nBoss sends a WhatsApp VOICE NOTE. Wire the first node from your existing 'Meta Webhook Receive (POST)'. Gemini transcribes + extracts {contact_name, task, due_date, frequency}. We then match contact_name against your real Contacts sheet (exact match required, since your Phone Number formula uses MATCH exact-text) to get the canonical name, write it plus Task/Due Date/Frequency into the next blank row, and tick the Send checkbox (col G). Task ID and Phone Number are left to your existing formulas.\n\nWe deliberately do NOT send the assignee a WhatsApp message ourselves \u2014 your existing 'On Sheet Row Update' poll-trigger workflow already does that automatically the moment Phone Number populates and Status isn't 'Sent'. Adding our own send here would double-message people. We only confirm to the boss.\n\nSETUP: (1) Gemini API key + n8n HTTP Query Auth credential named 'Gemini API'. (2) Verify 'Convert Audio to Base64' node type for your n8n version. (3) HEADROOM: Contact Name dropdown validation only covers rows up to B149 (you're at 135) and Task ID/Phone formulas are filled to row 216 \u2014 extend both down a few hundred rows soon so this doesn't quietly stop working. (4) Currently testing with only your own number in BOSS_NUMBERS.",
         "height": 1116,
         "width": 3860,
         "color": 5
@@ -1020,19 +1020,19 @@
             {
               "id": "00000000-0000-0000-0000-0000000aac79",
               "name": "APPS_SCRIPT_WEBAPP_URL",
-              "value": "={{ $vars.APPS_SCRIPT_WEBAPP_URL }}",
+              "value": "https://script.google.com/macros/s/AKfycby8Z8woY3D11xqiueBsmlhs8G5cd4n8cpmLlX7hHd2FAAnpU1Alo7AJc1LCfxIMRg/exec",
               "type": "string"
             },
             {
               "id": "00000000-0000-0000-0000-0000000acb68",
               "name": "FORM_BRIDGE_SECRET",
-              "value": "={{ $vars.FORM_BRIDGE_SECRET }}",
+              "value": "qwertyuiopasdfghjkl",
               "type": "string"
             },
             {
               "id": "00000000-0000-0000-0000-0000000aea57",
               "name": "FALLBACK_SENIOR_PHONE",
-              "value": "={{ $vars.SENIOR_PHONE }}",
+              "value": "919798637485",
               "type": "string"
             },
             {

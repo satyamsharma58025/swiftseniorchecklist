@@ -89,4 +89,18 @@ describe("FormBridge form link safety", () => {
     expect(properties.setProperty).toHaveBeenCalledWith("FORM_DATE_google-form-id", "2026-10-03");
     expect(logger.log).toHaveBeenCalledOnce();
   });
+
+  it("ignores stale form submission events that have no source or response object", () => {
+    const logger = { log: vi.fn() };
+    const onFormSubmit = loadFunction("onFormSubmit_", {
+      Logger: logger,
+      buildPayload_: vi.fn(),
+      deliverPayload_: vi.fn(),
+      deadLetterPayload_: vi.fn(),
+    });
+
+    onFormSubmit({});
+
+    expect(logger.log).toHaveBeenCalledWith("[FormBridge] Ignoring stale or missing form submission event.");
+  });
 });

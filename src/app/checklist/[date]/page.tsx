@@ -52,7 +52,6 @@ export default async function ChecklistDatePage({
   const mayGenerate = selectedDate >= today && selectedDate <= tomorrow;
 
   const employees = await prisma.employee.findMany({
-    where: { active: true },
     orderBy: { name: "asc" },
     select: {
       id: true,
@@ -66,13 +65,6 @@ export default async function ChecklistDatePage({
     : EMPLOYEE_NAMES.map((name, index) => ({ id: `seed-${index + 1}`, name, designation: "Employee" }));
 
   const isAll = resolvedParams.employeeId === "all";
-  const selectedEmployee = !isAll
-    ? (targetEmployees.find((employee) => employee.id === resolvedParams.employeeId) ?? targetEmployees[0])
-    : null;
-
-  if (!isAll && !selectedEmployee) {
-    notFound();
-  }
 
   const targetDate = dbDate(selectedDate);
 
@@ -125,11 +117,22 @@ export default async function ChecklistDatePage({
       notDone: employeeRows.filter((row) => row.status === "NOT_DONE").length,
       escalated: employeeRows.filter((row) => row.escalated).length,
     };
-  });
+  }).filter((employee) => employee.total > 0)
+    .sort((first, second) => second.total - first.total || first.name.localeCompare(second.name));
+
+  const selectionEmployees = employeeSummaries.length ? employeeSummaries : targetEmployees;
+  const selectedEmployee = !isAll
+    ? (selectionEmployees.find((employee) => employee.id === resolvedParams.employeeId) ?? selectionEmployees[0])
+    : null;
+
+  if (!isAll && !selectedEmployee) {
+    notFound();
+  }
 
   const displayedRows = isAll
     ? rows
     : rows.filter((row) => row.employeeName === selectedEmployee?.name);
+  const employeeByName = new Map(targetEmployees.map((employee) => [employee.name, employee]));
 
   const submissionTimes = rows
     .map((row) => row.formSubmissionTimestamp)
@@ -208,7 +211,7 @@ export default async function ChecklistDatePage({
                 {isAll ? "All Employees" : selectedEmployee?.name}
               </h2>
               <p className="mt-1 text-sm text-ink/75">
-                {isAll ? `${targetEmployees.length} employees on the floor` : selectedEmployee?.designation}
+                {isAll ? `${employeeSummaries.length} employees with assigned tasks` : selectedEmployee?.designation}
               </p>
             </div>
             <span className="sticker bg-electric-lime text-ink">{displayedRows.length} tasks</span>
@@ -223,6 +226,7 @@ export default async function ChecklistDatePage({
               checklistCode: row.checklistCode,
               taskDescription: row.taskDescription,
               employeeName: row.employeeName,
+              designation: employeeByName.get(row.employeeName)?.designation ?? null,
               cadence: row.taskMaster.cadence,
               category: row.taskMaster.category,
               scheduleDetail: row.taskMaster.scheduleDetail,

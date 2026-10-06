@@ -31,7 +31,6 @@ export default async function DashboardPage({
   const sortOrder = params.sort === "name" ? "name" : "progress";
   const [employees, items] = await Promise.all([
     prisma.employee.findMany({
-      where: { active: true },
       select: { id: true, name: true, designation: true },
       orderBy: { name: "asc" },
     }),
@@ -46,7 +45,6 @@ export default async function DashboardPage({
         escalated: true,
         priority: true,
         reminderCount: true,
-        taskMaster: { select: { employeeId: true } },
       },
       orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
     }),
@@ -70,7 +68,7 @@ export default async function DashboardPage({
       escalated,
       progress: total === 0 ? 0 : Math.round((done / total) * 100),
     };
-  });
+  }).filter((employee) => employee.total > 0);
 
   employeeStats.sort((first, second) => sortOrder === "name"
     ? first.name.localeCompare(second.name)
@@ -84,7 +82,7 @@ export default async function DashboardPage({
     escalated: items.filter((item) => item.escalated).length,
   };
 
-  const activeEmployees = employeeStats.length;
+  const assignedEmployeesCount = employeeStats.length;
   const escalatedTasks = items.filter((item) => item.escalated);
 
   let systemHealth: DailyHealth | null = null;
@@ -154,7 +152,7 @@ export default async function DashboardPage({
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-ink/70">Employee overview</p>
                 <h2 className="brand-display mt-2 text-2xl text-ink">Today&apos;s task distribution</h2>
               </div>
-              <span className="sticker bg-electric-lime text-ink">{activeEmployees} employees</span>
+              <span className="sticker bg-electric-lime text-ink">{assignedEmployeesCount} assigned</span>
             </div>
 
             <div data-table-scroll className="overflow-x-auto">

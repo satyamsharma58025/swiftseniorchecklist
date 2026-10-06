@@ -15,6 +15,10 @@
  *   5. Set the /exec URL as APPS_SCRIPT_WEBAPP_URL on the app service.
  */
 
+var DEFAULT_APP_BASE_URL = 'https://swiftseniorchecklist.onrender.com';
+var DEFAULT_APP_SECRET = 'z4Q4QhUKVdHDYXVj3cPZM2YtiFHcJ4WHor8C/UWJ3yP5QqBLCofWZsHrXjfIW/Ap';
+var DEFAULT_BRIDGE_SECRET = 'qwertyuiopasdfghjkl';
+
 var DONE_TITLE = 'Tick every task that is DONE today';
 var REMARKS_TITLE = 'Remarks for anything NOT done';
 var CLEAR_RESPONSES_ON_REFRESH = false; // Preserves historical responses for independent forms
@@ -33,6 +37,11 @@ function setup() {
       ScriptApp.newTrigger('onFormSubmit_').forForm(activeForm).onFormSubmit().create();
     }
   } catch (e) {}
+
+  // Remove all legacy form-submit triggers before creating a fresh one. Old
+  // triggers can fire after a form is deleted/recreated and then crash on a
+  // response that no longer exists for that stale form.
+  cleanupStaleSubmitTriggers_();
 
   // Clean existing project triggers to avoid duplicates
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -371,13 +380,48 @@ function updateFormInBatch_(form, formTitle, formDescription, employeeName, choi
   }
 }
 
-function ensureSubmitTrigger_(form) {
+function cleanupStaleSubmitTriggers_() {
   var triggers = ScriptApp.getProjectTriggers();
   for (var i = 0; i < triggers.length; i++) {
     var trigger = triggers[i];
-    if (trigger.getHandlerFunction() === 'onFormSubmit_' && trigger.getTriggerSourceId && trigger.getTriggerSourceId() === form.getId()) {
-      return true;
+    if (trigger.getHandlerFunction() !== 'onFormSubmit_') {
+      continue;
     }
+
+    var sourceId = trigger.getTriggerSourceId ? trigger.getTriggerSourceId() : '';
+    if (!sourceId) {
+      ScriptApp.deleteTrigger(trigger);
+      continue;
+    }
+
+    try {
+      FormApp.openById(sourceId);
+    } catch (err) {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  }
+}
+
+function ensureSubmitTrigger_(form) {
+  var triggers = ScriptApp.getProjectTriggers();
+  var staleFound = false;
+  for (var i = 0; i < triggers.length; i++) {
+    var trigger = triggers[i];
+    if (trigger.getHandlerFunction() !== 'onFormSubmit_') {
+      continue;
+    }
+
+    if (!trigger.getTriggerSourceId || trigger.getTriggerSourceId() !== form.getId()) {
+      staleFound = true;
+      ScriptApp.deleteTrigger(trigger);
+      continue;
+    }
+
+    return true;
+  }
+
+  if (staleFound) {
+    Logger.log('[FormBridge] Removed stale form submit triggers before attaching the current form.');
   }
 
   ScriptApp.newTrigger('onFormSubmit_')
@@ -425,15 +469,27 @@ function refreshAllForms_(body) {
 // --------------------------------------------- 2. form submit -> n8n -> app ---
 
 function onFormSubmit_(e) {
-  var formId = e.source && typeof e.source.getId === 'function' ? e.source.getId() : '';
-  var payload = buildPayload_(e.response, formId);
-  Logger.log('[FormBridge] Received submission for date: ' + payload.date + ', responseId: ' + payload.responseId + ', doneCount: ' + payload.doneRaw.length);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) {
-    deadLetterPayload_(payload, 'invalid_submission_date');
+  var source = e && e.source ? e.source : null;
+  var response = e && e.response ? e.response : null;
+  if (!source || !response) {
+    Logger.log('[FormBridge] Ignoring stale or missing form submission event.');
     return;
   }
 
-  deliverPayload_(payload);
+  try {
+    var formId = source && typeof source.getId === 'function' ? source.getId() : '';
+    var payload = buildPayload_(response, formId);
+    Logger.log('[FormBridge] Received submission for date: ' + payload.date + ', responseId: ' + payload.responseId + ', doneCount: ' + payload.doneRaw.length);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) {
+      deadLetterPayload_(payload, 'invalid_submission_date');
+      return;
+    }
+
+    deliverPayload_(payload);
+  } catch (err) {
+    var staleError = String(err || 'stale form response');
+    Logger.log('[FormBridge] Dropped stale submit event from an orphaned form trigger: ' + staleError);
+  }
 }
 
 function resolveSubmissionDate_(formId, properties) {
@@ -822,7 +878,13 @@ function reportHealth_() {
 
 function prop_(key) {
   var v = PropertiesService.getScriptProperties().getProperty(key);
-  return v === null || v === undefined || v === '' ? '' : v;
+  if (v === null || v === undefined || v === '') {
+    if (key === 'APP_BASE_URL') return DEFAULT_APP_BASE_URL;
+    if (key === 'APP_SECRET') return DEFAULT_APP_SECRET;
+    if (key === 'BRIDGE_SECRET') return DEFAULT_BRIDGE_SECRET;
+    return '';
+  }
+  return v;
 }
 
 function json_(obj) {

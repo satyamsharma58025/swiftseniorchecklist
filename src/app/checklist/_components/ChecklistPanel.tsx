@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
@@ -129,7 +129,7 @@ export function buildEmployeeGroups(items: ChecklistTaskRow[]): EmployeeGroup[] 
       rows,
       sections,
     };
-  }).sort((first, second) => first.employeeName.localeCompare(second.employeeName));
+  }).sort((first, second) => second.total - first.total || first.employeeName.localeCompare(second.employeeName));
 }
 
 export function defaultExpansionForSectionGroups(groups: SectionGroup[]): Record<string, boolean> {
@@ -137,7 +137,33 @@ export function defaultExpansionForSectionGroups(groups: SectionGroup[]): Record
 }
 
 export function defaultExpansionForEmployeeGroups(groups: EmployeeGroup[]): Record<string, boolean> {
-  return Object.fromEntries(groups.map((group) => [group.employeeName, group.progress < 100]));
+  const expansions = new Map<string, boolean>();
+  for (const group of groups) {
+    expansions.set(group.employeeName, true);
+    for (const section of group.sections) {
+      expansions.set(section.section, true);
+    }
+  }
+  return Object.fromEntries(expansions);
+}
+
+function subscribeToSessionStorage(key: string, onChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === key) onChange();
+  };
+  window.addEventListener("storage", handleStorage);
+  return () => window.removeEventListener("storage", handleStorage);
+}
+
+function getSessionStorageItem(key: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 type RetryAction =
@@ -299,6 +325,48 @@ export function ChecklistPanel({
     }
   }
 
+  const sectionGroups = useMemo(() => buildSectionGroups(filteredItems), [filteredItems]);
+  const employeeGroups = useMemo(() => buildEmployeeGroups(filteredItems), [filteredItems]);
+  const defaultExpansion = useMemo(() => employeeName === "All Employees"
+    ? defaultExpansionForEmployeeGroups(employeeGroups)
+    : defaultExpansionForSectionGroups(sectionGroups), [employeeName, employeeGroups, sectionGroups]);
+  const [groupExpansion, setGroupExpansion] = useState<Record<string, boolean>>({});
+  const storageKey = `checklist-panel:${employeeName}`;
+  const subscribeToExpansion = useCallback(
+    (onChange: () => void) => subscribeToSessionStorage(storageKey, onChange),
+    [storageKey],
+  );
+  const getExpansionSnapshot = useCallback(
+    () => getSessionStorageItem(storageKey),
+    [storageKey],
+  );
+  const storedExpansion = useSyncExternalStore(subscribeToExpansion, getExpansionSnapshot, () => null);
+  const persistedExpansion = useMemo(() => {
+    if (!storedExpansion) return {};
+    try {
+      const parsed: unknown = JSON.parse(storedExpansion);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return Object.fromEntries(
+        Object.entries(parsed).filter(([, value]) => typeof value === "boolean"),
+      );
+    } catch {
+      return {};
+    }
+  }, [storedExpansion]);
+  const resolvedExpansion = useMemo(
+    () => ({ ...defaultExpansion, ...persistedExpansion, ...groupExpansion }),
+    [defaultExpansion, persistedExpansion, groupExpansion],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !Object.keys(groupExpansion).length) return;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(resolvedExpansion));
+    } catch {
+      // Best effort only: sessionStorage is optional in some browsers.
+    }
+  }, [groupExpansion, resolvedExpansion, storageKey]);
+
   if (!localItems.length) {
     return (
       <PageEmptyState
@@ -310,41 +378,12 @@ export function ChecklistPanel({
     );
   }
 
-  const sectionGroups = useMemo(() => buildSectionGroups(filteredItems), [filteredItems]);
-  const employeeGroups = useMemo(() => buildEmployeeGroups(filteredItems), [filteredItems]);
-  const defaultExpansion = useMemo(() => employeeName === "All Employees"
-    ? defaultExpansionForEmployeeGroups(employeeGroups)
-    : defaultExpansionForSectionGroups(sectionGroups), [employeeName, employeeGroups, sectionGroups]);
-  const [groupExpansion, setGroupExpansion] = useState<Record<string, boolean>>({});
-  const storageKey = `checklist-panel:${employeeName}`;
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = sessionStorage.getItem(storageKey);
-      if (!raw) {
-        setGroupExpansion(defaultExpansion);
-        return;
-      }
-      const parsed = JSON.parse(raw) as Record<string, boolean> | null;
-      setGroupExpansion({ ...defaultExpansion, ...(parsed ?? {}) });
-    } catch {
-      setGroupExpansion(defaultExpansion);
-    }
-  }, [defaultExpansion, storageKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      sessionStorage.setItem(storageKey, JSON.stringify(groupExpansion));
-    } catch {
-      // Best effort only: sessionStorage is optional in some browsers.
-    }
-  }, [groupExpansion, storageKey]);
-
   const toggleAll = (next: boolean) => {
     const keys = employeeName === "All Employees"
-      ? employeeGroups.map((group) => [group.employeeName, next] as const)
+      ? employeeGroups.flatMap((group) => [
+          [group.employeeName, next] as const,
+          ...group.sections.map((section) => [section.section, next] as const),
+        ])
       : sectionGroups.map((group) => [group.section, next] as const);
     setGroupExpansion((current) => ({ ...current, ...Object.fromEntries(keys) }));
   };
@@ -516,18 +555,27 @@ export function ChecklistPanel({
         <div className="space-y-3">
           {employeeName === "All Employees"
             ? employeeGroups.map((employee) => {
-                const expanded = groupExpansion[employee.employeeName] ?? employee.progress < 100;
+                const expanded = resolvedExpansion[employee.employeeName] ?? employee.progress < 100;
                 return (
-                  <div key={employee.employeeName} className="neo-border bg-paper p-3 neo-shadow-sm">
+                  <div key={employee.employeeName} className="neo-border bg-paper p-4 neo-shadow-sm">
                     <button
                       type="button"
                       onClick={() => setGroupExpansion((current) => ({ ...current, [employee.employeeName]: !expanded }))}
                       aria-expanded={expanded}
                       className="flex w-full items-center justify-between gap-3 text-left"
                     >
-                      <div>
-                        <p className="text-sm font-black uppercase tracking-[0.04em] text-ink">{employee.employeeName}</p>
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink/60">{employee.designation ?? "Employee"}</p>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          aria-hidden="true"
+                          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-[3px] border-ink bg-electric-lime text-sm font-black uppercase text-ink"
+                        >
+                          {employee.employeeName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?"}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black uppercase tracking-[0.04em] text-ink">{employee.employeeName}</p>
+                          <p className="text-[10px] uppercase tracking-[0.14em] text-ink/60">{employee.designation ?? "Employee"}</p>
+                          <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-ink/70">{employee.total} assigned tasks</p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="h-2.5 w-24 border-[2px] border-ink bg-white">
@@ -540,7 +588,7 @@ export function ChecklistPanel({
                     {expanded ? (
                       <div className="mt-3 space-y-3">
                         {employee.sections.map((section) => {
-                          const sectionExpanded = groupExpansion[section.section] ?? section.progress < 100;
+                          const sectionExpanded = resolvedExpansion[section.section] ?? section.progress < 100;
                           return (
                             <div key={`${employee.employeeName}-${section.section}`} className="neo-border bg-white p-3">
                               <button
@@ -570,7 +618,7 @@ export function ChecklistPanel({
                 );
               })
             : sectionGroups.map((section) => {
-                const expanded = groupExpansion[section.section] ?? section.progress < 100;
+                const expanded = resolvedExpansion[section.section] ?? section.progress < 100;
                 return (
                   <div key={section.section} className="neo-border bg-paper p-3 neo-shadow-sm">
                     <button

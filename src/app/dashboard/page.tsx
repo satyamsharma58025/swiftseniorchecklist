@@ -1,16 +1,15 @@
 import Link from "next/link";
-import { buildDailyHealth, type DailyHealth } from "@/lib/health";
+import { buildDailyHealth, heartbeatAgeMinutes, type DailyHealth } from "@/lib/health";
 import { loadDailyHealthInput } from "@/lib/health-queries";
 
+import { SystemStatusCard } from "@/components/SystemStatusCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { addDays, dateKey, dbDate, istDateKey } from "@/lib/dates";
+import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = { title: "Dashboard" };
-
-type DashboardStatusFilter = "all" | "DONE" | "PENDING" | "NOT_DONE" | "ESCALATED";
 
 export default async function DashboardPage({
   searchParams,
@@ -30,11 +29,6 @@ export default async function DashboardPage({
   }
   const date = dbDate(selectedDate);
   const sortOrder = params.sort === "name" ? "name" : "progress";
-  const requestedStatus = params.status;
-  const statusFilter: DashboardStatusFilter = ["DONE", "PENDING", "NOT_DONE", "ESCALATED"].includes(requestedStatus ?? "")
-    ? requestedStatus as DashboardStatusFilter
-    : "all";
-
   const [employees, items] = await Promise.all([
     prisma.employee.findMany({
       where: { active: true },
@@ -57,18 +51,6 @@ export default async function DashboardPage({
       orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
     }),
   ]);
-
-  type EmployeeStat = {
-    id: string;
-    name: string;
-    designation: string;
-    total: number;
-    done: number;
-    pending: number;
-    notDone: number;
-    escalated: number;
-    progress: number;
-  };
 
   const employeeStats = employees.map((employee) => {
     const employeeRows = items.filter((item) => item.employeeName === employee.name);
@@ -94,16 +76,6 @@ export default async function DashboardPage({
     ? first.name.localeCompare(second.name)
     : first.progress - second.progress || first.name.localeCompare(second.name));
 
-  const visibleEmployeeStats = statusFilter === "all"
-    ? employeeStats
-    : employeeStats.filter((employee) => statusFilter === "DONE"
-      ? employee.done > 0
-      : statusFilter === "PENDING"
-        ? employee.pending > 0
-        : statusFilter === "NOT_DONE"
-          ? employee.notDone > 0
-          : employee.escalated > 0);
-
   const totals = {
     total: items.length,
     done: items.filter((item) => item.status === "DONE").length,
@@ -112,14 +84,8 @@ export default async function DashboardPage({
     escalated: items.filter((item) => item.escalated).length,
   };
 
-  const attentionItems = items.filter((item) => item.status === "NOT_DONE" || item.escalated);
-  const attentionByEmployee = new Map<string, typeof attentionItems>();
-  for (const item of attentionItems) {
-    const employeeId = item.taskMaster.employeeId;
-    const employeeItems = attentionByEmployee.get(employeeId) ?? [];
-    employeeItems.push(item);
-    attentionByEmployee.set(employeeId, employeeItems);
-  }
+  const activeEmployees = employeeStats.length;
+  const escalatedTasks = items.filter((item) => item.escalated);
 
   let systemHealth: DailyHealth | null = null;
   try {
@@ -129,28 +95,13 @@ export default async function DashboardPage({
     systemHealth = null;
   }
 
-  const previousDate = dateKey(addDays(date, -1));
-  const nextDate = dateKey(addDays(date, 1));
-  const todayHref = `/dashboard?date=${today}&sort=${sortOrder}`;
-  const dashboardHref = (updates: { date?: string; sort?: string; status?: string }) => {
-    const query = new URLSearchParams({
-      date: updates.date ?? selectedDate,
-      sort: updates.sort ?? sortOrder,
-      status: updates.status ?? statusFilter,
-    });
-    return `/dashboard?${query.toString()}`;
-  };
+  const now = new Date();
   const syncTime = systemHealth?.generation.lastDailySyncAt?.toLocaleTimeString("en-IN", {
     timeZone: "Asia/Kolkata",
     hour: "2-digit",
     minute: "2-digit",
   });
-  const heartbeatAt = systemHealth?.intake.appsScript.latestHeartbeatAt;
-  const heartbeatAge = heartbeatAt
-    ? Math.max(0, Math.floor((Date.now() - heartbeatAt.getTime()) / 60_000))
-    : null;
-
-  const employeesById = new Map(employees.map((employee) => [employee.id, employee]));
+  const heartbeatAge = heartbeatAgeMinutes(now, systemHealth?.intake.appsScript.latestHeartbeatAt ?? null);
 
   return (
     <div className="min-h-screen py-5 text-ink md:py-8">
@@ -191,6 +142,12 @@ export default async function DashboardPage({
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.45fr_0.55fr]">
+          <SystemStatusCard
+            health={systemHealth}
+            syncTime={syncTime ?? null}
+            heartbeatAge={heartbeatAge}
+          />
+
           <div className="neo-border bg-white p-5 neo-shadow-sm md:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>

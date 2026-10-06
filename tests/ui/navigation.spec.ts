@@ -2,9 +2,11 @@ import { expect, test } from "@playwright/test";
 import { encode } from "next-auth/jwt";
 import path from "node:path";
 
-const baseURL = "http://127.0.0.1:3100";
+import type { AppRole } from "@/auth";
+
+const baseURL = "http://127.0.0.1:3000";
 const nextAuthSecret = "u1-playwright-test-secret";
-const reviewSession = {
+const reviewSession: { sub: string; name: string; email: string; role: AppRole } = {
   sub: "u1-shell-review",
   name: "Shell Review",
   email: "shell-review@example.test",

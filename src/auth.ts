@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 
 import { prisma } from "@/lib/prisma";
 
-type AppRole = "MANAGER" | "SENIOR" | "EMPLOYEE";
+export type AppRole = "MANAGER" | "SENIOR" | "EMPLOYEE";
 
 declare module "next-auth" {
   interface Session {

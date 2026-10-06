@@ -1,16 +1,37 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
-import type { ChecklistSection } from "@/lib/checklist-sections";
+import { sectionFor, type ChecklistSection } from "@/lib/checklist-sections";
+
+export const SECTION_ORDER: ChecklistSection[] = [
+  "NEEDS_ATTENTION",
+  "DAILY",
+  "WEEKLY",
+  "MONTHLY",
+  "QUARTERLY",
+  "YEARLY",
+  "ADDED_OR_CARRIED_FORWARD",
+];
+
+export const SECTION_LABELS: Record<ChecklistSection, string> = {
+  NEEDS_ATTENTION: "Needs attention",
+  DAILY: "Daily",
+  WEEKLY: "Weekly",
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
+  YEARLY: "Yearly",
+  ADDED_OR_CARRIED_FORWARD: "Added or carried forward",
+};
 
 export type ChecklistTaskRow = {
   id: string;
   checklistCode: string;
   taskDescription: string;
   employeeName: string;
+  designation?: string | null;
   cadence?: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | null;
   category?: string | null;
   scheduleDetail?: string | null;
@@ -24,6 +45,100 @@ export type ChecklistTaskRow = {
   employeeResponse?: string | null;
   formSubmittedAt?: string | null;
 };
+
+export type SectionGroup = {
+  section: ChecklistSection;
+  title: string;
+  rows: ChecklistTaskRow[];
+  total: number;
+  done: number;
+  pending: number;
+  notDone: number;
+  progress: number;
+};
+
+export type EmployeeGroup = {
+  employeeName: string;
+  designation: string | null;
+  total: number;
+  done: number;
+  pending: number;
+  notDone: number;
+  progress: number;
+  rows: ChecklistTaskRow[];
+  sections: SectionGroup[];
+};
+
+export function buildSectionGroups(items: ChecklistTaskRow[]): SectionGroup[] {
+  const grouped = new Map<ChecklistSection, ChecklistTaskRow[]>();
+  for (const section of SECTION_ORDER) {
+    grouped.set(section, []);
+  }
+
+  for (const item of items) {
+    const key = item.section ?? sectionFor({
+      cadence: item.cadence ?? null,
+      status: item.status,
+      escalated: item.escalated,
+      isQueueOnly: item.taskDescription.startsWith("MANUAL-") || item.checklistCode.startsWith("MANUAL-"),
+      isCarriedForward: false,
+    });
+    grouped.get(key)?.push(item);
+  }
+
+  return SECTION_ORDER.map((section) => {
+    const rows = grouped.get(section) ?? [];
+    const done = rows.filter((item) => item.status === "DONE").length;
+    const pending = rows.filter((item) => item.status === "PENDING").length;
+    const notDone = rows.filter((item) => item.status === "NOT_DONE").length;
+    return {
+      section,
+      title: SECTION_LABELS[section],
+      rows,
+      total: rows.length,
+      done,
+      pending,
+      notDone,
+      progress: rows.length ? Math.round((done / rows.length) * 100) : 0,
+    };
+  }).filter((group) => group.rows.length > 0);
+}
+
+export function buildEmployeeGroups(items: ChecklistTaskRow[]): EmployeeGroup[] {
+  const grouped = new Map<string, ChecklistTaskRow[]>();
+  for (const item of items) {
+    const rows = grouped.get(item.employeeName) ?? [];
+    rows.push(item);
+    grouped.set(item.employeeName, rows);
+  }
+
+  return Array.from(grouped.entries()).map(([employeeName, rows]) => {
+    const sections = buildSectionGroups(rows);
+    const total = rows.length;
+    const done = rows.filter((item) => item.status === "DONE").length;
+    const pending = rows.filter((item) => item.status === "PENDING").length;
+    const notDone = rows.filter((item) => item.status === "NOT_DONE").length;
+    return {
+      employeeName,
+      designation: rows[0]?.designation ?? null,
+      total,
+      done,
+      pending,
+      notDone,
+      progress: total ? Math.round((done / total) * 100) : 0,
+      rows,
+      sections,
+    };
+  }).sort((first, second) => first.employeeName.localeCompare(second.employeeName));
+}
+
+export function defaultExpansionForSectionGroups(groups: SectionGroup[]): Record<string, boolean> {
+  return Object.fromEntries(groups.map((group) => [group.section, group.total === 0 ? false : group.progress < 100]));
+}
+
+export function defaultExpansionForEmployeeGroups(groups: EmployeeGroup[]): Record<string, boolean> {
+  return Object.fromEntries(groups.map((group) => [group.employeeName, group.progress < 100]));
+}
 
 type RetryAction =
   | { kind: "status"; itemId: string; status: "DONE" | "NOT_DONE" }
@@ -195,6 +310,135 @@ export function ChecklistPanel({
     );
   }
 
+  const sectionGroups = useMemo(() => buildSectionGroups(filteredItems), [filteredItems]);
+  const employeeGroups = useMemo(() => buildEmployeeGroups(filteredItems), [filteredItems]);
+  const defaultExpansion = useMemo(() => employeeName === "All Employees"
+    ? defaultExpansionForEmployeeGroups(employeeGroups)
+    : defaultExpansionForSectionGroups(sectionGroups), [employeeName, employeeGroups, sectionGroups]);
+  const [groupExpansion, setGroupExpansion] = useState<Record<string, boolean>>({});
+  const storageKey = `checklist-panel:${employeeName}`;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw) {
+        setGroupExpansion(defaultExpansion);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, boolean> | null;
+      setGroupExpansion({ ...defaultExpansion, ...(parsed ?? {}) });
+    } catch {
+      setGroupExpansion(defaultExpansion);
+    }
+  }, [defaultExpansion, storageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(groupExpansion));
+    } catch {
+      // Best effort only: sessionStorage is optional in some browsers.
+    }
+  }, [groupExpansion, storageKey]);
+
+  const toggleAll = (next: boolean) => {
+    const keys = employeeName === "All Employees"
+      ? employeeGroups.map((group) => [group.employeeName, next] as const)
+      : sectionGroups.map((group) => [group.section, next] as const);
+    setGroupExpansion((current) => ({ ...current, ...Object.fromEntries(keys) }));
+  };
+
+  const renderTaskCard = (item: ChecklistTaskRow) => (
+    <div key={item.id} className="neo-border bg-white p-4 neo-shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex-1">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="sticker bg-sun-yellow text-[11px] font-black uppercase tracking-[0.14em] text-ink">
+                {item.employeeName}
+              </span>
+              <span className="sticker bg-paper font-mono text-[10px] font-bold text-ink">
+                {item.checklistCode}
+              </span>
+            </div>
+            <p className="text-lg font-black uppercase tracking-[0.04em] text-ink">{item.taskDescription}</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
+              <span className="sticker bg-paper text-ink">Priority: {item.priority}</span>
+              <StatusBadge status={item.escalated ? "ESCALATED" : item.status} />
+              {item.reminderCount > 0 ? <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span> : null}
+              {item.formSubmittedAt ? (
+                <span className="sticker bg-paper text-ink">
+                  Via form {new Date(item.formSubmittedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label htmlFor={`remarks-${item.id}`} className="text-sm font-semibold text-ink">Senior remark</label>
+              <input
+                id={`remarks-${item.id}`}
+                type="text"
+                placeholder="Add specific remark for this task..."
+                value={editingRemarks[item.id] !== undefined ? editingRemarks[item.id] : (item.seniorRemarks ?? "")}
+                onChange={(e) => setEditingRemarks({ ...editingRemarks, [item.id]: e.target.value })}
+                className="neo-border flex-1 bg-paper/50 px-3 py-1.5 text-xs font-semibold text-ink placeholder:text-ink/40 focus:bg-white focus:outline-none"
+              />
+              {editingRemarks[item.id] !== undefined && editingRemarks[item.id] !== (item.seniorRemarks ?? "") && (
+                <button
+                  type="button"
+                  onClick={() => saveRemarkOnly(item.id)}
+                  disabled={savingId === item.id}
+                  className="neo-press neo-border bg-electric-lime px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-ink"
+                >
+                  {savingId === item.id ? "Saving..." : "Save remark"}
+                </button>
+              )}
+            </div>
+
+            {(item.seniorRemarks || item.employeeResponse) && (
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {item.seniorRemarks ? (
+                  <div className="neo-border bg-sun-yellow p-3 text-sm text-ink">
+                    <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-ink/80">Current Senior Remark</p>
+                    <p>{item.seniorRemarks}</p>
+                  </div>
+                ) : null}
+                {item.employeeResponse ? (
+                  <div className="neo-border bg-electric-lime p-3 text-sm text-ink">
+                    <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-ink/80">Employee response</p>
+                    <p>{item.employeeResponse}</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => updateStatus(item.id, "DONE")}
+            disabled={savingId === item.id}
+            aria-busy={savingId === item.id}
+            className="neo-press neo-border min-h-11 bg-brand-green px-3 py-2 text-sm font-black text-ink"
+          >
+            Done
+          </button>
+          <button
+            type="button"
+            onClick={() => updateStatus(item.id, "NOT_DONE")}
+            disabled={savingId === item.id}
+            aria-busy={savingId === item.id}
+            className="neo-press neo-border min-h-11 bg-hot-pink px-3 py-2 text-sm font-black text-ink"
+          >
+            Not done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       {saveFeedback ? (
@@ -258,6 +502,11 @@ export function ChecklistPanel({
         </div>
       </div>
 
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={() => toggleAll(true)} className="neo-press neo-border bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-ink">Expand all</button>
+        <button type="button" onClick={() => toggleAll(false)} className="neo-press neo-border bg-paper px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-ink">Collapse all</button>
+      </div>
+
       {filteredItems.length === 0 ? (
         <div className="neo-border bg-paper p-8 text-center text-ink neo-shadow-sm">
           <p className="brand-display text-2xl text-ink">No matching tasks</p>
@@ -265,97 +514,86 @@ export function ChecklistPanel({
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredItems.map((item) => {
-            return (
-              <div key={item.id} className="neo-border bg-white p-4 neo-shadow-sm">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span className="sticker bg-sun-yellow text-[11px] font-black uppercase tracking-[0.14em] text-ink">
-                          {item.employeeName}
-                        </span>
-                        <span className="sticker bg-paper font-mono text-[10px] font-bold text-ink">
-                          {item.checklistCode}
-                        </span>
+          {employeeName === "All Employees"
+            ? employeeGroups.map((employee) => {
+                const expanded = groupExpansion[employee.employeeName] ?? employee.progress < 100;
+                return (
+                  <div key={employee.employeeName} className="neo-border bg-paper p-3 neo-shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setGroupExpansion((current) => ({ ...current, [employee.employeeName]: !expanded }))}
+                      aria-expanded={expanded}
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                    >
+                      <div>
+                        <p className="text-sm font-black uppercase tracking-[0.04em] text-ink">{employee.employeeName}</p>
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink/60">{employee.designation ?? "Employee"}</p>
                       </div>
-                      <p className="text-lg font-black uppercase tracking-[0.04em] text-ink">{item.taskDescription}</p>
-                      <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
-                        <span className="sticker bg-paper text-ink">Priority: {item.priority}</span>
-                        <StatusBadge status={item.escalated ? "ESCALATED" : item.status} />
-                        {item.reminderCount > 0 ? <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span> : null}
-                        {item.formSubmittedAt ? (
-                          <span className="sticker bg-paper text-ink">
-                            Via form {new Date(item.formSubmittedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <label htmlFor={`remarks-${item.id}`} className="text-sm font-semibold text-ink">Senior remark</label>
-                        <input
-                          id={`remarks-${item.id}`}
-                          type="text"
-                          placeholder="Add specific remark for this task..."
-                          value={editingRemarks[item.id] !== undefined ? editingRemarks[item.id] : (item.seniorRemarks ?? "")}
-                          onChange={(e) => setEditingRemarks({ ...editingRemarks, [item.id]: e.target.value })}
-                          className="neo-border flex-1 bg-paper/50 px-3 py-1.5 text-xs font-semibold text-ink placeholder:text-ink/40 focus:bg-white focus:outline-none"
-                        />
-                        {editingRemarks[item.id] !== undefined && editingRemarks[item.id] !== (item.seniorRemarks ?? "") && (
-                          <button
-                            type="button"
-                            onClick={() => saveRemarkOnly(item.id)}
-                            disabled={savingId === item.id}
-                            className="neo-press neo-border bg-electric-lime px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-ink"
-                          >
-                            {savingId === item.id ? "Saving..." : "Save remark"}
-                          </button>
-                        )}
-                      </div>
-
-                      {(item.seniorRemarks || item.employeeResponse) && (
-                        <div className="mt-3 grid gap-2 md:grid-cols-2">
-                          {item.seniorRemarks ? (
-                            <div className="neo-border bg-sun-yellow p-3 text-sm text-ink">
-                              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-ink/80">Current Senior Remark</p>
-                              <p>{item.seniorRemarks}</p>
-                            </div>
-                          ) : null}
-                          {item.employeeResponse ? (
-                            <div className="neo-border bg-electric-lime p-3 text-sm text-ink">
-                              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-ink/80">Employee response</p>
-                              <p>{item.employeeResponse}</p>
-                            </div>
-                          ) : null}
+                      <div className="flex items-center gap-3">
+                        <div className="h-2.5 w-24 border-[2px] border-ink bg-white">
+                          <div className="h-full bg-brand-green" style={{ width: `${employee.progress}%` }} />
                         </div>
-                      )}
-                    </div>
-                  </div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-ink">{employee.progress}%</span>
+                      </div>
+                    </button>
 
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => updateStatus(item.id, "DONE")}
-                      disabled={savingId === item.id}
-                      aria-busy={savingId === item.id}
-                      className="neo-press neo-border min-h-11 bg-brand-green px-3 py-2 text-sm font-black text-ink"
-                    >
-                      Done
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updateStatus(item.id, "NOT_DONE")}
-                      disabled={savingId === item.id}
-                      aria-busy={savingId === item.id}
-                      className="neo-press neo-border min-h-11 bg-hot-pink px-3 py-2 text-sm font-black text-ink"
-                    >
-                      Not done
-                    </button>
+                    {expanded ? (
+                      <div className="mt-3 space-y-3">
+                        {employee.sections.map((section) => {
+                          const sectionExpanded = groupExpansion[section.section] ?? section.progress < 100;
+                          return (
+                            <div key={`${employee.employeeName}-${section.section}`} className="neo-border bg-white p-3">
+                              <button
+                                type="button"
+                                onClick={() => setGroupExpansion((current) => ({ ...current, [section.section]: !sectionExpanded }))}
+                                aria-expanded={sectionExpanded}
+                                className="flex w-full items-center justify-between gap-3 text-left"
+                              >
+                                <div>
+                                  <p className="text-sm font-black uppercase tracking-[0.04em] text-ink">{section.title}</p>
+                                  <p className="text-[10px] uppercase tracking-[0.12em] text-ink/60">{section.total} tasks</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <div className="h-2.5 w-20 border-[2px] border-ink bg-paper">
+                                    <div className="h-full bg-brand-green" style={{ width: `${section.progress}%` }} />
+                                  </div>
+                                  <span className="text-[10px] font-black uppercase tracking-[0.12em] text-ink">{section.progress}%</span>
+                                </div>
+                              </button>
+                              {sectionExpanded ? <div className="mt-3 space-y-3">{section.rows.map(renderTaskCard)}</div> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })
+            : sectionGroups.map((section) => {
+                const expanded = groupExpansion[section.section] ?? section.progress < 100;
+                return (
+                  <div key={section.section} className="neo-border bg-paper p-3 neo-shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setGroupExpansion((current) => ({ ...current, [section.section]: !expanded }))}
+                      aria-expanded={expanded}
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                    >
+                      <div>
+                        <p className="text-sm font-black uppercase tracking-[0.04em] text-ink">{section.title}</p>
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-ink/60">{section.total} tasks</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="h-2.5 w-24 border-[2px] border-ink bg-white">
+                          <div className="h-full bg-brand-green" style={{ width: `${section.progress}%` }} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-ink">{section.progress}%</span>
+                      </div>
+                    </button>
+                    {expanded ? <div className="mt-3 space-y-3">{section.rows.map(renderTaskCard)}</div> : null}
+                  </div>
+                );
+              })}
         </div>
       )}
     </div>

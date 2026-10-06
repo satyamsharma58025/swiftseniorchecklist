@@ -103,6 +103,11 @@ function slotHealth(
   };
 }
 
+export function heartbeatAgeMinutes(now: Date, at: Date | null | undefined): number | null {
+  if (!at) return null;
+  return Math.max(0, Math.floor((now.getTime() - at.getTime()) / 60_000));
+}
+
 export function buildDailyHealth(input: DailyHealthInput, now: Date = new Date()): DailyHealth {
   const date = istDateKey(now);
   const minute = minuteOfDay(now);

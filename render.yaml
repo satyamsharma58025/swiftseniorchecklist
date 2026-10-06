@@ -19,6 +19,8 @@ services:
         sync: false
       - key: CRON_SECRET
         generateValue: true
+      - key: CRON_SECRET_PREVIOUS
+        sync: false
       - key: DEFAULT_TIMEZONE
         value: Asia/Kolkata
       - key: NODE_ENV
@@ -37,85 +39,9 @@ services:
         sync: false
       - key: WHATSAPP_ACCESS_TOKEN
         sync: false
-      # Google Form / n8n integration (see integrations/README.md)
       - key: GOOGLE_FORM_URL
         sync: false
       - key: SENIOR_AUTHORITY_PHONE
         sync: false
       - key: SENIOR_AUTHORITY_NAME
         sync: false
-
-  - type: cron
-    name: cron-daily-sync
-    runtime: node
-    plan: starter
-    region: singapore
-    schedule: "30 23 * * *" # 05:00 IST
-    buildCommand: npm install
-    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/daily-sync" -H "x-cron-secret: $CRON_SECRET"'
-    envVars:
-      - key: APP_BASE_URL
-        sync: false
-      - key: CRON_SECRET
-        sync: false
-
-  - type: cron
-    name: cron-daily-sync-backup
-    runtime: node
-    plan: starter
-    region: singapore
-    schedule: "0 2 * * *" # 07:30 IST
-    buildCommand: npm install
-    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/daily-sync" -H "x-cron-secret: $CRON_SECRET"'
-    envVars:
-      - key: APP_BASE_URL
-        sync: false
-      - key: CRON_SECRET
-        sync: false
-
-  - type: cron
-    name: cron-reminder-sweep
-    runtime: node
-    plan: starter
-    region: singapore
-    schedule: "0 */2 * * *"
-    buildCommand: npm install
-    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/reminder-sweep" -H "x-cron-secret: $CRON_SECRET"'
-    envVars:
-      - key: APP_BASE_URL
-        sync: false
-      - key: CRON_SECRET
-        sync: false
-
-  - type: cron
-    name: cron-eod-cutoff
-    runtime: node
-    plan: starter
-    region: singapore
-    schedule: "30 14 * * *" # 20:00 IST
-    buildCommand: npm install
-    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/eod-cutoff" -H "x-cron-secret: $CRON_SECRET"'
-    envVars:
-      - key: APP_BASE_URL
-        sync: false
-      - key: CRON_SECRET
-        sync: false
-
-  - type: cron
-    name: cron-overall-summary
-    runtime: node
-    plan: starter
-    region: singapore
-    schedule: "0 15 * * *" # 20:30 IST
-    buildCommand: npm install
-    startCommand: 'curl -fsS --retry 3 --retry-delay 15 "$APP_BASE_URL/api/cron/overall-summary" -H "x-cron-secret: $CRON_SECRET"'
-    envVars:
-      - key: APP_BASE_URL
-        sync: false
-      - key: CRON_SECRET
-        sync: false
-
-databases:
-  - name: swift-senior-checklist-db
-    plan: starter
-    region: singapore

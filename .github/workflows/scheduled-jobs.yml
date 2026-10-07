@@ -11,6 +11,14 @@ on:
     - cron: "20 13 * * *"   # 18:50 IST watchdog
     - cron: "10 14 * * *"   # 19:40 IST watchdog
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
+
 jobs:
   daily-sync:
     if: >-
@@ -18,11 +26,22 @@ jobs:
       github.event.schedule == '30 23 * * *' ||
       github.event.schedule == '0 2 * * *'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - run: |
-          curl -fsS --max-time 180 --retry 5 --retry-delay 30 --retry-all-errors \
+          set +e
+          RESPONSE=$(curl --fail-with-body --silent --show-error --max-time 90 --retry 3 --retry-delay 10 --retry-all-errors \
+            -w '\n%{http_code}' \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_BASE_URL }}/api/cron/daily-sync"
+            "${{ secrets.APP_BASE_URL }}/api/cron/daily-sync" 2>&1)
+          CURL_STATUS=$?
+          set -e
+          HTTP_CODE=$(printf '%s\n' "$RESPONSE" | tail -n 1)
+          BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
+          printf 'HTTP status: %s (curl exit: %s)\n%s\n' "$HTTP_CODE" "$CURL_STATUS" "$BODY"
+          if [ "$CURL_STATUS" -ne 0 ] || [ "${HTTP_CODE#2}" = "$HTTP_CODE" ]; then
+            exit 1
+          fi
 
   dispatch:
     if: >-
@@ -30,22 +49,44 @@ jobs:
       (github.event.schedule == '*/15 3-6 * * *' ||
        github.event.schedule == '*/15 12-14 * * *')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - run: |
-          curl -fsS --max-time 180 --retry 4 --retry-delay 30 --retry-all-errors \
+          set +e
+          RESPONSE=$(curl --fail-with-body --silent --show-error --max-time 90 --retry 3 --retry-delay 10 --retry-all-errors \
+            -w '\n%{http_code}' \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_BASE_URL }}/api/cron/dispatch?slot=auto"
+            "${{ secrets.APP_BASE_URL }}/api/cron/dispatch?slot=auto" 2>&1)
+          CURL_STATUS=$?
+          set -e
+          HTTP_CODE=$(printf '%s\n' "$RESPONSE" | tail -n 1)
+          BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
+          printf 'HTTP status: %s (curl exit: %s)\n%s\n' "$HTTP_CODE" "$CURL_STATUS" "$BODY"
+          if [ "$CURL_STATUS" -ne 0 ] || [ "${HTTP_CODE#2}" = "$HTTP_CODE" ]; then
+            exit 1
+          fi
 
   eod-cutoff:
     if: >-
       github.event_name == 'schedule' &&
       github.event.schedule == '30 14 * * *'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - run: |
-          curl -fsS --max-time 180 --retry 4 --retry-delay 30 --retry-all-errors \
+          set +e
+          RESPONSE=$(curl --fail-with-body --silent --show-error --max-time 90 --retry 3 --retry-delay 10 --retry-all-errors \
+            -w '\n%{http_code}' \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_BASE_URL }}/api/cron/eod-cutoff"
+            "${{ secrets.APP_BASE_URL }}/api/cron/eod-cutoff" 2>&1)
+          CURL_STATUS=$?
+          set -e
+          HTTP_CODE=$(printf '%s\n' "$RESPONSE" | tail -n 1)
+          BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
+          printf 'HTTP status: %s (curl exit: %s)\n%s\n' "$HTTP_CODE" "$CURL_STATUS" "$BODY"
+          if [ "$CURL_STATUS" -ne 0 ] || [ "${HTTP_CODE#2}" = "$HTTP_CODE" ]; then
+            exit 1
+          fi
 
   watchdog:
     if: >-
@@ -55,15 +96,19 @@ jobs:
        github.event.schedule == '20 13 * * *' ||
        github.event.schedule == '10 14 * * *')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check health endpoint
         run: |
           # Health must stay green; if the app is inactive for >60 days, the
           # health summary should also fail the job before we keep shipping.
-          RESPONSE=$(curl -fsS --max-time 180 --retry 4 --retry-delay 30 --retry-all-errors \
+          set +e
+          RESPONSE=$(curl --fail-with-body --silent --show-error --max-time 90 --retry 3 --retry-delay 10 --retry-all-errors \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -w "\n%{http_code}" \
             "${{ secrets.APP_BASE_URL }}/api/health/daily?format=text" 2>&1)
+          CURL_STATUS=$?
+          set -e
           HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
           TEXT=$(echo "$RESPONSE" | head -n -1)
           
@@ -71,12 +116,7 @@ jobs:
           echo "$TEXT"
           echo "=== HTTP Status: $HTTP_CODE ==="
           
-          if [ "$HTTP_CODE" = "503" ]; then
+          if [ "$CURL_STATUS" -ne 0 ] || [ "$HTTP_CODE" != "200" ]; then
             echo "ERROR: Health endpoint returned DOWN status"
-            exit 1
-          fi
-          
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "ERROR: Health endpoint returned HTTP $HTTP_CODE"
             exit 1
           fi

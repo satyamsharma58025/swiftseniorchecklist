@@ -5,7 +5,7 @@ import path from "node:path";
 import type { AppRole } from "@/auth";
 
 const baseURL = "http://127.0.0.1:3000";
-const nextAuthSecret = "u1-playwright-test-secret";
+const nextAuthSecret = process.env.NEXTAUTH_SECRET ?? "test-only-insecure-playwright-secret-not-for-production";
 const reviewSession: { sub: string; name: string; email: string; role: AppRole } = {
   sub: "u1-shell-review",
   name: "Shell Review",

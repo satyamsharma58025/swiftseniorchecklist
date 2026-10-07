@@ -19,7 +19,18 @@ const bodySchema = z.object({
   /** Ticked checkbox choices - array (preferred) or a single joined string. */
   doneRaw: z.union([z.array(z.string()), z.string()]).default([]),
   remarksRaw: z.string().optional().default(""),
+  /**
+   * Employee the form belongs to, as FormBridge builds it from the form key
+   * (name with non-alphanumerics replaced by "_"). When present, only that
+   * employee's checklist items are updated. Without it the legacy behaviour
+   * (whole day) is kept for older callers.
+   */
+  employeeKey: z.string().min(1).optional(),
 });
+
+function employeeKeyOf(name: string): string {
+  return name.trim().replace(/[^a-zA-Z0-9]/g, "_");
+}
 
 /**
  * POST /api/integrations/form/submit
@@ -69,7 +80,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const items = await prisma.dailyChecklistItem.findMany({
+    const dayItems = await prisma.dailyChecklistItem.findMany({
       where: { date: runDate },
       select: {
         id: true,
@@ -87,9 +98,23 @@ export async function POST(request: Request) {
       },
     });
 
-    if (!items.length) {
+    if (!dayItems.length) {
       await prisma.webhookEvent.delete({ where: { eventId } });
       return NextResponse.json({ error: "NO_CHECKLIST_FOR_DATE", date }, { status: 404 });
+    }
+
+    // A per-employee form must only touch that employee's tasks. Otherwise one
+    // submission would mark every other employee's pending tasks NOT_DONE.
+    const items = body.employeeKey
+      ? dayItems.filter((item) => employeeKeyOf(item.employeeName) === body.employeeKey)
+      : dayItems;
+
+    if (!items.length) {
+      await prisma.webhookEvent.delete({ where: { eventId } });
+      return NextResponse.json(
+        { error: "NO_CHECKLIST_FOR_EMPLOYEE", date, employeeKey: body.employeeKey },
+        { status: 404 },
+      );
     }
 
     const plan = planFormUpdates(items, { doneRaw: body.doneRaw, remarksRaw: body.remarksRaw });
@@ -133,12 +158,12 @@ export async function POST(request: Request) {
       // Stamp every item the form covered (even unchanged ones) so the app can
       // show "form submitted at HH:MM" for the whole day.
       await tx.dailyChecklistItem.updateMany({
-        where: { date: runDate, formSubmissionTimestamp: null },
+        where: { date: runDate, formSubmissionTimestamp: null, id: { in: items.map((item) => item.id) } },
         data: { formSubmissionTimestamp: submittedAt },
       });
 
       await tx.webhookEvent.update({ where: { eventId }, data: { processedAt: new Date() } });
-    });
+    }, { maxWait: 10_000, timeout: 60_000 });
 
     const newlyNotDone = plan.updates
       .filter((update) => update.to === "NOT_DONE" && update.from !== "NOT_DONE")

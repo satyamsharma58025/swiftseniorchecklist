@@ -40,6 +40,16 @@ export function classifyRoute(pathname: string, method = "GET"): RoutePolicy {
     return { requiresAuth: true, allowedRoles: ["MANAGER"] };
   }
 
+  // Editing task schedules is manager-only. Must stay above the broader /manager rule below.
+  if (
+    normalized === "/manager/tasks" ||
+    normalized.startsWith("/manager/tasks/") ||
+    normalized === "/api/manager/tasks" ||
+    normalized.startsWith("/api/manager/tasks/")
+  ) {
+    return { requiresAuth: true, allowedRoles: ["MANAGER"] };
+  }
+
   if (normalized === "/manager" || normalized.startsWith("/manager/")) {
     return { requiresAuth: true, allowedRoles: ["MANAGER", "SENIOR"] };
   }

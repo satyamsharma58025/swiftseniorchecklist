@@ -43,6 +43,18 @@ describe("classifyRoute", () => {
   });
 });
 
+describe("manager task editor routes", () => {
+  it("allows only managers to open or call the task editor", () => {
+    for (const path of ["/manager/tasks", "/manager/tasks/", "/api/manager/tasks/abc"]) {
+      expect(classifyRoute(path, "PATCH")).toMatchObject({ requiresAuth: true, allowedRoles: ["MANAGER"] });
+    }
+  });
+
+  it("keeps the manager overview open to seniors", () => {
+    expect(classifyRoute("/manager")).toMatchObject({ requiresAuth: true, allowedRoles: ["MANAGER", "SENIOR"] });
+  });
+});
+
 describe("requireRole", () => {
   it("accepts allowed roles and rejects blocked ones", () => {
     expect(requireRole("MANAGER", ["MANAGER", "SENIOR"])).toBe(true);

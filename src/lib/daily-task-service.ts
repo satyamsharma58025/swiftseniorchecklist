@@ -2,6 +2,7 @@ import { toWhatsAppNumber } from "@/lib/business-logic";
 import { cadenceMatches, checklistCode, colorFor, reserveNextQueueCode } from "@/lib/cadence";
 import { addDays, dateKey, istDateKey, istDayBounds } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import { isBeforeScheduleEffective } from "@/lib/task-schedule";
 
 export type DueTaskMaster = {
   id: string;
@@ -235,6 +236,8 @@ export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskSet> {
             const dueDateKey = dateKey(dueDate);
             if ((startKey && startKey > dueDateKey) || (endKey && endKey < dueDateKey)) continue;
             if (istDateKey(task.createdAt) > dueDateKey || isPaused(task.id, dueDateKey)) continue;
+            // A manager changed this task's schedule (or re-activated it): never catch up for days before that edit.
+            if (isBeforeScheduleEffective(task.scheduleEffectiveFrom ? dateKey(task.scheduleEffectiveFrom) : null, dueDateKey)) continue;
             if (!cadenceMatches(task, dueDate).matches) continue;
             if (existingChecklistKeys.has(`${task.id}:${dueDateKey}`)) break;
             isDue = true;

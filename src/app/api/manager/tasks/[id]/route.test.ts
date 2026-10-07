@@ -136,6 +136,12 @@ describe("PATCH /api/manager/tasks/[id]", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      changed: ["cadence", "scheduleDetail"],
+      todayAlreadyBuilt: true,
+      nextDue: ["2026-11-05", "2026-12-05", "2027-01-05"],
+    });
     expect(payload.changed.sort()).toEqual(["cadence", "scheduleDetail"]);
     expect(payload.todayAlreadyBuilt).toBe(true);
     expect(payload.nextDue[0]).toBe("2026-11-05");

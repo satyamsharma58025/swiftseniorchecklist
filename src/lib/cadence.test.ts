@@ -83,3 +83,29 @@ describe("yearly biannual cadence", () => {
     expect(cadenceMatches({ cadence: "YEARLY", scheduleDetail: "15-Aug / 15-Feb" }, dbDate("2026-02-15"))).toMatchObject({ matches: true });
   });
 });
+
+describe("cadence storage and due-date characterization", () => {
+  it.each([
+    ["DAILY", null, "2026-10-07", true],
+    ["WEEKLY", "Monday", "2026-10-12", true],
+    ["WEEKLY", "Monday", "2026-10-13", false],
+    ["MONTHLY", "31", "2027-02-28", true],
+    ["MONTHLY", "31", "2027-02-27", false],
+    ["QUARTERLY", "10", "2026-12-10", true],
+    ["QUARTERLY", "10", "2026-10-10", false],
+    ["YEARLY", "15-Aug / 15-Feb", "2026-08-15", true],
+    ["YEARLY", "15-Aug / 15-Feb", "2026-07-15", false],
+    ["YEARLY", "29-Feb", "2024-02-29", true],
+    ["YEARLY", "29-Feb", "2025-02-28", true],
+  ] as const)("matches %s schedule %s on %s => %s", (cadence, scheduleDetail, date, matches) => {
+    expect(cadenceMatches({ cadence, scheduleDetail }, dbDate(date)).matches).toBe(matches);
+  });
+
+  it("uses the persisted weekday, day number and day-month formats", () => {
+    expect(validateScheduleDetail("WEEKLY", "Thursday").valid).toBe(true);
+    expect(validateScheduleDetail("MONTHLY", "31").valid).toBe(true);
+    expect(validateScheduleDetail("QUARTERLY", "15").valid).toBe(true);
+    expect(validateScheduleDetail("YEARLY", "15-Aug / 15-Feb").valid).toBe(true);
+    expect(validateScheduleDetail("WEEKLY", "Monday/Thursday").valid).toBe(false);
+  });
+});

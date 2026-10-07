@@ -8,15 +8,12 @@ export type TaskRow = {
   taskDescription: string;
   cadence: Cadence;
   scheduleDetail: string | null;
-  priority: "HIGH" | "MEDIUM" | "LOW";
+  priority: string;
   escalationThreshold: number;
   startDate: string | null;
   endDate: string | null;
-  scheduleEffectiveFrom: string | null;
   category: string | null;
   notes: string | null;
   active: boolean;
-  paused: boolean;
-  editedRecently: boolean;
   updatedAt: string;
 };

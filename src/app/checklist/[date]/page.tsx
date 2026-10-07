@@ -189,8 +189,15 @@ export default async function ChecklistDatePage({
         </section>
 
         <section className="neo-border bg-white p-4 neo-shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">{checklistDateLabel(selectedDate, today)}</p>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">
+                {checklistDateLabel(selectedDate, today)} · Choose an employee
+              </p>
+              <p className="mt-1 text-sm text-ink/75">
+                {employeeSummaries.length} employees with assigned tasks
+              </p>
+            </div>
             <span className="sticker bg-hot-pink text-ink">{selectedDate}</span>
           </div>
           <EmployeeTabs

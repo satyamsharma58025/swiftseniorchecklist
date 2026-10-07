@@ -1,0 +1,768 @@
+diff --git a/src/app/admin/users/_components/CreateUserForm.tsx b/src/app/admin/users/_components/CreateUserForm.tsx
+new file mode 100644
+index 0000000..693968b
+--- /dev/null
++++ b/src/app/admin/users/_components/CreateUserForm.tsx
+@@ -0,0 +1,103 @@
++"use client";
++
++import { useRouter } from "next/navigation";
++import { useState } from "react";
++
++const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
++
++function generatePassword(length = 10): string {
++  const bytes = new Uint32Array(length);
++  crypto.getRandomValues(bytes);
++  return Array.from(bytes, (value) => ALPHABET[value % ALPHABET.length]).join("");
++}
++
++const fieldClass = "mt-1 block min-h-11 w-full border-[3px] border-ink bg-paper px-3 py-2 text-sm font-bold text-ink";
++const labelClass = "text-xs font-black uppercase tracking-[0.16em] text-ink";
++
++export function CreateUserForm() {
++  const router = useRouter();
++  const [name, setName] = useState("");
++  const [loginId, setLoginId] = useState("");
++  const [password, setPassword] = useState("");
++  const [role, setRole] = useState("EMPLOYEE");
++  const [phone, setPhone] = useState("");
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState("");
++  const [created, setCreated] = useState<{ loginId: string; password: string } | null>(null);
++
++  async function onSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
++    event.preventDefault();
++    setBusy(true);
++    setError("");
++    setCreated(null);
++    try {
++      const response = await fetch("/api/admin/users", {
++        method: "POST",
++        headers: { "content-type": "application/json" },
++        body: JSON.stringify({ name, loginId, password, role, phone }),
++      });
++      const data = await response.json().catch(() => ({}));
++      if (!response.ok) {
++        setError(data.message ?? "Could not create the user");
++        return;
++      }
++      setCreated({ loginId: data.user.loginId, password });
++      setName("");
++      setLoginId("");
++      setPassword("");
++      setPhone("");
++      router.refresh();
++    } catch {
++      setError("Network problem. Please try again.");
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  return (
++    <form onSubmit={onSubmit} className="space-y-4 border-[3px] border-ink bg-white p-5 neo-shadow-sm">
++      <div className="grid gap-4 md:grid-cols-2">
++        <label className={labelClass}>
++          Full name
++          <input value={name} onChange={(e) => setName(e.target.value)} required minLength={2} className={fieldClass} autoComplete="off" />
++        </label>
++        <label className={labelClass}>
++          User id
++          <input value={loginId} onChange={(e) => setLoginId(e.target.value)} required minLength={3} className={fieldClass} autoComplete="off" placeholder="rahul.k  or  rahul@company.com" />
++        </label>
++        <label className={labelClass}>
++          Password
++          <div className="flex gap-2">
++            <input value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} className={fieldClass} autoComplete="new-password" />
++            <button type="button" onClick={() => setPassword(generatePassword())} className="neo-press mt-1 min-h-11 shrink-0 border-[3px] border-ink bg-sun-yellow px-3 text-xs font-bold text-ink">Generate</button>
++          </div>
++        </label>
++        <label className={labelClass}>
++          Role
++          <select value={role} onChange={(e) => setRole(e.target.value)} className={fieldClass}>
++            <option value="EMPLOYEE">Employee</option>
++            <option value="SENIOR">Senior</option>
++            <option value="MANAGER">Manager</option>
++          </select>
++        </label>
++        <label className={labelClass}>
++          Phone (optional)
++          <input value={phone} onChange={(e) => setPhone(e.target.value)} className={fieldClass} autoComplete="off" inputMode="tel" />
++        </label>
++      </div>
++
++      {error ? <p role="alert" className="border-[3px] border-ink bg-hot-pink p-3 text-sm font-bold text-ink">{error}</p> : null}
++      {created ? (
++        <div role="status" className="border-[3px] border-ink bg-brand-green p-3 text-sm font-bold text-ink">
++          User created. Share these now — the password is not shown again.
++          <p className="mt-2 font-mono">User id: {created.loginId}</p>
++          <p className="font-mono">Password: {created.password}</p>
++        </div>
++      ) : null}
++
++      <button type="submit" disabled={busy} className="neo-press min-h-11 border-[3px] border-ink bg-electric-lime px-5 py-2 text-sm font-bold text-ink disabled:opacity-60">
++        {busy ? "Creating…" : "Create user"}
++      </button>
++    </form>
++  );
++}
+diff --git a/src/app/admin/users/page.tsx b/src/app/admin/users/page.tsx
+new file mode 100644
+index 0000000..8781809
+--- /dev/null
++++ b/src/app/admin/users/page.tsx
+@@ -0,0 +1,66 @@
++import { redirect } from "next/navigation";
++import { getServerSession } from "next-auth/next";
++
++import { authOptions } from "@/auth";
++import { PageEmptyState } from "@/components/ui/PageEmptyState";
++import { PageHeader } from "@/components/ui/PageHeader";
++import { prisma } from "@/lib/prisma";
++
++import { CreateUserForm } from "./_components/CreateUserForm";
++
++export const dynamic = "force-dynamic";
++export const metadata = { title: "Users" };
++
++export default async function AdminUsersPage() {
++  const session = await getServerSession(authOptions);
++  if (!session) redirect("/login?callbackUrl=/admin/users");
++  if (session.user.role !== "MANAGER") redirect("/dashboard");
++
++  const users: { id: string; name: string; email: string; role: string; createdAt: Date }[] = await prisma.user.findMany({
++    orderBy: { createdAt: "desc" },
++    select: { id: true, name: true, email: true, role: true, createdAt: true },
++  });
++
++  return (
++    <div className="min-h-screen py-4 text-ink md:py-6">
++      <div className="mx-auto max-w-6xl space-y-6">
++        <PageHeader>
++          <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
++            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Access</p>
++            <h1 className="brand-display mt-2 text-4xl">Users</h1>
++            <p className="mt-2 text-sm text-paper/80">Create a user id and password for someone who needs to sign in.</p>
++          </header>
++        </PageHeader>
++
++        <CreateUserForm />
++
++        <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
++          <div data-table-scroll className="overflow-x-auto">
++            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
++              <thead className="bg-ink text-paper">
++                <tr>
++                  <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Name</th>
++                  <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">User id</th>
++                  <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Role</th>
++                  <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Created</th>
++                </tr>
++              </thead>
++              <tbody>
++                {users.length === 0 ? (
++                  <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No users yet" description="Create the first sign-in above." href="/dashboard" actionLabel="Open dashboard" /></td></tr>
++                ) : users.map((user, index) => (
++                  <tr key={user.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
++                    <td data-label="Name" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{user.name}</td>
++                    <td data-label="User id" className="border-[3px] border-ink px-4 py-3 font-mono text-ink">{user.email}</td>
++                    <td data-label="Role" className="border-[3px] border-ink px-4 py-3"><span className="sticker bg-sun-yellow text-ink">{user.role}</span></td>
++                    <td data-label="Created" className="border-[3px] border-ink px-4 py-3 text-ink">{user.createdAt.toISOString().slice(0, 10)}</td>
++                  </tr>
++                ))}
++              </tbody>
++            </table>
++          </div>
++        </section>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/app/api/admin/users/route.ts b/src/app/api/admin/users/route.ts
+new file mode 100644
+index 0000000..c0c2870
+--- /dev/null
++++ b/src/app/api/admin/users/route.ts
+@@ -0,0 +1,44 @@
++import bcrypt from "bcryptjs";
++import { NextResponse } from "next/server";
++import { getServerSession } from "next-auth/next";
++
++import { authOptions } from "@/auth";
++import { prisma } from "@/lib/prisma";
++import { createUserSchema, normalizeLoginId } from "@/lib/user-admin";
++
++export const dynamic = "force-dynamic";
++
++/** POST /api/admin/users - managers create a sign-in (user id + password) from the app. */
++export async function POST(request: Request) {
++  const session = await getServerSession(authOptions);
++  if (!session) {
++    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
++  }
++  if (session.user.role !== "MANAGER") {
++    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
++  }
++
++  const parsed = createUserSchema.safeParse(await request.json().catch(() => null));
++  if (!parsed.success) {
++    return NextResponse.json(
++      { error: "INVALID_BODY", message: parsed.error.issues[0]?.message ?? "Invalid input" },
++      { status: 400 },
++    );
++  }
++
++  const { name, loginId, password, role, phone } = parsed.data;
++  const email = normalizeLoginId(loginId);
++
++  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
++  if (existing) {
++    return NextResponse.json({ error: "USER_EXISTS", message: "That user id is already taken" }, { status: 409 });
++  }
++
++  const passwordHash = await bcrypt.hash(password, 12);
++  const user = await prisma.user.create({
++    data: { name, email, role, phone: phone || null, passwordHash },
++    select: { id: true, name: true, email: true, role: true },
++  });
++
++  return NextResponse.json({ ok: true, user: { ...user, loginId: user.email } }, { status: 201 });
++}
+diff --git a/src/app/manager/page.tsx b/src/app/manager/page.tsx
+new file mode 100644
+index 0000000..6f6c2c3
+--- /dev/null
++++ b/src/app/manager/page.tsx
+@@ -0,0 +1,250 @@
++import Link from "next/link";
++import { redirect } from "next/navigation";
++import { getServerSession } from "next-auth/next";
++import { DateTime } from "luxon";
++
++import { authOptions } from "@/auth";
++import { PageEmptyState } from "@/components/ui/PageEmptyState";
++import { PageHeader } from "@/components/ui/PageHeader";
++import { StatusBadge } from "@/components/ui/StatusBadge";
++import { dbDate, istDateKey } from "@/lib/dates";
++import {
++  nextDateKey,
++  previousDateKey,
++  resolveViewDate,
++  sortRows,
++  summarize,
++  type ManagerRow,
++} from "@/lib/manager-view";
++import { prisma } from "@/lib/prisma";
++
++export const dynamic = "force-dynamic";
++export const metadata = { title: "Manager view" };
++
++type DayItem = ManagerRow & {
++  date: Date;
++  escalated: boolean;
++  formSubmissionTimestamp: Date | null;
++};
++
++function prettyDate(key: string): string {
++  return DateTime.fromISO(key, { zone: "UTC" }).setLocale("en-IN").toFormat("EEE, dd LLL yyyy");
++}
++
++function Stat({ label, value, tone }: { label: string; value: number | string; tone: string }) {
++  return (
++    <div className={`border-[3px] border-ink p-4 neo-shadow-sm ${tone}`}>
++      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-ink">{label}</p>
++      <p className="brand-display mt-2 text-4xl text-ink">{value}</p>
++    </div>
++  );
++}
++
++function TaskTable({ rows, empty }: { rows: ManagerRow[]; empty: string }) {
++  return (
++    <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
++      <div data-table-scroll className="overflow-x-auto">
++        <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
++          <thead className="bg-ink text-paper">
++            <tr>
++              <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
++              <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Task</th>
++              <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Status</th>
++              <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Remarks</th>
++            </tr>
++          </thead>
++          <tbody>
++            {rows.length === 0 ? (
++              <tr>
++                <td colSpan={4} className="border-[3px] border-ink p-4 text-sm font-bold text-ink">{empty}</td>
++              </tr>
++            ) : rows.map((row, index) => (
++              <tr key={row.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
++                <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{row.employeeName}</td>
++                <td data-label="Task" className="border-[3px] border-ink px-4 py-3 text-ink">
++                  {row.taskDescription}
++                  <span className="mt-1 block text-xs text-ink/70">{row.checklistCode} · {row.priority.toLowerCase()} priority</span>
++                </td>
++                <td data-label="Status" className="border-[3px] border-ink px-4 py-3"><StatusBadge status={row.status} /></td>
++                <td data-label="Remarks" className="border-[3px] border-ink px-4 py-3 text-ink">{row.seniorRemarks?.trim() || "—"}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++    </section>
++  );
++}
++
++export default async function ManagerPage({
++  searchParams,
++}: {
++  searchParams?: Promise<{ date?: string; employee?: string }>;
++}) {
++  const session = await getServerSession(authOptions);
++  if (!session) redirect("/login?callbackUrl=/manager");
++  if (session.user.role !== "MANAGER" && session.user.role !== "SENIOR") redirect("/dashboard");
++
++  const params = (await searchParams) ?? {};
++  const today = istDateKey();
++  const viewDate = resolveViewDate(params.date, today);
++  const yesterday = previousDateKey(viewDate);
++
++  // Only people who are currently active; inactive employees never clutter this page.
++  const items: DayItem[] = await prisma.dailyChecklistItem.findMany({
++    where: {
++      date: { in: [dbDate(viewDate), dbDate(yesterday)] },
++      taskMaster: { employee: { active: true } },
++    },
++    select: {
++      id: true,
++      checklistCode: true,
++      date: true,
++      employeeName: true,
++      taskDescription: true,
++      priority: true,
++      status: true,
++      seniorRemarks: true,
++      escalated: true,
++      formSubmissionTimestamp: true,
++    },
++  });
++
++  const employeeNames = Array.from(new Set(items.map((item) => item.employeeName))).sort();
++  const selected = params.employee && employeeNames.includes(params.employee) ? params.employee : "";
++  const scoped = selected ? items.filter((item) => item.employeeName === selected) : items;
++
++  const toRow = (item: DayItem): ManagerRow => ({
++    id: item.id,
++    checklistCode: item.checklistCode,
++    employeeName: item.employeeName,
++    taskDescription: item.taskDescription,
++    priority: item.priority,
++    status: item.status,
++    seniorRemarks: item.seniorRemarks,
++  });
++
++  const key = (item: DayItem) => item.date.toISOString().slice(0, 10);
++  const todayItems = scoped.filter((item) => key(item) === viewDate);
++  const notDone = sortRows(todayItems.filter((item) => item.status === "NOT_DONE").map(toRow));
++  const pending = sortRows(todayItems.filter((item) => item.status === "PENDING").map(toRow));
++  const doneYesterday = sortRows(scoped.filter((item) => key(item) === yesterday && item.status === "DONE").map(toRow));
++  const totals = summarize(notDone, pending, doneYesterday);
++  const doneToday = todayItems.filter((item) => item.status === "DONE").length;
++  const escalatedToday = todayItems.filter((item) => item.escalated && item.status !== "DONE").length;
++
++  const perEmployee = Array.from(new Set(todayItems.map((item) => item.employeeName))).sort().map((name) => {
++    const mine = todayItems.filter((item) => item.employeeName === name);
++    const done = mine.filter((item) => item.status === "DONE").length;
++    return {
++      name,
++      total: mine.length,
++      done,
++      open: mine.length - done,
++      submitted: mine.some((item) => item.formSubmissionTimestamp),
++    };
++  });
++
++  const q = (date: string) => `/manager?date=${date}${selected ? `&employee=${encodeURIComponent(selected)}` : ""}`;
++
++  return (
++    <div className="min-h-screen py-4 text-ink md:py-6">
++      <div className="mx-auto max-w-6xl space-y-6">
++        <PageHeader>
++          <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
++            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
++              <div>
++                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Manager view</p>
++                <h1 className="brand-display mt-2 text-4xl">How is the day going?</h1>
++                <p className="mt-2 text-sm text-paper/80">{prettyDate(viewDate)}{viewDate === today ? " · today" : ""}</p>
++              </div>
++              <div className="flex flex-wrap items-center gap-2">
++                <Link href={q(yesterday)} className="neo-press border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">Previous day</Link>
++                {viewDate < today ? (
++                  <Link href={q(nextDateKey(viewDate))} className="neo-press border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">Next day</Link>
++                ) : null}
++              </div>
++            </div>
++          </header>
++        </PageHeader>
++
++        <form method="get" action="/manager" className="flex flex-wrap items-end gap-3 border-[3px] border-ink bg-white p-4 neo-shadow-sm">
++          <input type="hidden" name="date" value={viewDate} />
++          <label className="text-xs font-black uppercase tracking-[0.16em] text-ink">
++            Employee
++            <select name="employee" defaultValue={selected} className="mt-1 block min-h-11 border-[3px] border-ink bg-paper px-3 py-2 text-sm font-bold text-ink">
++              <option value="">All active employees</option>
++              {employeeNames.map((name) => <option key={name} value={name}>{name}</option>)}
++            </select>
++          </label>
++          <button type="submit" className="neo-press min-h-11 border-[3px] border-ink bg-electric-lime px-4 py-2 text-sm font-bold text-ink">Show</button>
++        </form>
++
++        <section aria-label="Summary" className="grid grid-cols-2 gap-3 md:grid-cols-5">
++          <Stat label="Done" value={doneToday} tone="bg-brand-green" />
++          <Stat label="Waiting" value={totals.pending} tone="bg-sun-yellow" />
++          <Stat label="Not done" value={totals.notDone} tone="bg-hot-pink" />
++          <Stat label="Escalated" value={escalatedToday} tone="bg-white" />
++          <Stat label="Done yesterday" value={totals.doneYesterday} tone="bg-electric-lime" />
++        </section>
++
++        {todayItems.length === 0 && doneYesterday.length === 0 ? (
++          <PageEmptyState title="Nothing to show for this day" description="No checklist exists for the active employees on this date. Try another day." href="/dashboard" actionLabel="Open dashboard" />
++        ) : (
++          <>
++            <section className="space-y-3">
++              <h2 className="brand-display text-2xl">1 · Who is on track</h2>
++              <p className="text-sm text-ink/80">Each person&apos;s progress today. &ldquo;Form sent in&rdquo; means they have submitted their checklist.</p>
++              <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
++                <div data-table-scroll className="overflow-x-auto">
++                  <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
++                    <thead className="bg-ink text-paper">
++                      <tr>
++                        <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
++                        <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Done</th>
++                        <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Still open</th>
++                        <th className="border-[3px] border-ink px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Form</th>
++                      </tr>
++                    </thead>
++                    <tbody>
++                      {perEmployee.length === 0 ? (
++                        <tr><td colSpan={4} className="border-[3px] border-ink p-4 text-sm font-bold text-ink">No tasks for this day.</td></tr>
++                      ) : perEmployee.map((person, index) => (
++                        <tr key={person.name} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
++                          <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{person.name}</td>
++                          <td data-label="Done" className="border-[3px] border-ink px-4 py-3 text-ink">{person.done} of {person.total}</td>
++                          <td data-label="Still open" className="border-[3px] border-ink px-4 py-3 text-ink">{person.open}</td>
++                          <td data-label="Form" className="border-[3px] border-ink px-4 py-3">
++                            <span className={person.submitted ? "sticker bg-brand-green text-ink" : "sticker bg-sun-yellow text-ink"}>
++                              {person.submitted ? "Form sent in" : "Not sent yet"}
++                            </span>
++                          </td>
++                        </tr>
++                      ))}
++                    </tbody>
++                  </table>
++                </div>
++              </section>
++            </section>
++
++            <section className="space-y-3">
++              <h2 className="brand-display text-2xl">2 · Not done — needs attention</h2>
++              <p className="text-sm text-ink/80">Tasks marked not done, with the reason given.</p>
++              <TaskTable rows={notDone} empty="Nothing is marked not done. 🎉" />
++            </section>
++
++            <section className="space-y-3">
++              <h2 className="brand-display text-2xl">3 · Still waiting for an answer</h2>
++              <TaskTable rows={pending} empty="Everything has been answered." />
++            </section>
++
++            <section className="space-y-3">
++              <h2 className="brand-display text-2xl">4 · Done yesterday ({prettyDate(yesterday)})</h2>
++              <TaskTable rows={doneYesterday} empty="No tasks were completed yesterday." />
++            </section>
++          </>
++        )}
++      </div>
++    </div>
++  );
++}
+diff --git a/src/components/AppNavigation.tsx b/src/components/AppNavigation.tsx
+index 02d92ad..7574dc9 100644
+--- a/src/components/AppNavigation.tsx
++++ b/src/components/AppNavigation.tsx
+@@ -27,6 +27,7 @@ const primaryDestinations = [
+ ];
+ 
+ const manageDestinations = [
++  { href: "/manager", label: "Manager view" },
+   { href: "/admin/employees", label: "Employees" },
+   { href: "/admin/tasks", label: "Task master" },
+   { href: "/admin/templates", label: "Templates" },
+@@ -34,6 +35,7 @@ const manageDestinations = [
+   { href: "/admin/task-pauses", label: "Task pauses" },
+   { href: "/admin/reassignments", label: "Reassignments" },
+   { href: "/employees/scorecard", label: "Scorecard" },
++  { href: "/admin/users", label: "Users" },
+ ];
+ 
+ type OpenMenu = "manage" | "user" | "more" | null;
+diff --git a/src/components/ui/BreadcrumbTrail.tsx b/src/components/ui/BreadcrumbTrail.tsx
+index b7a438c..093576f 100644
+--- a/src/components/ui/BreadcrumbTrail.tsx
++++ b/src/components/ui/BreadcrumbTrail.tsx
+@@ -18,6 +18,8 @@ const routeLabels: Record<string, string> = {
+   holidays: "Holiday calendar",
+   "task-pauses": "Task pauses",
+   reassignments: "Reassignment history",
++  manager: "Manager view",
++  users: "Users",
+   login: "Sign in",
+ };
+ 
+diff --git a/src/lib/manager-view.test.ts b/src/lib/manager-view.test.ts
+new file mode 100644
+index 0000000..2bf3875
+--- /dev/null
++++ b/src/lib/manager-view.test.ts
+@@ -0,0 +1,54 @@
++import { describe, expect, it } from "vitest";
++
++import { nextDateKey, previousDateKey, resolveViewDate, sortRows, summarize, type ManagerRow } from "@/lib/manager-view";
++
++const row = (over: Partial<ManagerRow>): ManagerRow => ({
++  id: "1",
++  checklistCode: "CL-20261007-A",
++  employeeName: "Asha",
++  taskDescription: "Check line",
++  priority: "MEDIUM",
++  status: "NOT_DONE",
++  seniorRemarks: null,
++  ...over,
++});
++
++describe("resolveViewDate", () => {
++  it("defaults to today for missing, malformed, impossible or future dates", () => {
++    expect(resolveViewDate(undefined, "2026-10-07")).toBe("2026-10-07");
++    expect(resolveViewDate("garbage", "2026-10-07")).toBe("2026-10-07");
++    expect(resolveViewDate("2026-13-40", "2026-10-07")).toBe("2026-10-07");
++    expect(resolveViewDate("2026-10-09", "2026-10-07")).toBe("2026-10-07");
++  });
++
++  it("accepts a valid past date", () => {
++    expect(resolveViewDate("2026-10-03", "2026-10-07")).toBe("2026-10-03");
++  });
++});
++
++describe("date helpers", () => {
++  it("steps across month boundaries", () => {
++    expect(previousDateKey("2026-10-01")).toBe("2026-09-30");
++    expect(nextDateKey("2026-09-30")).toBe("2026-10-01");
++  });
++});
++
++describe("sortRows and summarize", () => {
++  it("orders by employee, then priority", () => {
++    const sorted = sortRows([
++      row({ id: "a", employeeName: "Zed", priority: "HIGH" }),
++      row({ id: "b", employeeName: "Asha", priority: "LOW", checklistCode: "CL-2" }),
++      row({ id: "c", employeeName: "Asha", priority: "HIGH", checklistCode: "CL-1" }),
++    ]);
++    expect(sorted.map((r) => r.id)).toEqual(["c", "b", "a"]);
++  });
++
++  it("counts people with gaps once", () => {
++    const totals = summarize(
++      [row({ id: "1" }), row({ id: "2" })],
++      [row({ id: "3", employeeName: "Ben", status: "PENDING" })],
++      [row({ id: "4", status: "DONE" })],
++    );
++    expect(totals).toEqual({ notDone: 2, pending: 1, doneYesterday: 1, employeesWithGaps: 2 });
++  });
++});
+diff --git a/src/lib/manager-view.ts b/src/lib/manager-view.ts
+new file mode 100644
+index 0000000..9d4220d
+--- /dev/null
++++ b/src/lib/manager-view.ts
+@@ -0,0 +1,52 @@
++import { DateTime } from "luxon";
++
++import { dbDate, istDateKey } from "@/lib/dates";
++
++export type ManagerRow = {
++  id: string;
++  checklistCode: string;
++  employeeName: string;
++  taskDescription: string;
++  priority: "HIGH" | "MEDIUM" | "LOW";
++  status: "PENDING" | "DONE" | "NOT_DONE";
++  seniorRemarks: string | null;
++};
++
++/** Accepts ?date=YYYY-MM-DD; anything invalid (or in the future) falls back to today in IST. */
++export function resolveViewDate(input: string | undefined, today: string = istDateKey()): string {
++  if (!input || !/^\d{4}-\d{2}-\d{2}$/.test(input)) return today;
++  try {
++    dbDate(input);
++  } catch {
++    return today;
++  }
++  return input > today ? today : input;
++}
++
++export function previousDateKey(dateKey: string): string {
++  return DateTime.fromISO(dateKey, { zone: "UTC" }).minus({ days: 1 }).toFormat("yyyy-MM-dd");
++}
++
++export function nextDateKey(dateKey: string): string {
++  return DateTime.fromISO(dateKey, { zone: "UTC" }).plus({ days: 1 }).toFormat("yyyy-MM-dd");
++}
++
++const priorityRank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
++
++export function sortRows(rows: ManagerRow[]): ManagerRow[] {
++  return [...rows].sort(
++    (a, b) =>
++      a.employeeName.localeCompare(b.employeeName) ||
++      priorityRank[a.priority] - priorityRank[b.priority] ||
++      a.checklistCode.localeCompare(b.checklistCode),
++  );
++}
++
++export function summarize(notDone: ManagerRow[], pending: ManagerRow[], doneYesterday: ManagerRow[]) {
++  return {
++    notDone: notDone.length,
++    pending: pending.length,
++    doneYesterday: doneYesterday.length,
++    employeesWithGaps: new Set([...notDone, ...pending].map((row) => row.employeeName)).size,
++  };
++}
+diff --git a/src/lib/route-access.test.ts b/src/lib/route-access.test.ts
+index fb7d01c..c2e9875 100644
+--- a/src/lib/route-access.test.ts
++++ b/src/lib/route-access.test.ts
+@@ -25,6 +25,12 @@ describe("classifyRoute", () => {
+     });
+   });
+ 
++  it("keeps user creation manager-only and the manager view off-limits to employees", () => {
++    expect(classifyRoute("/admin/users").allowedRoles).toEqual(["MANAGER"]);
++    expect(classifyRoute("/api/admin/users", "POST").allowedRoles).toEqual(["MANAGER"]);
++    expect(classifyRoute("/manager")).toMatchObject({ requiresAuth: true, allowedRoles: ["MANAGER", "SENIOR"] });
++  });
++
+   it("allows employees onto standard application routes", () => {
+     expect(classifyRoute("/dashboard")).toMatchObject({
+       requiresAuth: true,
+diff --git a/src/lib/route-access.ts b/src/lib/route-access.ts
+index 27a53c4..030b725 100644
+--- a/src/lib/route-access.ts
++++ b/src/lib/route-access.ts
+@@ -30,6 +30,20 @@ export function classifyRoute(pathname: string, method = "GET"): RoutePolicy {
+     return { requiresAuth: false, allowedRoles: ["MANAGER", "SENIOR", "EMPLOYEE"] };
+   }
+ 
++  // Creating sign-ins is manager-only (stricter than the rest of /admin).
++  if (
++    normalized === "/admin/users" ||
++    normalized.startsWith("/admin/users/") ||
++    normalized === "/api/admin/users" ||
++    normalized.startsWith("/api/admin/users/")
++  ) {
++    return { requiresAuth: true, allowedRoles: ["MANAGER"] };
++  }
++
++  if (normalized === "/manager" || normalized.startsWith("/manager/")) {
++    return { requiresAuth: true, allowedRoles: ["MANAGER", "SENIOR"] };
++  }
++
+   if (normalized.startsWith("/admin/") || normalized.startsWith("/api/admin/")) {
+     return { requiresAuth: true, allowedRoles: ["MANAGER", "SENIOR"] };
+   }
+diff --git a/src/lib/user-admin.test.ts b/src/lib/user-admin.test.ts
+new file mode 100644
+index 0000000..44d496f
+--- /dev/null
++++ b/src/lib/user-admin.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from "vitest";
++
++import { createUserSchema, normalizeLoginId } from "@/lib/user-admin";
++
++describe("normalizeLoginId", () => {
++  it("keeps real emails and lowercases them", () => {
++    expect(normalizeLoginId("  Rahul@Company.com ")).toBe("rahul@company.com");
++  });
++
++  it("turns a plain user id into a login-form compatible address", () => {
++    expect(normalizeLoginId("Rahul.K")).toBe("rahul.k@swiftstrips.local");
++  });
++});
++
++describe("createUserSchema", () => {
++  const valid = { name: "Rahul Kumar", loginId: "rahul.k", password: "Str0ngPass", role: "EMPLOYEE" as const };
++
++  it("accepts a valid user", () => {
++    expect(createUserSchema.safeParse(valid).success).toBe(true);
++  });
++
++  it("rejects short passwords, unknown roles and unsafe ids", () => {
++    expect(createUserSchema.safeParse({ ...valid, password: "short" }).success).toBe(false);
++    expect(createUserSchema.safeParse({ ...valid, role: "ADMIN" }).success).toBe(false);
++    expect(createUserSchema.safeParse({ ...valid, loginId: "bad id!" }).success).toBe(false);
++  });
++});
+diff --git a/src/lib/user-admin.ts b/src/lib/user-admin.ts
+new file mode 100644
+index 0000000..7f96e6f
+--- /dev/null
++++ b/src/lib/user-admin.ts
+@@ -0,0 +1,36 @@
++import { z } from "zod";
++
++/** Domain used when a manager types a plain user id (no "@") for someone without an email. */
++export const LOGIN_ID_DOMAIN = "swiftstrips.local";
++
++export const MIN_PASSWORD_LENGTH = 8;
++
++/**
++ * Login in this app is by the `email` column (the login form uses an email
++ * input). A plain user id such as "rahul.k" is stored as "rahul.k@swiftstrips.local"
++ * so people without an email can still sign in with no change to the login page.
++ */
++export function normalizeLoginId(input: string): string {
++  const value = input.trim().toLowerCase();
++  return value.includes("@") ? value : `${value}@${LOGIN_ID_DOMAIN}`;
++}
++
++const loginIdPattern = /^[a-z0-9][a-z0-9._+-]*(@[a-z0-9.-]+\.[a-z]{2,})?$/i;
++
++export const createUserSchema = z.object({
++  name: z.string().trim().min(2, "Name is required").max(80),
++  loginId: z
++    .string()
++    .trim()
++    .min(3, "User id must be at least 3 characters")
++    .max(120)
++    .regex(loginIdPattern, "Use letters, numbers, dot, dash or underscore (or a full email)"),
++  password: z
++    .string()
++    .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
++    .max(72, "Password must be 72 characters or fewer"),
++  role: z.enum(["MANAGER", "SENIOR", "EMPLOYEE"]),
++  phone: z.string().trim().max(20).optional().or(z.literal("")),
++});
++
++export type CreateUserInput = z.infer<typeof createUserSchema>;
+diff --git a/src/proxy.ts b/src/proxy.ts
+index 41e14a7..b4ae562 100644
+--- a/src/proxy.ts
++++ b/src/proxy.ts
+@@ -47,6 +47,8 @@ export const config = {
+     "/tracker",
+     "/tracker/:path*",
+     "/escalations",
++    "/manager",
++    "/manager/:path*",
+     "/employees/:path*",
+     "/admin/:path*",
+     "/api/:path*",

@@ -30,6 +30,20 @@ export function classifyRoute(pathname: string, method = "GET"): RoutePolicy {
     return { requiresAuth: false, allowedRoles: ["MANAGER", "SENIOR", "EMPLOYEE"] };
   }
 
+  // Creating sign-ins is manager-only (stricter than the rest of /admin).
+  if (
+    normalized === "/admin/users" ||
+    normalized.startsWith("/admin/users/") ||
+    normalized === "/api/admin/users" ||
+    normalized.startsWith("/api/admin/users/")
+  ) {
+    return { requiresAuth: true, allowedRoles: ["MANAGER"] };
+  }
+
+  if (normalized === "/manager" || normalized.startsWith("/manager/")) {
+    return { requiresAuth: true, allowedRoles: ["MANAGER", "SENIOR"] };
+  }
+
   if (normalized.startsWith("/admin/") || normalized.startsWith("/api/admin/")) {
     return { requiresAuth: true, allowedRoles: ["MANAGER", "SENIOR"] };
   }

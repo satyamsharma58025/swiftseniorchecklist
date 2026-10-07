@@ -1,3 +1,4 @@
+import { DeleteEmployeeButton } from "@/app/admin/employees/_components/DeleteEmployeeButton";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { prisma } from "@/lib/prisma";
@@ -37,11 +38,12 @@ export default async function AdminEmployeesPage() {
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Designation</th>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Supervisor</th>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Status</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {employees.length === 0 ? (
-                  <tr><td colSpan={5} className="border-[3px] border-ink p-4"><PageEmptyState title="Employee roster is empty" description="Import the active employee roster before assigning tasks." href="/admin/tasks" actionLabel="Open task master" /></td></tr>
+                  <tr><td colSpan={6} className="border-[3px] border-ink p-4"><PageEmptyState title="Employee roster is empty" description="Import the active employee roster before assigning tasks." href="/admin/tasks" actionLabel="Open task master" /></td></tr>
                 ) : employees.map((employee, index) => (
                   <tr key={employee.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
                     <td data-label="Name" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{employee.name}</td>
@@ -52,6 +54,9 @@ export default async function AdminEmployeesPage() {
                       <span className={employee.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>
                         {employee.active ? "Active" : "Inactive"}
                       </span>
+                    </td>
+                    <td data-label="Actions" className="border-[3px] border-ink px-4 py-3">
+                      <DeleteEmployeeButton employeeId={employee.id} employeeName={employee.name} />
                     </td>
                   </tr>
                 ))}

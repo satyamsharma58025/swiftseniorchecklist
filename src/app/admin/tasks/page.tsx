@@ -1,5 +1,6 @@
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { DeleteTaskButton } from "@/app/admin/tasks/_components/DeleteTaskButton";
 import { TaskForm } from "@/app/admin/tasks/_components/TaskForm";
 import { prisma } from "@/lib/prisma";
 
@@ -47,31 +48,35 @@ export default async function AdminTasksPage() {
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Cadence</th>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Priority</th>
                   <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Status</th>
+                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {tasks.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="border-[3px] border-ink px-4 py-10 text-center text-ink/75">
-                      <PageEmptyState title="No recurring tasks configured" description="Use the task form above to create the first recurring task." href="#task-form" actionLabel="Go to task form" />
-                    </td>
-                  </tr>
-                ) : (
-                  tasks.map((task, index) => (
-                    <tr key={task.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                      <td data-label="Code" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{task.taskCode}</td>
-                      <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 text-ink">{task.employee.name}</td>
-                      <td data-label="Cadence" className="border-[3px] border-ink px-4 py-3 text-ink">{task.cadence}</td>
-                      <td data-label="Priority" className="border-[3px] border-ink px-4 py-3 text-ink">{task.priority}</td>
-                      <td data-label="Status" className="border-[3px] border-ink px-4 py-3">
-                        <span className={task.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>
-                          {task.active ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
+                    {tasks.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="border-[3px] border-ink px-4 py-10 text-center text-ink/75">
+                          <PageEmptyState title="No recurring tasks configured" description="Use the task form above to create the first recurring task." href="#task-form" actionLabel="Go to task form" />
+                        </td>
+                      </tr>
+                    ) : (
+                      tasks.map((task, index) => (
+                        <tr key={task.id} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
+                          <td data-label="Code" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{task.taskCode}</td>
+                          <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 text-ink">{task.employee.name}</td>
+                          <td data-label="Cadence" className="border-[3px] border-ink px-4 py-3 text-ink">{task.cadence}</td>
+                          <td data-label="Priority" className="border-[3px] border-ink px-4 py-3 text-ink">{task.priority}</td>
+                          <td data-label="Status" className="border-[3px] border-ink px-4 py-3">
+                            <span className={task.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>
+                              {task.active ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td data-label="Actions" className="border-[3px] border-ink px-4 py-3">
+                            <DeleteTaskButton taskId={task.id} taskCode={task.taskCode} />
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
             </table>
           </div>
         </section>

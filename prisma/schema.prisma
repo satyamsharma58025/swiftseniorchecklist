@@ -80,14 +80,31 @@ model TaskMaster {
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
   organizationId      String?
+  // Set by the manager task editor when the schedule changes. Catch-up never reaches back before this date.
+  scheduleEffectiveFrom DateTime?           @db.Date
   queueItems          AssignmentQueueItem[]
   items               DailyChecklistItem[]
   reassignments       Reassignment[]
   employee            Employee              @relation(fields: [employeeId], references: [id])
   organization        Organization?         @relation(fields: [organizationId], references: [id])
   pauses              TaskPause[]
+  changes             TaskMasterChange[]
 
   @@index([active])
+}
+
+/// Audit trail for edits made to a task master from the manager task editor.
+model TaskMasterChange {
+  id           String     @id @default(cuid())
+  taskMasterId String
+  actorUserId  String
+  /// { field: { from, to } } for every field that changed
+  changes      Json
+  reason       String?
+  createdAt    DateTime   @default(now())
+  taskMaster   TaskMaster @relation(fields: [taskMasterId], references: [id])
+
+  @@index([taskMasterId, createdAt])
 }
 
 model QueueCodeSequence {

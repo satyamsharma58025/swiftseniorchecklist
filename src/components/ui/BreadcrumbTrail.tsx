@@ -29,7 +29,9 @@ export function BreadcrumbTrail() {
   const currentSegment = segments.at(-1) ?? "";
   const currentLabel = /^\d{4}-\d{2}-\d{2}$/.test(currentSegment)
     ? currentSegment
-    : routeLabels[currentSegment] ?? "Page";
+    : segments[0] === "manager" && currentSegment === "tasks"
+      ? "Task schedules"
+      : routeLabels[currentSegment] ?? "Page";
   const sectionLabel = segments[0] === "admin" ? "Administration" : "Operations";
   const sectionHref = segments[0] === "admin" ? "/admin/employees" : "/dashboard";
 

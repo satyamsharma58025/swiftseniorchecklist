@@ -357,6 +357,28 @@ describe("ensureDailyQueueAndLock", () => {
     expect(due.caughtUp).toBe(1);
   });
 
+  it("does not catch up a day that falls before the manager's schedule edit", async () => {
+    db.taskMaster.findMany.mockResolvedValue([
+      baseTask({ cadence: "MONTHLY", scheduleDetail: "31", scheduleEffectiveFrom: dbDate("2026-05-01") }),
+    ]);
+
+    const due = await getDueTaskMasters(dbDate("2026-05-02"));
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.caughtUp).toBe(0);
+  });
+
+  it("still catches up a day on or after the manager's schedule edit", async () => {
+    db.taskMaster.findMany.mockResolvedValue([
+      baseTask({ cadence: "MONTHLY", scheduleDetail: "1", scheduleEffectiveFrom: dbDate("2026-05-01") }),
+    ]);
+
+    const due = await getDueTaskMasters(dbDate("2026-05-02"));
+
+    expect(due.tasks).toHaveLength(1);
+    expect(due.caughtUp).toBe(1);
+  });
+
   it("catches up a yearly 29-Feb task in a leap year", async () => {
     db.taskMaster.findMany.mockResolvedValue([baseTask({ cadence: "YEARLY", scheduleDetail: "29-Feb" })]);
 

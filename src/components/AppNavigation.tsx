@@ -30,6 +30,7 @@ const manageDestinations = [
   { href: "/manager", label: "Manager view" },
   { href: "/admin/employees", label: "Employees" },
   { href: "/admin/tasks", label: "Task master" },
+  { href: "/manager/tasks", label: "Task schedules" },
   { href: "/admin/templates", label: "Templates" },
   { href: "/admin/holidays", label: "Holidays" },
   { href: "/admin/task-pauses", label: "Task pauses" },

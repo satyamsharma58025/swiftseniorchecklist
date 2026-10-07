@@ -165,6 +165,20 @@ describe("PATCH /api/manager/tasks/[id]", () => {
     });
   });
 
+  it("accepts a yearly 31-Feb schedule and reports leap-year month-end dates", async () => {
+    vi.setSystemTime(new Date("2027-02-01T07:30:00.000Z"));
+    const response = await call({ ...validBody, cadence: "YEARLY", scheduleDetail: "31-Feb" });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      changed: ["cadence", "scheduleDetail"],
+      nextDue: ["2027-02-28", "2028-02-29"],
+    });
+    expect(db.taskMaster.updateMany.mock.calls[0][0].data.scheduleDetail).toBe("31-Feb");
+  });
+
   it("does not stamp an effective date for a non-schedule edit", async () => {
     await call({ ...validBody, cadence: "DAILY", scheduleDetail: null, priority: "HIGH" });
     const update = db.taskMaster.updateMany.mock.calls[0][0];

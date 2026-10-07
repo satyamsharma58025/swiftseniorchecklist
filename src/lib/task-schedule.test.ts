@@ -52,6 +52,13 @@ describe("nextDueDates", () => {
     expect(nextDueDates({ cadence: "MONTHLY", scheduleDetail: "31" }, "2027-02-01", 1)).toEqual(["2027-02-28"]);
   });
 
+  it("accepts yearly 31-Feb and falls back to February's last day in common and leap years", () => {
+    expect(nextDueDates({ cadence: "YEARLY", scheduleDetail: "31-Feb" }, "2027-02-28", 2)).toEqual([
+      "2027-02-28",
+      "2028-02-29",
+    ]);
+  });
+
   it("only uses quarter-end months for quarterly tasks", () => {
     expect(nextDueDates({ cadence: "QUARTERLY", scheduleDetail: "10" }, "2026-10-07", 2)).toEqual(["2026-12-10", "2027-03-10"]);
   });

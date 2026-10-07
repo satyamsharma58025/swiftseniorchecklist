@@ -1,137 +1,139 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { CADENCES, describeSchedule, nextDueDates } from "@/lib/task-schedule";
+import {
+  filterAndSortTasks,
+  parseScheduleQuery,
+  serializeScheduleQuery,
+  type ScheduleQueryState,
+} from "@/lib/task-schedule-view";
 
-import { TaskEditForm } from "./TaskEditForm";
+import { ChangeHistory } from "./ChangeHistory";
+import { ScheduleFilters } from "./ScheduleFilters";
+import { TaskEditPanel } from "./TaskEditPanel";
+import { TaskScheduleList } from "./TaskScheduleList";
 import type { TaskRow } from "./task-row";
 
-const filterClass = "neo-border bg-paper px-3 py-2 text-sm text-ink outline-none";
-const cellClass = "border-[3px] border-ink px-4 py-3 text-ink";
-const headClass = "border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]";
+type ChangeRow = {
+  id: string;
+  taskCode: string;
+  actorName: string;
+  createdAt: string;
+  changes: unknown;
+  reason: string | null;
+};
 
-export function TaskEditor({ initialTasks, todayKey }: { initialTasks: TaskRow[]; todayKey: string }) {
+export function TaskEditor({
+  initialTasks,
+  todayKey,
+  todayAlreadyBuilt,
+  changes,
+}: {
+  initialTasks: TaskRow[];
+  todayKey: string;
+  todayAlreadyBuilt: boolean;
+  changes: ChangeRow[];
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const rawQuery = searchParams.toString();
   const [tasks, setTasks] = useState(initialTasks);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<TaskRow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [cadenceFilter, setCadenceFilter] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const queryState = useMemo(() => parseScheduleQuery(rawQuery), [rawQuery]);
+  const queryStateRef = useRef(queryState);
+  const editTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const hadEditorOpen = useRef(false);
 
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return tasks.filter((task) => {
-      if (cadenceFilter !== "ALL" && task.cadence !== cadenceFilter) return false;
-      if (statusFilter === "ACTIVE" && !task.active) return false;
-      if (statusFilter === "INACTIVE" && task.active) return false;
-      if (!needle) return true;
-      return [task.taskCode, task.taskDescription, task.employeeName].some((value) => value.toLowerCase().includes(needle));
-    });
-  }, [tasks, query, cadenceFilter, statusFilter]);
+  useEffect(() => {
+    queryStateRef.current = queryState;
+  }, [queryState]);
+
+  useEffect(() => {
+    if (hadEditorOpen.current && !editingTask) {
+      requestAnimationFrame(() => {
+        if (editTriggerRef.current?.isConnected) editTriggerRef.current.focus();
+        else document.querySelector<HTMLButtonElement>('[data-testid^="edit-task-"]')?.focus();
+      });
+    }
+    hadEditorOpen.current = Boolean(editingTask);
+  }, [editingTask]);
+
+  const visibleTasks = useMemo(
+    () => filterAndSortTasks(tasks, queryState, todayKey),
+    [tasks, queryState, todayKey],
+  );
+
+  function updateQuery(patch: Partial<ScheduleQueryState>) {
+    const next = { ...queryStateRef.current, ...patch };
+    queryStateRef.current = next;
+    const serialized = serializeScheduleQuery(next);
+    router.replace(serialized ? `${pathname}?${serialized}` : pathname, { scroll: false });
+  }
+
+  function clearFilters() {
+    updateQuery({ filter: "ALL", query: "", sort: "NEXT_DUE" });
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="sr-only" htmlFor="task-search">Search tasks</label>
-        <input id="task-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search code, task or employee" className={`${filterClass} min-w-[16rem] flex-1`} />
-        <label className="sr-only" htmlFor="task-cadence-filter">Filter by how often</label>
-        <select id="task-cadence-filter" value={cadenceFilter} onChange={(e) => setCadenceFilter(e.target.value)} className={filterClass}>
-          <option value="ALL">All frequencies</option>
-          {CADENCES.map((value) => (
-            <option key={value} value={value}>{value.charAt(0) + value.slice(1).toLowerCase()}</option>
-          ))}
-        </select>
-        <label className="sr-only" htmlFor="task-status-filter">Filter by status</label>
-        <select id="task-status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={filterClass}>
-          <option value="ALL">Active and inactive</option>
-          <option value="ACTIVE">Active only</option>
-          <option value="INACTIVE">Inactive only</option>
-        </select>
-        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-ink/75">{visible.length} of {tasks.length} tasks</span>
-      </div>
-
-      {notice ? (
-        <div role="status" aria-live="polite" className="border-[3px] border-ink bg-brand-green px-3 py-2 text-sm font-semibold text-ink">{notice}</div>
+      {todayAlreadyBuilt ? (
+        <aside data-testid="today-built-banner" className="border-[3px] border-ink bg-sun-yellow p-4 font-semibold neo-shadow-sm">
+          Today&apos;s checklist is already built. Changes apply from the next checklist that is built.
+        </aside>
       ) : null}
 
-      <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-        <div data-table-scroll className="overflow-x-auto">
-          <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
-            <thead className="bg-ink text-paper">
-              <tr>
-                <th className={headClass}>Code</th>
-                <th className={headClass}>Task</th>
-                <th className={headClass}>Employee</th>
-                <th className={headClass}>Schedule</th>
-                <th className={headClass}>Next due</th>
-                <th className={headClass}>Priority</th>
-                <th className={headClass}>Status</th>
-                <th className={headClass}><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className={`${cellClass} py-10 text-center text-ink/75`}>No tasks match these filters.</td>
-                </tr>
-              ) : (
-                visible.map((task, index) => {
-                  const next = task.active ? nextDueDates(task, todayKey, 1)[0] : undefined;
-                  return (
-                    <RowGroup key={task.id}>
-                      <tr className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                        <td data-label="Code" className={`${cellClass} font-black`}>{task.taskCode}</td>
-                        <td data-label="Task" className={cellClass}>{task.taskDescription}</td>
-                        <td data-label="Employee" className={cellClass}>{task.employeeName}</td>
-                        <td data-label="Schedule" className={cellClass}>{describeSchedule(task.cadence, task.scheduleDetail)}</td>
-                        <td data-label="Next due" className={cellClass}>{next ?? (task.active ? "None in 13 months" : "-")}</td>
-                        <td data-label="Priority" className={cellClass}>{task.priority}</td>
-                        <td data-label="Status" className={cellClass}>
-                          <span className={task.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>{task.active ? "Active" : "Inactive"}</span>
-                        </td>
-                        <td data-label="Actions" className={cellClass}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNotice(null);
-                              setEditingId(editingId === task.id ? null : task.id);
-                            }}
-                            aria-expanded={editingId === task.id}
-                            className="neo-press neo-border bg-sun-yellow px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-ink"
-                          >
-                            {editingId === task.id ? "Close" : "Edit"}
-                          </button>
-                        </td>
-                      </tr>
-                      {editingId === task.id ? (
-                        <tr>
-                          <td colSpan={8} className="border-[3px] border-ink bg-paper p-4">
-                            <TaskEditForm
-                              task={task}
-                              todayKey={todayKey}
-                              onCancel={() => setEditingId(null)}
-                              onSaved={(next, message) => {
-                                setTasks((current) => current.map((row) => (row.id === next.id ? next : row)));
-                                setEditingId(null);
-                                setNotice(message);
-                              }}
-                            />
-                          </td>
-                        </tr>
-                      ) : null}
-                    </RowGroup>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+      <ScheduleFilters tasks={tasks} state={queryState} todayKey={todayKey} onChange={updateQuery} />
+      <p className="text-sm font-semibold" aria-live="polite">{visibleTasks.length} of {tasks.length} task schedules</p>
+      {notice ? (
+        <div role="status" aria-live="polite" data-testid="save-toast" className="border-[3px] border-ink bg-brand-green px-3 py-3 text-sm font-semibold text-ink neo-shadow-sm">
+          {notice}
         </div>
+      ) : null}
+
+      {tasks.length === 0 ? (
+        <div className="border-[3px] border-ink bg-white p-8 text-center neo-shadow-sm">
+          <h2 className="text-xl font-black">No task schedules yet</h2>
+          <p className="mt-2 text-sm text-ink/75">Recurring tasks will appear here when they are configured.</p>
+        </div>
+      ) : (
+        <TaskScheduleList
+          tasks={visibleTasks}
+          todayKey={todayKey}
+          onClearFilters={clearFilters}
+          onEdit={(task, trigger) => {
+            setNotice(null);
+            editTriggerRef.current = trigger;
+            setEditingTask(task);
+          }}
+        />
+      )}
+
+      {editingTask ? (
+        <TaskEditPanel
+          task={editingTask}
+          todayKey={todayKey}
+          todayAlreadyBuilt={todayAlreadyBuilt}
+          onCancel={() => setEditingTask(null)}
+          onSaved={(next, message) => {
+            setTasks((current) => current.map((row) => (row.id === next.id ? next : row)));
+            const currentQuery = queryStateRef.current;
+            if (filterAndSortTasks([next], currentQuery, todayKey).length === 0) {
+              updateQuery({ filter: "ALL", query: "" });
+            }
+            setEditingTask(null);
+            setNotice(message);
+          }}
+        />
+      ) : null}
+
+      <section data-testid="change-history-section" className="border-[3px] border-ink bg-white p-5 neo-shadow-sm">
+        <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Recent changes</h2>
+        <ChangeHistory changes={changes} />
       </section>
     </div>
   );
-}
-
-function RowGroup({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
 }

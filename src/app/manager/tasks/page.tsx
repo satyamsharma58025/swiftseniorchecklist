@@ -1,9 +1,10 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
 
 import { authOptions } from "@/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { dateKey, istDateKey } from "@/lib/dates";
+import { dateKey, dbDate, istDateKey, istNow } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 import { TaskEditor } from "./_components/TaskEditor";
@@ -12,18 +13,14 @@ import type { TaskRow } from "./_components/task-row";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Task schedules" };
 
-type FieldChange = { from: unknown; to: unknown };
-
-function formatChange(field: string, change: FieldChange): string {
-  return `${field}: ${String(change.from ?? "-")} -> ${String(change.to ?? "-")}`;
-}
-
 export default async function ManagerTasksPage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login?callbackUrl=/manager/tasks");
   if (session.user.role !== "MANAGER") redirect("/manager");
 
-  const [tasks, changes] = await Promise.all([
+  const todayKey = istDateKey();
+  const todayDate = dbDate(todayKey);
+  const [tasks, changes, activePauses, todayChecklistCount] = await Promise.all([
     prisma.taskMaster.findMany({
       // One-off rows from the Queue page ("MANUAL-...") are not recurring tasks.
       where: { NOT: { taskCode: { startsWith: "MANUAL-" } } },
@@ -32,9 +29,14 @@ export default async function ManagerTasksPage() {
     }),
     prisma.taskMasterChange.findMany({
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: 100,
       include: { taskMaster: { select: { taskCode: true } } },
     }),
+    prisma.taskPause.findMany({
+      where: { startDate: { lte: todayDate }, endDate: { gte: todayDate } },
+      select: { taskMasterId: true },
+    }),
+    prisma.dailyChecklistItem.count({ where: { date: todayDate } }),
   ]);
 
   const actorIds = [...new Set(changes.map((change) => change.actorUserId))];
@@ -42,6 +44,8 @@ export default async function ManagerTasksPage() {
     ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
     : [];
   const actorName = new Map(actors.map((actor) => [actor.id, actor.name]));
+  const pausedTaskIds = new Set(activePauses.map((pause) => pause.taskMasterId));
+  const now = istNow().getTime();
 
   const rows: TaskRow[] = tasks.map((task) => ({
     id: task.id,
@@ -54,9 +58,12 @@ export default async function ManagerTasksPage() {
     escalationThreshold: task.escalationThreshold,
     startDate: task.startDate ? dateKey(task.startDate) : null,
     endDate: task.endDate ? dateKey(task.endDate) : null,
+    scheduleEffectiveFrom: task.scheduleEffectiveFrom ? dateKey(task.scheduleEffectiveFrom) : null,
     category: task.category ?? null,
     notes: task.notes ?? null,
     active: task.active,
+    paused: pausedTaskIds.has(task.id),
+    editedRecently: now - task.updatedAt.getTime() < 7 * 24 * 60 * 60 * 1000,
     updatedAt: task.updatedAt.toISOString(),
   }));
 
@@ -83,34 +90,21 @@ export default async function ManagerTasksPage() {
           </header>
         </PageHeader>
 
-        <TaskEditor initialTasks={rows} todayKey={istDateKey()} />
-
-        <section className="border-[3px] border-ink bg-white p-5 neo-shadow-sm">
-          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-ink/75">Recent changes</h2>
-          {changes.length === 0 ? (
-            <p className="mt-3 text-sm text-ink/75">No schedule edits yet.</p>
-          ) : (
-            <ul className="mt-3 space-y-3 text-sm">
-              {changes.map((change) => {
-                const detail = Object.entries((change.changes ?? {}) as Record<string, FieldChange>)
-                  .map(([field, value]) => formatChange(field, value))
-                  .join("; ");
-                return (
-                  <li key={change.id} className="border-[3px] border-ink bg-paper px-3 py-2">
-                    <p className="font-black">
-                      {change.taskMaster.taskCode}
-                      <span className="ml-2 font-normal text-ink/75">
-                        by {actorName.get(change.actorUserId) ?? "a manager"} on {change.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC
-                      </span>
-                    </p>
-                    <p className="text-ink">{detail}</p>
-                    {change.reason ? <p className="text-ink/75">Reason: {change.reason}</p> : null}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+        <Suspense fallback={<div aria-label="Loading schedule list" className="h-32 animate-pulse border-[3px] border-ink bg-white" />}>
+          <TaskEditor
+            initialTasks={rows}
+            todayKey={todayKey}
+            todayAlreadyBuilt={todayChecklistCount > 0}
+            changes={changes.map((change) => ({
+              id: change.id,
+              taskCode: change.taskMaster.taskCode,
+              actorName: actorName.get(change.actorUserId) ?? "a manager",
+              createdAt: change.createdAt.toISOString(),
+              changes: change.changes,
+              reason: change.reason,
+            }))}
+          />
+        </Suspense>
       </div>
     </div>
   );

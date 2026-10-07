@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildHistoryLine,
+  countScheduleFilters,
   filterAndSortTasks,
   formatDateKeyIst,
   formatIst,
@@ -11,6 +12,7 @@ import {
   pickerValueToStored,
   serializeScheduleQuery,
   type ScheduleTask,
+  yearlyDayOptions,
 } from "@/lib/task-schedule-view";
 
 describe("schedule picker storage conversion", () => {
@@ -31,6 +33,15 @@ describe("schedule picker storage conversion", () => {
       lastDay: false,
       yearlyDates: [{ day: 32, month: 4 }],
     })).toBeNull();
+  });
+
+  it("offers only calendar-valid yearly days plus an explicit existing month-end option", () => {
+    expect(yearlyDayOptions(4)).toEqual({
+      days: Array.from({ length: 30 }, (_, index) => index + 1),
+      hasMonthEnd: true,
+    });
+    expect(yearlyDayOptions(2).days).toHaveLength(29);
+    expect(yearlyDayOptions(13)).toEqual({ days: [], hasMonthEnd: false });
   });
 });
 
@@ -83,5 +94,34 @@ describe("filtering, attention, and sorting", () => {
   it("sorts by next due by default and always puts switched-off tasks last", () => {
     expect(filterAndSortTasks(tasks, { filter: "ALL", query: "", sort: "NEXT_DUE" }, "2026-10-07").map((task) => task.id)).toEqual(["daily", "weekly", "monthly", "off"]);
     expect(filterAndSortTasks(tasks, { filter: "ALL", query: "", sort: "DESCRIPTION" }, "2026-10-07").at(-1)?.id).toBe("off");
+  });
+
+  it("counts each frequency, switched-off, and attention filters", () => {
+    expect(countScheduleFilters(tasks, "2026-10-07")).toEqual({
+      ALL: 4,
+      DAILY: 2,
+      WEEKLY: 1,
+      MONTHLY: 1,
+      QUARTERLY: 0,
+      YEARLY: 0,
+      SWITCHED_OFF: 1,
+      NEEDS_ATTENTION: 2,
+    });
+  });
+
+  it("handles a 500-task schedule without dropping matches", () => {
+    const largeList: ScheduleTask[] = Array.from({ length: 500 }, (_, index) => ({
+      id: `task-${index}`,
+      taskCode: `T-${String(index).padStart(3, "0")}`,
+      taskDescription: `Daily task ${index}`,
+      cadence: "DAILY",
+      scheduleDetail: null,
+      active: index !== 499,
+      paused: false,
+      endDate: null,
+    }));
+    const result = filterAndSortTasks(largeList, { filter: "ALL", query: "", sort: "NEXT_DUE" }, "2026-10-07");
+    expect(result).toHaveLength(500);
+    expect(result.at(-1)?.id).toBe("task-499");
   });
 });

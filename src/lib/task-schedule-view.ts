@@ -34,6 +34,11 @@ export type PickerScheduleValue = {
 export type ScheduleChangeValue = { from: unknown; to: unknown };
 export type ScheduleChanges = Record<string, ScheduleChangeValue>;
 
+export function yearlyDayOptions(month: number): { days: number[]; hasMonthEnd: boolean } {
+  const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1] ?? 0;
+  return { days: Array.from({ length: daysInMonth }, (_, index) => index + 1), hasMonthEnd: daysInMonth > 0 && daysInMonth < 31 };
+}
+
 const CADENCE_SET = new Set<string>(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]);
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
@@ -147,15 +152,46 @@ export function needsAttention(task: ScheduleTask, todayKey: string): boolean {
   return task.paused || endsSoon || neverDue;
 }
 
+export function countScheduleFilters(tasks: ScheduleTask[], todayKey: string): Record<ScheduleFilter, number> {
+  const endSoonLimit = dateKey(addDays(todayKey, 30));
+  const counts: Record<ScheduleFilter, number> = {
+    ALL: tasks.length,
+    DAILY: 0,
+    WEEKLY: 0,
+    MONTHLY: 0,
+    QUARTERLY: 0,
+    YEARLY: 0,
+    SWITCHED_OFF: 0,
+    NEEDS_ATTENTION: 0,
+  };
+  for (const task of tasks) {
+    counts[task.cadence] += 1;
+    if (!task.active) counts.SWITCHED_OFF += 1;
+    const endsSoon = Boolean(task.endDate && task.endDate >= todayKey && task.endDate <= endSoonLimit);
+    if (task.paused || endsSoon || (task.active && findNextDueDates(task, todayKey, 1).length === 0)) {
+      counts.NEEDS_ATTENTION += 1;
+    }
+  }
+  return counts;
+}
+
 export function filterAndSortTasks<T extends ScheduleTask>(
   tasks: T[],
   state: ScheduleQueryState,
   todayKey: string,
 ): T[] {
   const needle = state.query.trim().toLowerCase();
+  const endSoonLimit = dateKey(addDays(todayKey, 30));
+  const dueById = new Map(tasks.map((task) => [
+    task.id,
+    task.active ? findNextDueDates(task, todayKey, 1)[0] : undefined,
+  ]));
   const filtered = tasks.filter((task) => {
     if (state.filter === "SWITCHED_OFF" && task.active) return false;
-    if (state.filter === "NEEDS_ATTENTION" && !needsAttention(task, todayKey)) return false;
+    if (state.filter === "NEEDS_ATTENTION") {
+      const endsSoon = Boolean(task.endDate && task.endDate >= todayKey && task.endDate <= endSoonLimit);
+      if (!task.paused && !endsSoon && !(task.active && !dueById.get(task.id))) return false;
+    }
     if (CADENCE_SET.has(state.filter) && task.cadence !== state.filter) return false;
     if (needle && !`${task.taskCode} ${task.taskDescription}`.toLowerCase().includes(needle)) return false;
     return true;
@@ -165,8 +201,8 @@ export function filterAndSortTasks<T extends ScheduleTask>(
     if (left.active !== right.active) return left.active ? -1 : 1;
     if (state.sort === "CODE") return left.taskCode.localeCompare(right.taskCode);
     if (state.sort === "DESCRIPTION") return left.taskDescription.localeCompare(right.taskDescription);
-    const leftDue = left.active ? findNextDueDates(left, todayKey, 1)[0] ?? "9999-99-99" : "9999-99-99";
-    const rightDue = right.active ? findNextDueDates(right, todayKey, 1)[0] ?? "9999-99-99" : "9999-99-99";
+    const leftDue = dueById.get(left.id) ?? "9999-99-99";
+    const rightDue = dueById.get(right.id) ?? "9999-99-99";
     return leftDue.localeCompare(rightDue) || left.taskCode.localeCompare(right.taskCode);
   });
 }

@@ -18,6 +18,8 @@ const routeLabels: Record<string, string> = {
   holidays: "Holiday calendar",
   "task-pauses": "Task pauses",
   reassignments: "Reassignment history",
+  manager: "Manager view",
+  users: "Users",
   login: "Sign in",
 };
 

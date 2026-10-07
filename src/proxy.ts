@@ -47,6 +47,8 @@ export const config = {
     "/tracker",
     "/tracker/:path*",
     "/escalations",
+    "/manager",
+    "/manager/:path*",
     "/employees/:path*",
     "/admin/:path*",
     "/api/:path*",

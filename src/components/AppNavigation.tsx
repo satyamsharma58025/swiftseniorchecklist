@@ -27,6 +27,7 @@ const primaryDestinations = [
 ];
 
 const manageDestinations = [
+  { href: "/manager", label: "Manager view" },
   { href: "/admin/employees", label: "Employees" },
   { href: "/admin/tasks", label: "Task master" },
   { href: "/admin/templates", label: "Templates" },
@@ -34,6 +35,7 @@ const manageDestinations = [
   { href: "/admin/task-pauses", label: "Task pauses" },
   { href: "/admin/reassignments", label: "Reassignments" },
   { href: "/employees/scorecard", label: "Scorecard" },
+  { href: "/admin/users", label: "Users" },
 ];
 
 type OpenMenu = "manage" | "user" | "more" | null;

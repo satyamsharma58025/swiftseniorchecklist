@@ -25,6 +25,12 @@ describe("classifyRoute", () => {
     });
   });
 
+  it("keeps user creation manager-only and the manager view off-limits to employees", () => {
+    expect(classifyRoute("/admin/users").allowedRoles).toEqual(["MANAGER"]);
+    expect(classifyRoute("/api/admin/users", "POST").allowedRoles).toEqual(["MANAGER"]);
+    expect(classifyRoute("/manager")).toMatchObject({ requiresAuth: true, allowedRoles: ["MANAGER", "SENIOR"] });
+  });
+
   it("allows employees onto standard application routes", () => {
     expect(classifyRoute("/dashboard")).toMatchObject({
       requiresAuth: true,

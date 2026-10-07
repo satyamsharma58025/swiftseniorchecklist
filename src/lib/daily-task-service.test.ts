@@ -368,6 +368,17 @@ describe("ensureDailyQueueAndLock", () => {
     expect(due.caughtUp).toBe(0);
   });
 
+  it("does not backdate a Daily-to-Monthly edit made on the 7th onto the 5th", async () => {
+    db.taskMaster.findMany.mockResolvedValue([
+      baseTask({ cadence: "MONTHLY", scheduleDetail: "5", scheduleEffectiveFrom: dbDate("2026-10-07") }),
+    ]);
+
+    const due = await getDueTaskMasters(dbDate("2026-10-07"));
+
+    expect(due.tasks).toHaveLength(0);
+    expect(due.caughtUp).toBe(0);
+  });
+
   it("still catches up a day on or after the manager's schedule edit", async () => {
     db.taskMaster.findMany.mockResolvedValue([
       baseTask({ cadence: "MONTHLY", scheduleDetail: "1", scheduleEffectiveFrom: dbDate("2026-05-01") }),

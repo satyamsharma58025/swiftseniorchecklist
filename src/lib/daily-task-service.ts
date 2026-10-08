@@ -166,7 +166,7 @@ export type DueTaskSet = {
 
 export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskSet> {
   const taskMasters = await prisma.taskMaster.findMany({
-    where: { active: true, employee: { is: { active: true } } },
+    where: { active: true },
     include: {
       employee: { include: { supervisor: true } },
       reassignments: { orderBy: { effectiveDate: "desc" } },

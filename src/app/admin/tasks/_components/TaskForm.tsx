@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { type Cadence, validateScheduleDetail } from "@/lib/cadence";
 
 export function TaskForm({ employees }: { employees: Array<{ id: string; name: string }> }) {
+  const router = useRouter();
   const [taskCode, setTaskCode] = useState("");
   const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? "");
   const [taskDescription, setTaskDescription] = useState("");
@@ -60,10 +62,17 @@ export function TaskForm({ employees }: { employees: Array<{ id: string; name: s
         throw new Error(payload?.error || "Unable to create task.");
       }
 
-      setSuccess("Task created successfully.");
+      const startsOn = payload.startsOn ? ` It is eligible from ${payload.startsOn}.` : "";
+      const syncMessage = payload.sync?.status === "SYNCED"
+        ? " Today's checklist has been updated."
+        : payload.sync?.status === "PENDING"
+          ? " The task was saved, but today's checklist sync is pending; scheduled automation will retry."
+          : "";
+      setSuccess(`Task created successfully.${startsOn}${syncMessage}`);
       setTaskCode("");
       setTaskDescription("");
       setScheduleDetail(cadence === "WEEKLY" ? "Monday" : cadence === "YEARLY" ? "15-Aug" : "1");
+      router.refresh();
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : "Unable to create task.");
     } finally {

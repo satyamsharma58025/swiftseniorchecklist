@@ -68,7 +68,12 @@ export default async function ChecklistDatePage({
 
   const targetDate = dbDate(selectedDate);
 
-  let rows = await prisma.dailyChecklistItem.findMany({
+  if (mayGenerate) {
+    const { ensureDailyQueueAndLock } = await import("@/lib/daily-task-service");
+    await ensureDailyQueueAndLock(targetDate);
+  }
+
+  const rows = await prisma.dailyChecklistItem.findMany({
     where: {
       date: targetDate,
     },
@@ -79,22 +84,6 @@ export default async function ChecklistDatePage({
       },
     },
   });
-
-  if (rows.length === 0 && mayGenerate) {
-    const { ensureDailyQueueAndLock } = await import("@/lib/daily-task-service");
-    await ensureDailyQueueAndLock(targetDate);
-    rows = await prisma.dailyChecklistItem.findMany({
-      where: {
-        date: targetDate,
-      },
-      orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
-      include: {
-        taskMaster: {
-          select: { taskCode: true, cadence: true, category: true, scheduleDetail: true },
-        },
-      },
-    });
-  }
 
   const priorOpenItems = await prisma.dailyChecklistItem.findMany({
     where: {

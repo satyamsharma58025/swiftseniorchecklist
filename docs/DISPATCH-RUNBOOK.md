@@ -60,6 +60,13 @@ evening refresh sends only non-DONE choices. FormBridge reuses
 `FORM_ID_<date>_<employee>`; if the form already has responses, it preserves
 those responses and returns the existing URL without rebuilding the form.
 
+Tasks created in Task Master are reconciled immediately when their cadence is
+due on the first date without an existing checklist or locked queue snapshot.
+If today or a future date has already been generated, the task starts on the
+calendar day after the latest existing snapshot and is included on its next
+matching cadence. This keeps generated checklists and submitted Google Form
+responses unchanged.
+
 ## Environment variable names
 
 - `APPS_SCRIPT_WEBAPP_URL`

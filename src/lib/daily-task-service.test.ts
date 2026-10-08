@@ -129,6 +129,29 @@ describe("getTodaysEmployeeTaskSets", () => {
   });
 });
 
+describe("getDueTaskMasters", () => {
+  it("keeps tasks reassigned from an inactive owner to an active employee", async () => {
+    const task = baseTask({
+      employee: { id: "emp-1", name: "Archived owner", phone: null, active: false, supervisor: null },
+      reassignments: [{ id: "ra-1", effectiveDate: runDate, newEmployeeId: "emp-2" }],
+    });
+    db.taskMaster.findMany.mockResolvedValue([task]);
+    db.employee.findUnique.mockResolvedValue({
+      id: "emp-2",
+      name: "Active assignee",
+      phone: "9876543211",
+      active: true,
+      supervisor: null,
+    });
+
+    const result = await getDueTaskMasters(runDate);
+
+    expect(db.taskMaster.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { active: true } }));
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0].employeeId).toBe("emp-2");
+  });
+});
+
 describe("ensureDailyQueueAndLock", () => {
   it("reconciles missing tasks when some daily rows already exist", async () => {
     const tasks = [

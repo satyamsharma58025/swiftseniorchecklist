@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { FilterX, Search, SkipForward, X } from "lucide-react";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
@@ -176,6 +177,56 @@ type SaveFeedback = {
   retry?: RetryAction;
 };
 
+export type ChecklistStatusFilter = "ALL" | "PENDING" | "DONE" | "NOT_DONE" | "ESCALATED";
+export type ChecklistPriorityFilter = "ALL" | ChecklistTaskRow["priority"];
+export type ChecklistSort = "ACTION_FIRST" | "PRIORITY" | "TASK_NAME" | "EMPLOYEE";
+
+export function selectChecklistItems(
+  items: ChecklistTaskRow[],
+  {
+    status = "ALL",
+    priority = "ALL",
+    search = "",
+    sort = "ACTION_FIRST",
+  }: {
+    status?: ChecklistStatusFilter;
+    priority?: ChecklistPriorityFilter;
+    search?: string;
+    sort?: ChecklistSort;
+  } = {},
+) {
+  const query = search.trim().toLowerCase();
+  const priorityRank = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+  const statusRank = (item: ChecklistTaskRow) => item.escalated ? 0 : item.status === "NOT_DONE" ? 1 : item.status === "PENDING" ? 2 : 3;
+
+  return items
+    .filter((item) => {
+      const matchesStatus = status === "ALL"
+        || (status === "ESCALATED" ? item.escalated : item.status === status);
+      const matchesPriority = priority === "ALL" || item.priority === priority;
+      const matchesSearch = query.length === 0
+        || [item.taskDescription, item.employeeName, item.checklistCode, item.seniorRemarks, item.employeeResponse, item.category]
+          .some((value) => value?.toLowerCase().includes(query));
+      return matchesStatus && matchesPriority && matchesSearch;
+    })
+    .sort((first, second) => {
+      if (sort === "PRIORITY") {
+        return priorityRank[first.priority] - priorityRank[second.priority]
+          || statusRank(first) - statusRank(second)
+          || first.taskDescription.localeCompare(second.taskDescription);
+      }
+      if (sort === "TASK_NAME") return first.taskDescription.localeCompare(second.taskDescription);
+      if (sort === "EMPLOYEE") {
+        return first.employeeName.localeCompare(second.employeeName)
+          || first.taskDescription.localeCompare(second.taskDescription);
+      }
+      return statusRank(first) - statusRank(second)
+        || priorityRank[first.priority] - priorityRank[second.priority]
+        || first.employeeName.localeCompare(second.employeeName)
+        || first.taskDescription.localeCompare(second.taskDescription);
+    });
+}
+
 export function ChecklistPanel({
   items,
   employeeName,
@@ -189,7 +240,10 @@ export function ChecklistPanel({
   const [editingRemarks, setEditingRemarks] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [saveFeedback, setSaveFeedback] = useState<SaveFeedback | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "DONE" | "NOT_DONE" | "ESCALATED">("ALL");
+  const [pendingJumpTaskId, setPendingJumpTaskId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ChecklistStatusFilter>("ALL");
+  const [priorityFilter, setPriorityFilter] = useState<ChecklistPriorityFilter>("ALL");
+  const [sortBy, setSortBy] = useState<ChecklistSort>("ACTION_FIRST");
   const [searchTerm, setSearchTerm] = useState("");
 
   const summary = useMemo(() => {
@@ -198,28 +252,18 @@ export function ChecklistPanel({
       pending: localItems.filter((item) => item.status === "PENDING").length,
       notDone: localItems.filter((item) => item.status === "NOT_DONE").length,
       escalated: localItems.filter((item) => item.escalated).length,
+      total: localItems.length,
     };
   }, [localItems]);
 
   const filteredItems = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-
-    return localItems.filter((item) => {
-      const matchesFilter =
-        statusFilter === "ALL"
-          ? true
-          : statusFilter === "ESCALATED"
-            ? item.escalated
-            : item.status === statusFilter;
-
-      const matchesSearch =
-        query.length === 0 ||
-        [item.taskDescription, item.employeeName, item.checklistCode]
-          .some((value) => value?.toLowerCase().includes(query));
-
-      return matchesFilter && matchesSearch;
+    return selectChecklistItems(localItems, {
+      status: statusFilter,
+      priority: priorityFilter,
+      search: searchTerm,
+      sort: sortBy,
     });
-  }, [localItems, searchTerm, statusFilter]);
+  }, [localItems, priorityFilter, searchTerm, sortBy, statusFilter]);
 
   async function updateStatus(itemId: string, nextStatus: "DONE" | "NOT_DONE") {
     const previous = localItems.find((item) => item.id === itemId);
@@ -359,6 +403,18 @@ export function ChecklistPanel({
   );
 
   useEffect(() => {
+    if (!pendingJumpTaskId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const taskCard = document.getElementById(`checklist-task-${pendingJumpTaskId}`);
+      if (!taskCard) return;
+      taskCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      taskCard.querySelector<HTMLButtonElement>('[data-task-action="done"]')?.focus({ preventScroll: true });
+      setPendingJumpTaskId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingJumpTaskId, resolvedExpansion]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !Object.keys(groupExpansion).length) return;
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(resolvedExpansion));
@@ -388,8 +444,30 @@ export function ChecklistPanel({
     setGroupExpansion((current) => ({ ...current, ...Object.fromEntries(keys) }));
   };
 
+  const clearFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("ALL");
+    setPriorityFilter("ALL");
+    setSortBy("ACTION_FIRST");
+  };
+
+  const jumpToNextOpenTask = () => {
+    const nextOpen = filteredItems.find((item) => item.status !== "DONE" || item.escalated);
+    if (!nextOpen) return;
+    const expandedKeys = employeeName === "All Employees"
+      ? employeeGroups.flatMap((employee) => employee.rows.some((item) => item.id === nextOpen.id)
+        ? [
+            [employee.employeeName, true] as const,
+            ...employee.sections.map((section) => [section.section, section.rows.some((item) => item.id === nextOpen.id)] as const),
+          ]
+        : [])
+      : sectionGroups.map((section) => [section.section, section.rows.some((item) => item.id === nextOpen.id)] as const);
+    setGroupExpansion((current) => ({ ...current, ...Object.fromEntries(expandedKeys) }));
+    setPendingJumpTaskId(nextOpen.id);
+  };
+
   const renderTaskCard = (item: ChecklistTaskRow) => (
-    <div key={item.id} className="neo-border bg-white p-4 neo-shadow-sm">
+    <div id={`checklist-task-${item.id}`} key={item.id} className="neo-border scroll-mt-24 bg-white p-4 neo-shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex-1">
@@ -403,7 +481,9 @@ export function ChecklistPanel({
             </div>
             <p className="text-lg font-black uppercase tracking-[0.04em] text-ink">{item.taskDescription}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-ink">
-              <span className="sticker bg-paper text-ink">Priority: {item.priority}</span>
+              <span className={`sticker text-ink ${item.priority === "HIGH" ? "bg-hot-pink" : item.priority === "MEDIUM" ? "bg-sun-yellow" : "bg-paper"}`}>
+                {item.priority} priority
+              </span>
               <StatusBadge status={item.escalated ? "ESCALATED" : item.status} />
               {item.reminderCount > 0 ? <span className="sticker bg-cyber-cyan text-ink">Reminders: {item.reminderCount}</span> : null}
               {item.formSubmittedAt ? (
@@ -413,22 +493,29 @@ export function ChecklistPanel({
               ) : null}
             </div>
 
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <label htmlFor={`remarks-${item.id}`} className="text-sm font-semibold text-ink">Senior remark</label>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label htmlFor={`remarks-${item.id}`} className="text-xs font-bold text-ink">Senior remark</label>
               <input
                 id={`remarks-${item.id}`}
                 type="text"
                 placeholder="Add specific remark for this task..."
+                maxLength={500}
                 value={editingRemarks[item.id] !== undefined ? editingRemarks[item.id] : (item.seniorRemarks ?? "")}
-                onChange={(e) => setEditingRemarks({ ...editingRemarks, [item.id]: e.target.value })}
-                className="neo-border flex-1 bg-paper/50 px-3 py-1.5 text-xs font-semibold text-ink placeholder:text-ink/40 focus:bg-white focus:outline-none"
+                onChange={(e) => setEditingRemarks((current) => ({ ...current, [item.id]: e.target.value }))}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void saveRemarkOnly(item.id);
+                  }
+                }}
+                className="neo-border min-h-11 flex-1 bg-paper/50 px-3 py-2 text-sm font-semibold text-ink placeholder:text-ink/50 focus:bg-white focus:outline-none"
               />
               {editingRemarks[item.id] !== undefined && editingRemarks[item.id] !== (item.seniorRemarks ?? "") && (
                 <button
                   type="button"
                   onClick={() => saveRemarkOnly(item.id)}
                   disabled={savingId === item.id}
-                  className="neo-press neo-border bg-electric-lime px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-ink"
+                  className="neo-press neo-border min-h-11 bg-electric-lime px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-ink"
                 >
                   {savingId === item.id ? "Saving..." : "Save remark"}
                 </button>
@@ -454,24 +541,25 @@ export function ChecklistPanel({
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex shrink-0 flex-row gap-2 md:flex-col">
           <button
             type="button"
             onClick={() => updateStatus(item.id, "DONE")}
             disabled={savingId === item.id}
             aria-busy={savingId === item.id}
-            className="neo-press neo-border min-h-11 bg-brand-green px-3 py-2 text-sm font-black text-ink"
+            data-task-action="done"
+            className={`neo-press neo-border min-h-11 px-3 py-2 text-sm font-black text-ink ${item.status === "DONE" ? "bg-white" : "bg-brand-green"}`}
           >
-            Done
+            {item.status === "DONE" ? "Completed" : "Mark done"}
           </button>
           <button
             type="button"
             onClick={() => updateStatus(item.id, "NOT_DONE")}
             disabled={savingId === item.id}
             aria-busy={savingId === item.id}
-            className="neo-press neo-border min-h-11 bg-hot-pink px-3 py-2 text-sm font-black text-ink"
+            className={`neo-press neo-border min-h-11 px-3 py-2 text-sm font-black text-ink ${item.status === "NOT_DONE" ? "bg-white" : "bg-hot-pink"}`}
           >
-            Not done
+            {item.status === "NOT_DONE" ? "Marked not done" : "Mark not done"}
           </button>
         </div>
       </div>
@@ -500,7 +588,7 @@ export function ChecklistPanel({
           ) : null}
         </div>
       ) : null}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
           { value: summary.done, tone: "bg-brand-green", status: "DONE" as const },
           { value: summary.pending, tone: "bg-sun-yellow", status: "PENDING" as const },
@@ -511,34 +599,140 @@ export function ChecklistPanel({
             <p className="brand-display mt-2 text-3xl leading-none">{card.value}</p>
           </div>
         ))}
+        <div className="neo-border bg-grape p-4 text-ink neo-shadow-sm">
+          <StatusBadge status="ESCALATED" />
+          <p className="brand-display mt-2 text-3xl leading-none">{summary.escalated}</p>
+          <p className="mt-1 text-xs font-bold">Needs follow-up</p>
+        </div>
+        <div className="neo-border bg-ink p-4 text-paper neo-shadow-sm">
+          <span className="sticker border-paper bg-white text-ink">Completion</span>
+          <p className="brand-display mt-2 text-3xl leading-none">
+            {summary.total ? Math.round((summary.done / summary.total) * 100) : 0}%
+          </p>
+          <div
+            role="progressbar"
+            aria-label={`${summary.done} of ${summary.total} tasks completed`}
+            aria-valuemin={0}
+            aria-valuemax={summary.total || 1}
+            aria-valuenow={summary.done}
+            className="mt-3 h-2 border border-paper bg-white/20"
+          >
+            <span
+              className="block h-full bg-electric-lime"
+              style={{ width: `${summary.total ? (summary.done / summary.total) * 100 : 0}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] font-bold text-paper/75">{summary.done} of {summary.total} tasks</p>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex-1">
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search tasks, code or employee..."
-            aria-label="Search tasks"
-            className="neo-border w-full bg-paper/60 px-3 py-2 text-sm font-medium text-ink placeholder:text-ink/40 focus:bg-white focus:outline-none"
-          />
+      <div className="neo-border space-y-3 bg-white p-3 neo-shadow-sm sm:p-4">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.16em] text-ink/70">Find a task</span>
+            <span className="relative block">
+              <Search aria-hidden="true" size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/60" />
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search description, code, employee, or remarks..."
+                aria-label="Search tasks"
+                className="neo-border min-h-11 w-full bg-paper/60 py-2 pl-10 pr-3 text-sm font-medium text-ink placeholder:text-ink/50 focus:bg-white focus:outline-none"
+              />
+              {searchTerm ? (
+                <button
+                  type="button"
+                  aria-label="Clear task search"
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center text-ink hover:bg-paper"
+                >
+                  <X aria-hidden="true" size={16} />
+                </button>
+              ) : null}
+            </span>
+          </label>
+          <div className="grid gap-2 sm:grid-cols-2 xl:w-[27rem]">
+            <label>
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.16em] text-ink/70">Priority</span>
+              <select
+                value={priorityFilter}
+                onChange={(event) => setPriorityFilter(event.target.value as ChecklistPriorityFilter)}
+                className="neo-border min-h-11 w-full bg-white px-3 py-2 text-sm font-bold text-ink"
+              >
+                <option value="ALL">All priorities</option>
+                <option value="HIGH">High priority</option>
+                <option value="MEDIUM">Medium priority</option>
+                <option value="LOW">Low priority</option>
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.16em] text-ink/70">Sort tasks</span>
+              <select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value as ChecklistSort)}
+                className="neo-border min-h-11 w-full bg-white px-3 py-2 text-sm font-bold text-ink"
+              >
+                <option value="ACTION_FIRST">Action needed first</option>
+                <option value="PRIORITY">Highest priority first</option>
+                <option value="TASK_NAME">Task name</option>
+                <option value="EMPLOYEE">Employee name</option>
+              </select>
+            </label>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {(["ALL", "PENDING", "DONE", "NOT_DONE", "ESCALATED"] as const).map((filter) => (
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+          {([
+            { key: "ALL", label: "All", count: summary.total },
+            { key: "PENDING", label: "Pending", count: summary.pending },
+            { key: "NOT_DONE", label: "Not done", count: summary.notDone },
+            { key: "ESCALATED", label: "Escalated", count: summary.escalated },
+            { key: "DONE", label: "Done", count: summary.done },
+          ] as const).map((filter) => (
             <button
-              key={filter}
+              key={filter.key}
               type="button"
-              onClick={() => setStatusFilter(filter)}
+              onClick={() => setStatusFilter(filter.key)}
+              aria-pressed={statusFilter === filter.key}
               className={[
-                "neo-press border-[3px] border-ink px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.14em]",
-                statusFilter === filter ? "bg-ink text-paper" : "bg-white text-ink",
+                "neo-press inline-flex min-h-10 items-center gap-2 border-[2px] border-ink px-3 py-1.5 text-xs font-black uppercase",
+                statusFilter === filter.key ? "bg-ink text-paper" : "bg-white text-ink",
               ].join(" ")}
             >
-              {filter === "ESCALATED" ? "Escalated" : filter === "ALL" ? "All" : filter.replace("_", " ")}
+              {filter.label}
+              <span className={`inline-flex min-w-5 justify-center border border-current px-1 py-0.5 text-[10px] ${statusFilter === filter.key ? "bg-white text-ink" : "bg-paper text-ink"}`}>
+                {filter.count}
+              </span>
             </button>
           ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={jumpToNextOpenTask}
+              disabled={!filteredItems.some((item) => item.status !== "DONE" || item.escalated)}
+              className="neo-press inline-flex min-h-10 items-center gap-2 border-[2px] border-ink bg-electric-lime px-3 text-xs font-black uppercase text-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <SkipForward aria-hidden="true" size={15} /> Next open task
+            </button>
+            {(searchTerm || statusFilter !== "ALL" || priorityFilter !== "ALL" || sortBy !== "ACTION_FIRST") ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex min-h-10 items-center gap-2 border-[2px] border-ink bg-white px-3 text-xs font-bold text-ink hover:bg-paper"
+              >
+                <FilterX aria-hidden="true" size={15} /> Clear filters
+              </button>
+            ) : null}
+          </div>
         </div>
+        <p aria-live="polite" className="text-xs font-semibold text-ink/70">
+          Showing {filteredItems.length} of {summary.total} tasks
+          {statusFilter !== "ALL" ? ` · ${statusFilter === "ESCALATED" ? "Escalated" : statusFilter.replace("_", " ").toLowerCase()}` : ""}
+          {priorityFilter !== "ALL" ? ` · ${priorityFilter.toLowerCase()} priority` : ""}
+        </p>
       </div>
 
       <div className="flex justify-end gap-2">

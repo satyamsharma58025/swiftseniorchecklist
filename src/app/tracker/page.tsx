@@ -1,8 +1,6 @@
-import Link from "next/link";
 import { DateTime } from "luxon";
 
-import { StatusBadge } from "@/components/ui/StatusBadge";
-import { PageEmptyState } from "@/components/ui/PageEmptyState";
+import { EmployeeTracker } from "@/app/tracker/_components/EmployeeTracker";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
@@ -24,88 +22,119 @@ export default async function TrackerPage({
       currentMonth = istDateKey().slice(0, 7);
     }
   }
+
   const monthStart = DateTime.fromISO(`${currentMonth}-01`, { zone: "UTC" });
-  const startKey = `${currentMonth}-01`;
-  const nextMonthStartKey = monthStart.plus({ months: 1 }).toFormat("yyyy-MM-dd");
-  const start = dbDate(startKey);
-  const endExclusive = dbDate(nextMonthStartKey);
+  const start = dbDate(`${currentMonth}-01`);
+  const endExclusive = dbDate(monthStart.plus({ months: 1 }).toFormat("yyyy-MM-dd"));
+  const [roster, rows] = await Promise.all([
+    prisma.employee.findMany({
+      orderBy: { name: "asc" },
+      select: { name: true, active: true },
+    }),
+    prisma.dailyChecklistItem.findMany({
+      where: { date: { gte: start, lt: endExclusive } },
+      select: { employeeName: true, status: true, date: true },
+      orderBy: [{ employeeName: "asc" }, { date: "asc" }],
+    }),
+  ]);
 
-  const rows = await prisma.dailyChecklistItem.findMany({
-    where: {
-      date: { gte: start, lt: endExclusive },
-    },
-    select: {
-      employeeName: true,
-      status: true,
-      date: true,
-    },
-  });
+  const employeeStats = new Map<string, {
+    employeeName: string;
+    done: number;
+    pending: number;
+    notDone: number;
+    total: number;
+    days: Set<string>;
+  }>();
+  const dailyTotals = new Map<string, { done: number; pending: number; notDone: number; total: number }>();
+  const team = { done: 0, pending: 0, notDone: 0, total: 0 };
 
-  const employees = Array.from(new Set(rows.map((item) => item.employeeName))).sort();
-  const summary = employees.map((employeeName) => {
-    const employeeRows = rows.filter((item) => item.employeeName === employeeName);
-    const total = employeeRows.length;
-    const done = employeeRows.filter((item) => item.status === "DONE").length;
+  for (const row of rows) {
+    const day = row.date.toISOString().slice(0, 10);
+    const employee = employeeStats.get(row.employeeName) ?? {
+      employeeName: row.employeeName,
+      done: 0,
+      pending: 0,
+      notDone: 0,
+      total: 0,
+      days: new Set<string>(),
+    };
+    const daily = dailyTotals.get(day) ?? { done: 0, pending: 0, notDone: 0, total: 0 };
+
+    employee[row.status === "DONE" ? "done" : row.status === "NOT_DONE" ? "notDone" : "pending"] += 1;
+    employee.total += 1;
+    employee.days.add(day);
+    daily[row.status === "DONE" ? "done" : row.status === "NOT_DONE" ? "notDone" : "pending"] += 1;
+    daily.total += 1;
+    team[row.status === "DONE" ? "done" : row.status === "NOT_DONE" ? "notDone" : "pending"] += 1;
+    team.total += 1;
+
+    employeeStats.set(row.employeeName, employee);
+    dailyTotals.set(day, daily);
+  }
+
+  const employeeNames = new Set([...roster.map((employee) => employee.name), ...employeeStats.keys()]);
+  const activeByName = new Map(roster.map((employee) => [employee.name, employee.active]));
+  const employees = Array.from(employeeNames).sort((first, second) => first.localeCompare(second)).map((employeeName) => {
+    const employee = employeeStats.get(employeeName) ?? {
+      employeeName,
+      done: 0,
+      pending: 0,
+      notDone: 0,
+      total: 0,
+      days: new Set<string>(),
+    };
     return {
       employeeName,
-      done,
-      total,
-      completion: total === 0 ? 0 : Math.round((done / total) * 100),
+      active: activeByName.get(employeeName) ?? false,
+      done: employee.done,
+      pending: employee.pending,
+      notDone: employee.notDone,
+      total: employee.total,
+      activeDays: employee.days.size,
+      completion: employee.total ? Math.round((employee.done / employee.total) * 100) : 0,
+    };
+  });
+  const daysInMonth = monthStart.daysInMonth ?? 30;
+  const calendar = Array.from({ length: daysInMonth }, (_, index) => {
+    const date = monthStart.plus({ days: index });
+    const key = date.toFormat("yyyy-MM-dd");
+    return {
+      date: key,
+      dayLabel: date.toFormat("d"),
+      weekdayLabel: date.toFormat("ccc"),
+      ...dailyTotals.get(key) ?? { done: 0, pending: 0, notDone: 0, total: 0 },
     };
   });
 
-  const prevMonth = monthStart.minus({ months: 1 }).toFormat("yyyy-MM");
-  const nextMonth = monthStart.plus({ months: 1 }).toFormat("yyyy-MM");
-
   return (
     <div className="min-h-screen py-4 text-ink md:py-6">
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6 px-3 sm:px-5">
         <PageHeader>
-        <header className="border-[3px] border-ink bg-ink p-6 text-paper neo-shadow-lg">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-sun-yellow">Daily overview</p>
-              <h1 className="brand-display mt-2 text-4xl">Employee tracker</h1>
+          <header className="relative overflow-hidden border-[3px] border-ink bg-ink p-5 text-paper shadow-[6px_6px_0_0_var(--ink)] sm:p-7">
+            <div className="pointer-events-none absolute -right-10 -top-20 h-56 w-56 rounded-full border-[24px] border-cyber-cyan/20" />
+            <div className="relative flex flex-wrap items-end justify-between gap-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyber-cyan">Daily overview · Team operations</p>
+                <h1 className="brand-display mt-2 text-4xl sm:text-5xl">Employee tracker</h1>
+                <p className="mt-3 max-w-2xl text-sm text-paper/75">
+                  A monthly view of checklist delivery, open work, and completion across the team.
+                </p>
+              </div>
+              <div className="border-[2px] border-paper/50 bg-white/10 px-3 py-2 text-xs font-bold">
+                Reporting month · {monthStart.setLocale("en-IN").toFormat("LLLL yyyy")}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Link href={`/tracker?month=${prevMonth}`} className="neo-press border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">Prev</Link>
-              <span className="border-[3px] border-paper bg-ink px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-paper">
-                {monthStart.setLocale("en-IN").toFormat("LLLL yyyy")}
-              </span>
-              <Link href={`/tracker?month=${nextMonth}`} className="neo-press border-[3px] border-paper bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-ink">Next</Link>
-            </div>
-          </div>
-        </header>
+          </header>
         </PageHeader>
 
-        <section className="overflow-hidden border-[3px] border-ink bg-white neo-shadow-sm">
-          <div data-table-scroll className="overflow-x-auto">
-            <table data-responsive-table="true" className="min-w-full border-collapse text-left text-sm">
-              <thead className="bg-ink text-paper">
-                <tr>
-                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Employee</th>
-                  <th className="border-[3px] border-ink px-4 py-3 text-left"><StatusBadge status="DONE" /></th>
-                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Total</th>
-                  <th className="border-[3px] border-ink px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em]">Completion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.length === 0 ? (
-                  <tr><td colSpan={4} className="border-[3px] border-ink p-4"><PageEmptyState title="No checklist history for this month" description="Choose another month or open today’s dashboard." href="/dashboard" actionLabel="Open dashboard" /></td></tr>
-                ) : summary.map((item, index) => (
-                  <tr key={item.employeeName} className={index % 2 === 0 ? "bg-white" : "bg-paper"}>
-                    <td data-label="Employee" className="border-[3px] border-ink px-4 py-3 font-black text-ink">{item.employeeName}</td>
-                    <td data-label="Done" className="border-[3px] border-ink px-4 py-3 text-ink">{item.done}</td>
-                    <td data-label="Total" className="border-[3px] border-ink px-4 py-3 text-ink">{item.total}</td>
-                    <td data-label="Completion" className="border-[3px] border-ink px-4 py-3">
-                      <span className="sticker bg-electric-lime text-ink">{item.completion}%</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <EmployeeTracker
+          month={currentMonth}
+          monthLabel={monthStart.setLocale("en-IN").toFormat("LLLL yyyy")}
+          employees={employees}
+          team={team}
+          calendar={calendar}
+        />
       </div>
     </div>
   );

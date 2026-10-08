@@ -50,15 +50,22 @@ export default async function ChecklistDatePage({
   }
   const tomorrow = dateKey(addDays(dbDate(today), 1));
   const mayGenerate = selectedDate >= today && selectedDate <= tomorrow;
-
-  const employees = await prisma.employee.findMany({
-    orderBy: { name: "asc" },
-    select: {
-      id: true,
-      name: true,
-      designation: true,
-    },
-  });
+  const targetDate = dbDate(selectedDate);
+  const [employees] = await Promise.all([
+    prisma.employee.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        designation: true,
+      },
+    }),
+    mayGenerate
+      ? import("@/lib/daily-task-service").then(({ ensureDailyQueueAndLock }) =>
+          ensureDailyQueueAndLock(targetDate),
+        )
+      : Promise.resolve(null),
+  ]);
 
   const targetEmployees = employees.length
     ? employees
@@ -66,45 +73,89 @@ export default async function ChecklistDatePage({
 
   const isAll = resolvedParams.employeeId === "all";
 
-  const targetDate = dbDate(selectedDate);
-
-  if (mayGenerate) {
-    const { ensureDailyQueueAndLock } = await import("@/lib/daily-task-service");
-    await ensureDailyQueueAndLock(targetDate);
-  }
-
-  const rows = await prisma.dailyChecklistItem.findMany({
-    where: {
-      date: targetDate,
-    },
-    orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
-    include: {
-      taskMaster: {
-        select: { taskCode: true, cadence: true, category: true, scheduleDetail: true },
+  const [rows, priorOpenItems] = await Promise.all([
+    prisma.dailyChecklistItem.findMany({
+      where: { date: targetDate },
+      orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
+      select: {
+        id: true,
+        checklistCode: true,
+        taskMasterId: true,
+        employeeName: true,
+        taskDescription: true,
+        status: true,
+        escalated: true,
+        priority: true,
+        reminderCount: true,
+        seniorRemarks: true,
+        employeeResponse: true,
+        colorStatus: true,
+        formSubmissionTimestamp: true,
+        updatedAt: true,
+        taskMaster: {
+          select: { taskCode: true, cadence: true, category: true, scheduleDetail: true },
+        },
       },
-    },
-  });
-
-  const priorOpenItems = await prisma.dailyChecklistItem.findMany({
-    where: {
-      date: addDays(targetDate, -1),
-      status: { in: ["PENDING", "NOT_DONE"] },
-    },
-    select: { taskMasterId: true },
-  });
+    }),
+    prisma.dailyChecklistItem.findMany({
+      where: {
+        date: addDays(targetDate, -1),
+        status: { in: ["PENDING", "NOT_DONE"] },
+      },
+      select: { taskMasterId: true },
+    }),
+  ]);
   const carriedTaskIds = new Set(priorOpenItems.map((item) => item.taskMasterId));
 
+  const summaryByEmployeeName = new Map<string, {
+    total: number;
+    done: number;
+    pending: number;
+    notDone: number;
+    escalated: number;
+  }>();
+  let totalDone = 0;
+  let totalPending = 0;
+  let totalNotDone = 0;
+  let seniorRemarksCount = 0;
+  let lastFormSubmissionAt = 0;
+  for (const row of rows) {
+    const summary = summaryByEmployeeName.get(row.employeeName) ?? {
+      total: 0,
+      done: 0,
+      pending: 0,
+      notDone: 0,
+      escalated: 0,
+    };
+    summary.total += 1;
+    if (row.status === "DONE") {
+      summary.done += 1;
+      totalDone += 1;
+    } else if (row.status === "NOT_DONE") {
+      summary.notDone += 1;
+      totalNotDone += 1;
+    } else {
+      summary.pending += 1;
+      totalPending += 1;
+    }
+    if (row.escalated) summary.escalated += 1;
+    if (row.seniorRemarks) seniorRemarksCount += 1;
+    if (row.formSubmissionTimestamp) {
+      lastFormSubmissionAt = Math.max(lastFormSubmissionAt, row.formSubmissionTimestamp.getTime());
+    }
+    summaryByEmployeeName.set(row.employeeName, summary);
+  }
   const employeeSummaries = targetEmployees.map((employee) => {
-    const employeeRows = rows.filter((row) => row.employeeName === employee.name);
+    const summary = summaryByEmployeeName.get(employee.name);
     return {
       id: employee.id,
       name: employee.name,
       designation: employee.designation,
-      total: employeeRows.length,
-      done: employeeRows.filter((row) => row.status === "DONE").length,
-      pending: employeeRows.filter((row) => row.status === "PENDING").length,
-      notDone: employeeRows.filter((row) => row.status === "NOT_DONE").length,
-      escalated: employeeRows.filter((row) => row.escalated).length,
+      total: summary?.total ?? 0,
+      done: summary?.done ?? 0,
+      pending: summary?.pending ?? 0,
+      notDone: summary?.notDone ?? 0,
+      escalated: summary?.escalated ?? 0,
     };
   }).filter((employee) => employee.total > 0)
     .sort((first, second) => second.total - first.total || first.name.localeCompare(second.name));
@@ -123,17 +174,12 @@ export default async function ChecklistDatePage({
     : rows.filter((row) => row.employeeName === selectedEmployee?.name);
   const employeeByName = new Map(targetEmployees.map((employee) => [employee.name, employee]));
 
-  const submissionTimes = rows
-    .map((row) => row.formSubmissionTimestamp)
-    .filter((value): value is Date => value instanceof Date);
-  const lastFormSubmission = submissionTimes.length
-    ? new Date(Math.max(...submissionTimes.map((value) => value.getTime())))
-    : null;
+  const lastFormSubmission = lastFormSubmissionAt ? new Date(lastFormSubmissionAt) : null;
   const dayTotals = {
     total: rows.length,
-    done: rows.filter((row) => row.status === "DONE").length,
-    notDone: rows.filter((row) => row.status === "NOT_DONE").length,
-    pending: rows.filter((row) => row.status === "PENDING").length,
+    done: totalDone,
+    notDone: totalNotDone,
+    pending: totalPending,
   };
   const dayWindow = Array.from({ length: 14 }, (_, index) => {
     return dateKey(addDays(targetDate, -6 + index));
@@ -142,7 +188,7 @@ export default async function ChecklistDatePage({
   return (
     <div className="min-h-screen py-5 text-ink md:py-8">
       <div className="mx-auto max-w-6xl space-y-5">
-        <AutoRefresh intervalSeconds={30} />
+        <AutoRefresh intervalSeconds={60} />
         <PageHeader><BrandHeader /></PageHeader>
 
         <section className="neo-border bg-white p-4 neo-shadow-sm">
@@ -162,7 +208,7 @@ export default async function ChecklistDatePage({
                     : "No checklist has been published for this date yet."}
               </p>
               <p className="mt-0.5 text-xs text-ink/75">
-                Tasks with specific senior remarks: <span className="font-bold text-ink">{rows.filter((r) => Boolean(r.seniorRemarks)).length}</span> / {dayTotals.total}
+                Tasks with specific senior remarks: <span className="font-bold text-ink">{seniorRemarksCount}</span> / {dayTotals.total}
               </p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs font-bold text-ink">
@@ -233,8 +279,8 @@ export default async function ChecklistDatePage({
                 isQueueOnly: row.taskMaster.taskCode.startsWith("MANUAL-"),
                 isCarriedForward: carriedTaskIds.has(row.taskMasterId),
               }),
-              status: row.status as "PENDING" | "DONE" | "NOT_DONE",
-              priority: row.priority as "HIGH" | "MEDIUM" | "LOW",
+              status: row.status,
+              priority: row.priority,
               reminderCount: row.reminderCount,
               escalated: row.escalated,
               seniorRemarks: row.seniorRemarks,

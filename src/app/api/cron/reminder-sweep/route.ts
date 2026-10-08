@@ -1,50 +1,19 @@
-import { NextResponse } from "next/server";
+import { DateTime } from "luxon";
 
-import { dateKey } from "@/lib/dates";
-import { prisma } from "@/lib/prisma";
+import { istNow } from "@/lib/dates";
+import { runReminderSweep } from "@/lib/reminder-service";
 import { runCronJob } from "@/lib/cron";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const timeBucket = DateTime.fromJSDate(istNow(), { zone: "UTC" })
+    .setZone("Asia/Kolkata")
+    .toFormat("HHmm");
 
-  return runCronJob(request, "reminder-sweep", url.searchParams.get("date"), async (runDate) => {
-    const items = await prisma.dailyChecklistItem.findMany({
-      where: {
-        date: runDate,
-        status: { not: "DONE" },
-      },
-      select: {
-        id: true,
-        checklistCode: true,
-        employeeName: true,
-        taskDescription: true,
-        status: true,
-        reminderCount: true,
-        escalated: true,
-        escalationThreshold: true,
-      },
-    });
-
-    const dueForReminder = items.filter((item) => item.reminderCount > 0);
-    const escalations = items.filter((item) => item.escalated);
-
-    return NextResponse.json({
-      runDate: dateKey(runDate),
-      totals: {
-        items: items.length,
-        dueForReminder: dueForReminder.length,
-        escalations: escalations.length,
-      },
-      items: items.map((item) => ({
-        id: item.id,
-        checklistCode: item.checklistCode,
-        employeeName: item.employeeName,
-        taskDescription: item.taskDescription,
-        status: item.status,
-        reminderCount: item.reminderCount,
-        escalated: item.escalated,
-        escalationThreshold: item.escalationThreshold,
-      })),
-    });
-  });
+  return runCronJob(
+    request,
+    `reminder-sweep-${timeBucket}`,
+    url.searchParams.get("date"),
+    (runDate) => runReminderSweep(runDate),
+  );
 }

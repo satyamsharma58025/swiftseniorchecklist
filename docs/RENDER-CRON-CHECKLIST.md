@@ -14,6 +14,9 @@ The `scheduled-jobs` workflow runs:
   and evening UTC ranges. The app resolves whether a slot is due and uses the
   delivery ledger to resume incomplete work instead of relying on one exact
   scheduler tick.
+- `/api/cron/reminder-sweep` every 15 minutes during the daytime IST operating
+  window. It sends due `NOT_DONE` reminders using the configured priority
+  intervals and retries unsent work on later sweeps.
 - `/api/cron/eod-cutoff` at 14:30 UTC (20:00 IST).
 
 GitHub scheduled runs are best-effort: they can start 10–30 minutes late and
@@ -35,19 +38,23 @@ Required GitHub Actions secrets:
 - `APP_BASE_URL`: deployed Render web-service origin.
 - `CRON_SECRET`: same secret configured on the web service.
 
-## Other cron endpoints (not scheduled here)
+## Other cron endpoints
 
-- `/api/cron/reminder-sweep` returns counts and a list of today's non-DONE
-  checklist rows, including reminder and escalation state. It does not send
-  reminders or update checklist rows. It is safe to schedule for monitoring;
-  without it, only this periodic report and its `CronRunLog` history are absent.
 - `/api/cron/overall-summary` returns counts for total, pending, done, not-done,
   and escalated rows. It is read-only apart from its `CronRunLog` entry and is
   safe to schedule for monitoring; without it, the periodic summary and its
   history are absent.
 
-Neither endpoint is scheduled in this phase. Their absence does not stop
-checklist generation, WhatsApp dispatch, or EOD processing.
+The reminder sweep targets `NOT_DONE` checklist items, sends the approved
+`not_done_reminder` template to the assigned employee, and sends
+`escalation_alert` when the reminder threshold is reached. High-priority
+reminders use the configured high-priority interval and daily cap; all other
+priorities use the default interval. It processes at most 12 reminders per
+request and leaves overflow or failed deliveries for a later tick.
+
+The `reminder-sweep-HHmm` cron-run key allows each 15-minute scheduled tick to
+run while preserving per-tick deduplication. Check the resulting cron history
+and `NotificationLog` for delivery outcomes.
 
 ## Read cron history
 

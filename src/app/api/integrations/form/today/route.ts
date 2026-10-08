@@ -3,10 +3,9 @@ import { NextResponse } from "next/server";
 import { toWhatsAppNumber } from "@/lib/business-logic";
 import { ensureSettings } from "@/lib/cron";
 import { ensureDailyQueueAndLock, getTodaysEmployeeTaskSets } from "@/lib/daily-task-service";
-import { addDays, dateKey, dbDate, istDateKey, istDayBounds } from "@/lib/dates";
+import { addDays, dateKey, dbDate, istDateKey } from "@/lib/dates";
 import { formatChoice } from "@/lib/form-submission";
 import { rejectUnlessIntegrationSecret } from "@/lib/integration-auth";
-import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -82,26 +81,11 @@ export async function GET(request: Request) {
       })
     : items;
 
-  const { start: dayStartIst, end: dayEndIst } = istDayBounds(date);
-  const recipientLogs = await prisma.notificationLog.findMany({
-    where: {
-      templateName: "senior_daily_checklist",
-      attemptedAt: { gte: dayStartIst, lte: dayEndIst },
-    },
-    select: {
-      recipientPhone: true,
-      status: true,
-    },
-  });
-
-  const recipientStatuses = new Map<string, (typeof recipientLogs)[number]["status"]>();
-  for (const log of recipientLogs) {
-    const normalized = toWhatsAppNumber(log.recipientPhone);
-    const key = normalized ?? log.recipientPhone.replace(/\D/g, "");
-    recipientStatuses.set(key, log.status);
-  }
-
   const byEmployeeMap = new Map<string, typeof filteredItems>();
+  const deliveryStatusByEmployeeId = new Map(employees.map((employee) => [
+    employee.employeeId,
+    employee.deliveryStatus,
+  ]));
   for (const item of filteredItems) {
     const employeeId = item.taskMaster?.employeeId ?? item.taskMaster?.employee?.id ?? item.employeeName;
     const list = byEmployeeMap.get(employeeId) ?? [];
@@ -113,7 +97,7 @@ export async function GET(request: Request) {
     const employee = employeeItems[0]?.taskMaster?.employee ?? null;
     const rawPhone = employee?.phone ?? employeeItems[0]?.employeePhone ?? null;
     const normalizedPhone = toWhatsAppNumber(rawPhone);
-    const deliveryStatus = normalizedPhone ? (recipientStatuses.get(normalizedPhone) === "SENT" ? "SENT" : recipientStatuses.get(normalizedPhone) === "FAILED" ? "FAILED" : "PENDING") : "PENDING";
+    const deliveryStatus = deliveryStatusByEmployeeId.get(employeeId) ?? "PENDING";
 
     return {
       employeeId,

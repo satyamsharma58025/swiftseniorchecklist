@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
   $transaction: vi.fn(),
-  webhookEvent: { create: vi.fn(), delete: vi.fn(), update: vi.fn() },
-  dailyChecklistItem: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-  activityLog: { create: vi.fn() },
+  webhookEvent: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
+  dailyChecklistItem: { findMany: vi.fn(), updateMany: vi.fn() },
+  activityLog: { createMany: vi.fn() },
   escalationLog: { updateMany: vi.fn() },
 }));
 
@@ -40,12 +40,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.$transaction.mockImplementation(async (callback) => callback(db));
   db.webhookEvent.create.mockResolvedValue({});
-  db.webhookEvent.delete.mockResolvedValue({});
-  db.webhookEvent.update.mockResolvedValue({});
+  db.webhookEvent.findUnique.mockResolvedValue({ processedAt: null });
+  db.webhookEvent.updateMany.mockResolvedValue({ count: 1 });
   db.dailyChecklistItem.findMany.mockResolvedValue([checklistItem]);
-  db.dailyChecklistItem.update.mockResolvedValue({});
   db.dailyChecklistItem.updateMany.mockResolvedValue({ count: 1 });
-  db.activityLog.create.mockResolvedValue({});
+  db.activityLog.createMany.mockResolvedValue({ count: 1 });
   db.escalationLog.updateMany.mockResolvedValue({ count: 0 });
 });
 
@@ -84,5 +83,73 @@ describe("POST /api/integrations/form/submit date validation", () => {
       newlyNotDone: [],
     });
     expect(db.webhookEvent.create).toHaveBeenCalledOnce();
+  });
+
+  it("limits an employee form submission to that employee's checklist items", async () => {
+    db.dailyChecklistItem.findMany.mockResolvedValue([
+      checklistItem,
+      {
+        ...checklistItem,
+        id: "item-2",
+        checklistCode: "CL-20261003-TASK2",
+        employeeName: "Raj Kumar",
+        status: "PENDING",
+      },
+    ]);
+
+    const response = await post({
+      responseId: "response-employee",
+      date: "2026-10-03",
+      employeeKey: "Yogesh_Tomar",
+      doneRaw: ["CL-20261003-TASK1"],
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ counts: { total: 1 } });
+    expect(db.dailyChecklistItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: ["item-1"] } }),
+    }));
+  });
+
+  it("returns a retryable status when the day's checklist has not been generated yet", async () => {
+    db.dailyChecklistItem.findMany.mockResolvedValueOnce([]);
+
+    const response = await post({ responseId: "response-no-checklist", date: "2026-10-03" });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(await response.json()).toMatchObject({ error: "NO_CHECKLIST_FOR_DATE" });
+  });
+
+  it("batches checklist updates and activity history when a task is submitted as not done", async () => {
+    db.dailyChecklistItem.findMany.mockResolvedValueOnce([{ ...checklistItem, status: "PENDING" }]);
+
+    const response = await post({
+      responseId: "response-not-done",
+      date: "2026-10-03",
+      doneRaw: [],
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      counts: { total: 1, markedNotDone: 1 },
+      newlyNotDone: [{ id: "item-1", checklistCode: "CL-20261003-TASK1" }],
+    });
+    expect(db.dailyChecklistItem.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { id: { in: ["item-1"] } },
+      data: expect.objectContaining({ status: "NOT_DONE", deliveryStatus: "DELIVERED" }),
+    }));
+    expect(db.activityLog.createMany).toHaveBeenCalledOnce();
+  });
+
+  it("only treats a unique event conflict as a duplicate submission", async () => {
+    db.webhookEvent.create.mockRejectedValueOnce({ code: "P2002" });
+    db.webhookEvent.findUnique.mockResolvedValueOnce({ processedAt: new Date() });
+
+    const response = await post({ responseId: "response-duplicate", date: "2026-10-03" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, duplicate: true });
+    expect(db.$transaction).not.toHaveBeenCalled();
   });
 });

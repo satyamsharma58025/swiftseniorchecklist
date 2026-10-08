@@ -509,13 +509,16 @@ export async function getTodaysEmployeeTaskSets(targetDate: Date) {
       templateName: "senior_daily_checklist",
       attemptedAt: { gte: dayStart, lte: dayEnd },
     },
+    orderBy: { attemptedAt: "desc" },
     select: { recipientPhone: true, status: true },
   });
 
   const deliveryStatusByPhone = new Map<string, "PENDING" | "SENT" | "FAILED">();
   for (const log of logs) {
     const phoneKey = toWhatsAppNumber(log.recipientPhone) ?? log.recipientPhone.replace(/\D/g, "");
-    deliveryStatusByPhone.set(phoneKey, log.status === "SENT" ? "SENT" : log.status === "FAILED" ? "FAILED" : "PENDING");
+    if (!deliveryStatusByPhone.has(phoneKey)) {
+      deliveryStatusByPhone.set(phoneKey, log.status === "SENT" ? "SENT" : log.status === "FAILED" ? "FAILED" : "PENDING");
+    }
   }
 
   const grouped = new Map<string, { employeeId: string; employeeName: string; designation: string; department: string; phone: string | null; supervisorName: string | null; supervisorPhone: string | null; taskCount: number; completedCount: number; pendingCount: number; notDoneCount: number; tasks: typeof items; deliveryStatus: "PENDING" | "SENT" | "FAILED"; }>();

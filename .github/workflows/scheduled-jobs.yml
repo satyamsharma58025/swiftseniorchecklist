@@ -5,6 +5,7 @@ on:
     - cron: "0 2 * * *"     # 07:30 IST backup
     - cron: "*/15 3-6 * * *" # Dispatch ticks, 08:30-12:15 IST
     - cron: "*/15 12-14 * * *" # Dispatch ticks, 17:30-20:15 IST
+    - cron: "*/15 7-11 * * *" # Reminder retries, 12:30-16:45 IST
     - cron: "30 14 * * *"   # 20:00 IST EOD cutoff
     - cron: "10 4 * * *"    # 09:40 IST watchdog
     - cron: "10 5 * * *"    # 10:40 IST watchdog
@@ -16,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: scheduled-jobs
+  group: scheduled-jobs-${{ github.event.schedule || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -57,6 +58,30 @@ jobs:
             -w '\n%{http_code}' \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.APP_BASE_URL }}/api/cron/dispatch?slot=auto" 2>&1)
+          CURL_STATUS=$?
+          set -e
+          HTTP_CODE=$(printf '%s\n' "$RESPONSE" | tail -n 1)
+          BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
+          printf 'HTTP status: %s (curl exit: %s)\n%s\n' "$HTTP_CODE" "$CURL_STATUS" "$BODY"
+          if [ "$CURL_STATUS" -ne 0 ] || [ "${HTTP_CODE#2}" = "$HTTP_CODE" ]; then
+            exit 1
+          fi
+
+  reminders:
+    if: >-
+      github.event_name == 'schedule' &&
+      (github.event.schedule == '*/15 3-6 * * *' ||
+       github.event.schedule == '*/15 7-11 * * *' ||
+       github.event.schedule == '*/15 12-14 * * *')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: |
+          set +e
+          RESPONSE=$(curl --fail-with-body --silent --show-error --max-time 90 --retry 3 --retry-delay 10 --retry-all-errors \
+            -w '\n%{http_code}' \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_BASE_URL }}/api/cron/reminder-sweep" 2>&1)
           CURL_STATUS=$?
           set -e
           HTTP_CODE=$(printf '%s\n' "$RESPONSE" | tail -n 1)

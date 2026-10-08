@@ -4,6 +4,31 @@
 
 This is a source/configuration trace only. No production database was queried and no production data was changed. The runtime check used local installed dependencies only: `normalizeCronDate`-equivalent Luxon conversion produced `2026-10-02T18:30:00.000Z` for the IST key `2026-10-03`, and serializing a `NextResponse` through `NextResponse.json(...)` produced `{}`. Actual database date values remain unverified until the read-only `scripts/diagnose-dates.ts` is run against the intended database.
 
+## Current automation state (verified 2026-10-08)
+
+The trace and findings below are historical and predate the reliability updates
+that follow. Current behavior is:
+
+- GitHub Actions runs daily sync, dispatch, and EOD; `dispatch` calls
+  `ensureDailyQueueAndLock` before reading recipients. Checklist reads for today
+  and tomorrow, and `/api/integrations/form/today`, also reconcile generation.
+- DailyChecklistItem is the durable, date-scoped materialized task set shared by
+  checklist pages, form refresh, dispatch, form submission, and reminders. A
+  database index covers date, status, and last reminder time; no instance-local
+  cache is used.
+- FormBridge posts submissions directly to `/api/integrations/form/submit`.
+  Employee-specific form submissions include an employee key and only update
+  that employee's rows. Database failures are not acknowledged as duplicates;
+  event processing and checklist changes are transactional, and transient
+  missing-checklist results are retryable.
+- `/api/cron/reminder-sweep` is scheduled every 15 minutes during the workday.
+  It sends due `NOT_DONE` WhatsApp reminders and threshold escalations, writes
+  NotificationLog outcomes, and uses atomic checklist claims to avoid parallel
+  duplicate attempts. Each run is bounded to 12 reminder items.
+- Missing WhatsApp template approval, missing credentials, invalid phone
+  numbers, failed cron runs, and failed delivery logs still require operational
+  monitoring; external provider delivery cannot be guaranteed by app code.
+
 ## One-day execution trace
 
 | Step | Observed path | Effect / finding |

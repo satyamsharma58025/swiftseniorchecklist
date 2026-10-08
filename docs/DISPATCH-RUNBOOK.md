@@ -59,6 +59,29 @@ The morning form refresh includes all of the employee's checklist rows. The
 evening refresh sends only non-DONE choices. FormBridge reuses
 `FORM_ID_<date>_<employee>`; if the form already has responses, it preserves
 those responses and returns the existing URL without rebuilding the form.
+Each employee form submission includes its employee key, so it updates only
+that employee's checklist items. Transient intake failures remain queued in
+Apps Script and retry; missing checklist data returns a retryable `503` rather
+than discarding a valid response.
+
+## Task reminders
+
+GitHub Actions calls `/api/cron/reminder-sweep` every 15 minutes during the
+daytime IST operating window. Due `NOT_DONE` tasks are sent to the assigned
+employee using the approved `not_done_reminder` template and the configured
+priority interval (2 hours for HIGH; the default interval otherwise). HIGH
+tasks stop at the configured daily reminder cap. Once the reminder threshold
+is reached, `escalation_alert` is sent to the supervisor (or the configured
+plant head when tier-2 escalation is enabled). Every attempt is written to
+`NotificationLog`; failed attempts leave the checklist eligible for a later
+sweep. The sweep handles 12 messages per run to keep each API call bounded;
+later 15-minute ticks continue remaining due work.
+
+The materialized `DailyChecklistItem` rows are the durable per-day task-set
+cache used by checklist reads, form refreshes, dispatch, and reminders. They
+are updated through the normal generation/submission flows; avoid adding a
+process-local cache for this data because app instances do not share cache
+invalidations.
 
 Tasks created in Task Master are reconciled immediately when their cadence is
 due on the first date without an existing checklist or locked queue snapshot.

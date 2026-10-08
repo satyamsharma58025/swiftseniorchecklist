@@ -32,13 +32,16 @@ function employeeKeyOf(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9]/g, "_");
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+}
+
 /**
  * POST /api/integrations/form/submit
  *
- * Called by n8n after the Google Form is submitted. Applies the Senior
+ * Called by FormBridge after the Google Form is submitted. Applies the Senior
  * Authority's answers to the day's checklist so the app reflects them
- * immediately, and returns the tasks that just became NOT_DONE so n8n can run
- * the WhatsApp reminder / escalation chain.
+ * immediately, and returns the tasks that just became NOT_DONE for reporting.
  */
 export async function POST(request: Request) {
   const denied = rejectUnlessIntegrationSecret(request);
@@ -65,7 +68,6 @@ export async function POST(request: Request) {
   const runDate = dbDate(date);
   const eventId = `form:${body.responseId}`;
 
-  // Idempotency: the unique eventId means a retry of the same response is a no-op.
   try {
     await prisma.webhookEvent.create({
       data: {
@@ -75,84 +77,118 @@ export async function POST(request: Request) {
         payload: { ...body, date },
       },
     });
-  } catch {
-    return NextResponse.json({ ok: true, duplicate: true, date });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+    const existing = await prisma.webhookEvent.findUnique({
+      where: { eventId },
+      select: { processedAt: true },
+    });
+    if (!existing) throw error;
+    if (existing.processedAt) {
+      return NextResponse.json({ ok: true, duplicate: true, date });
+    }
   }
 
   try {
-    const dayItems = await prisma.dailyChecklistItem.findMany({
-      where: { date: runDate },
-      select: {
-        id: true,
-        checklistCode: true,
-        status: true,
-        escalated: true,
-        reminderCount: true,
-        employeeName: true,
-        employeePhone: true,
-        taskDescription: true,
-        supervisorName: true,
-        supervisorPhone: true,
-        escalationThreshold: true,
-        seniorRemarks: true,
-      },
-    });
+    const result = await prisma.$transaction(async (tx) => {
+      // Claim inside the transaction so concurrent retries serialize. The claim
+      // is rolled back together with any failed checklist updates.
+      const claim = await tx.webhookEvent.updateMany({
+        where: { eventId, processedAt: null },
+        data: { processedAt: new Date() },
+      });
+      if (claim.count === 0) return { duplicate: true as const };
 
-    if (!dayItems.length) {
-      await prisma.webhookEvent.delete({ where: { eventId } });
-      return NextResponse.json({ error: "NO_CHECKLIST_FOR_DATE", date }, { status: 404 });
-    }
+      const dayItems = await tx.dailyChecklistItem.findMany({
+        where: { date: runDate },
+        select: {
+          id: true,
+          checklistCode: true,
+          status: true,
+          escalated: true,
+          reminderCount: true,
+          employeeName: true,
+          employeePhone: true,
+          taskDescription: true,
+          supervisorName: true,
+          supervisorPhone: true,
+          escalationThreshold: true,
+          seniorRemarks: true,
+        },
+      });
+      if (!dayItems.length) {
+        throw new Error("NO_CHECKLIST_FOR_DATE");
+      }
 
-    // A per-employee form must only touch that employee's tasks. Otherwise one
-    // submission would mark every other employee's pending tasks NOT_DONE.
-    const items = body.employeeKey
-      ? dayItems.filter((item) => employeeKeyOf(item.employeeName) === body.employeeKey)
-      : dayItems;
+      // A per-employee form must only touch that employee's tasks.
+      const items = body.employeeKey
+        ? dayItems.filter((item) => employeeKeyOf(item.employeeName) === body.employeeKey)
+        : dayItems;
+      if (!items.length) {
+        throw new Error("NO_CHECKLIST_FOR_EMPLOYEE");
+      }
 
-    if (!items.length) {
-      await prisma.webhookEvent.delete({ where: { eventId } });
-      return NextResponse.json(
-        { error: "NO_CHECKLIST_FOR_EMPLOYEE", date, employeeKey: body.employeeKey },
-        { status: 404 },
-      );
-    }
-
-    const plan = planFormUpdates(items, { doneRaw: body.doneRaw, remarksRaw: body.remarksRaw });
-    const submittedAt = body.submittedAt && !Number.isNaN(Date.parse(body.submittedAt)) ? new Date(body.submittedAt) : new Date();
-    const byId = new Map(items.map((item) => [item.id, item]));
-
-    await prisma.$transaction(async (tx) => {
+      const plan = planFormUpdates(items, { doneRaw: body.doneRaw, remarksRaw: body.remarksRaw });
+      const submittedAt = body.submittedAt && !Number.isNaN(Date.parse(body.submittedAt)) ? new Date(body.submittedAt) : new Date();
+      const byId = new Map(items.map((item) => [item.id, item]));
+      const updateGroups = new Map<string, {
+        ids: string[];
+        data: {
+          status: "DONE" | "NOT_DONE";
+          colorStatus: ReturnType<typeof colorFor>;
+          deliveryStatus: "DELIVERED";
+          formSubmissionTimestamp: Date;
+          seniorRemarks?: string;
+        };
+      }>();
+      const activityEntries = [];
       for (const update of plan.updates) {
+        if (update.to === "PENDING") continue;
         const item = byId.get(update.id)!;
-
-        await tx.dailyChecklistItem.update({
-          where: { id: update.id },
-          data: {
-            status: update.to,
-            ...(update.remark !== undefined ? { seniorRemarks: update.remark } : {}),
-            colorStatus: colorFor({ status: update.to, escalated: item.escalated, reminderCount: item.reminderCount }),
-            deliveryStatus: "DELIVERED",
-            formSubmissionTimestamp: submittedAt,
-          },
-        });
-
-        await tx.activityLog.create({
-          data: {
-            checklistItemId: update.id,
-            actorUserId: "google-form:senior",
-            fromStatus: update.from,
-            toStatus: update.to,
-            note: update.remark ?? "Marked done via Google Form",
-          },
-        });
-
-        // A task that is now done no longer needs an open escalation.
-        if (update.to === "DONE" && item.escalated) {
-          await tx.escalationLog.updateMany({
-            where: { checklistItemId: update.id, resolved: false },
-            data: { resolved: true, resolvedAt: submittedAt },
+        const colorStatus = colorFor({ status: update.to, escalated: item.escalated, reminderCount: item.reminderCount });
+        const groupKey = JSON.stringify([update.to, colorStatus, update.remark ?? null]);
+        const existingGroup = updateGroups.get(groupKey);
+        if (existingGroup) {
+          existingGroup.ids.push(update.id);
+        } else {
+          updateGroups.set(groupKey, {
+            ids: [update.id],
+            data: {
+              status: update.to,
+              colorStatus,
+              deliveryStatus: "DELIVERED",
+              formSubmissionTimestamp: submittedAt,
+              ...(update.remark !== undefined ? { seniorRemarks: update.remark } : {}),
+            },
           });
         }
+        activityEntries.push({
+          checklistItemId: update.id,
+          actorUserId: "google-form:senior",
+          fromStatus: update.from,
+          toStatus: update.to,
+          note: update.remark ?? "Marked done via Google Form",
+        });
+      }
+
+      for (const group of updateGroups.values()) {
+        await tx.dailyChecklistItem.updateMany({
+          where: { id: { in: group.ids } },
+          data: group.data,
+        });
+      }
+      if (activityEntries.length) {
+        await tx.activityLog.createMany({ data: activityEntries });
+      }
+
+      const completedEscalations = plan.updates
+        .filter((update) => update.to === "DONE" && byId.get(update.id)?.escalated)
+        .map((update) => update.id);
+      if (completedEscalations.length) {
+        await tx.escalationLog.updateMany({
+          where: { checklistItemId: { in: completedEscalations }, resolved: false },
+          data: { resolved: true, resolvedAt: submittedAt },
+        });
       }
 
       // Stamp every item the form covered (even unchanged ones) so the app can
@@ -162,41 +198,55 @@ export async function POST(request: Request) {
         data: { formSubmissionTimestamp: submittedAt },
       });
 
-      await tx.webhookEvent.update({ where: { eventId }, data: { processedAt: new Date() } });
-    }, { maxWait: 10_000, timeout: 60_000 });
+      const newlyNotDone = plan.updates
+        .filter((update) => update.to === "NOT_DONE" && update.from !== "NOT_DONE")
+        .map((update) => {
+          const item = byId.get(update.id)!;
+          return {
+            id: item.id,
+            checklistCode: item.checklistCode,
+            employeeName: item.employeeName,
+            employeePhoneWhatsapp: toWhatsAppNumber(item.employeePhone),
+            taskDescription: item.taskDescription,
+            seniorRemarks: update.remark ?? item.seniorRemarks ?? "No remarks",
+            reminderCount: item.reminderCount,
+            escalationThreshold: item.escalationThreshold,
+          };
+        });
 
-    const newlyNotDone = plan.updates
-      .filter((update) => update.to === "NOT_DONE" && update.from !== "NOT_DONE")
-      .map((update) => {
-        const item = byId.get(update.id)!;
-        return {
-          id: item.id,
-          checklistCode: item.checklistCode,
-          employeeName: item.employeeName,
-          employeePhoneWhatsapp: toWhatsAppNumber(item.employeePhone),
-          taskDescription: item.taskDescription,
-          seniorRemarks: update.remark ?? item.seniorRemarks ?? "No remarks",
-          reminderCount: item.reminderCount,
-          escalationThreshold: item.escalationThreshold,
-        };
-      });
-
-    return NextResponse.json({
-      ok: true,
-      date,
-      counts: {
-        total: items.length,
-        markedDone: plan.updates.filter((update) => update.to === "DONE").length,
-        markedNotDone: plan.updates.filter((update) => update.to === "NOT_DONE").length,
-        unchanged: plan.unchanged,
-      },
-      unknownCodes: plan.unknownCodes,
-      newlyNotDone,
+      return {
+        duplicate: false as const,
+        response: {
+          ok: true,
+          date,
+          counts: {
+            total: items.length,
+            markedDone: plan.updates.filter((update) => update.to === "DONE").length,
+            markedNotDone: plan.updates.filter((update) => update.to === "NOT_DONE").length,
+            unchanged: plan.unchanged,
+          },
+          unknownCodes: plan.unknownCodes,
+          newlyNotDone,
+        },
+      };
     });
+
+    if (result.duplicate) {
+      return NextResponse.json({ ok: true, duplicate: true, date });
+    }
+    return NextResponse.json(result.response);
   } catch (error) {
-    // Free the idempotency key so the caller's retry can succeed.
-    await prisma.webhookEvent.delete({ where: { eventId } }).catch(() => undefined);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: "PROCESSING_FAILED", message }, { status: 500 });
+    if (message === "NO_CHECKLIST_FOR_DATE" || message === "NO_CHECKLIST_FOR_EMPLOYEE") {
+      return NextResponse.json({ error: message, date }, {
+        status: 503,
+        headers: { "Retry-After": "60" },
+      });
+    }
+
+    // Keep an unprocessed WebhookEvent so Apps Script's retry can resume after
+    // transient database or transaction failures.
+    console.error("[form/submit] PROCESSING_FAILED", { date, responseId: body.responseId, message });
+    return NextResponse.json({ error: "PROCESSING_FAILED" }, { status: 500 });
   }
 }

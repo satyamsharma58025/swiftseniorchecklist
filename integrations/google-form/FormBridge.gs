@@ -202,6 +202,10 @@ function refreshForm_(body) {
     PropertiesService.getScriptProperties().setProperty('FORM_DATE_' + form.getId(), dateStr);
   }
 
+  if (employeeName) {
+    props.setProperty('FORM_EMPLOYEE_KEY_' + form.getId(), employeeKey_(employeeName));
+  }
+
   ensureSubmitTrigger_(form);
   var formDescription = 'Tick every task that is completed today (' + dateStr + '). For anything not done, add notes in the remarks section below.';
   var updatedInBatch = updateFormInBatch_(form, formTitle, formDescription, employeeName, choices, body.byEmployee);
@@ -512,6 +516,30 @@ function resolveSubmissionDate_(formId, properties) {
   return String(properties.FORM_DATE || '');
 }
 
+function employeeKey_(employeeName) {
+  return String(employeeName || '').trim().replace(/[^a-zA-Z0-9]/g, '_');
+}
+
+function resolveEmployeeKey_(formId, properties) {
+  var savedKey = properties['FORM_EMPLOYEE_KEY_' + formId];
+  if (savedKey) {
+    return String(savedKey);
+  }
+
+  var keys = Object.keys(properties || {});
+  for (var i = 0; i < keys.length; i++) {
+    if (String(properties[keys[i]]) !== String(formId)) {
+      continue;
+    }
+    var match = keys[i].match(/^FORM_ID_\d{4}-\d{2}-\d{2}_(.+)$/);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return '';
+}
+
 function buildPayload_(response, formId) {
   var doneCodes = [];
   var individualRemarks = [];
@@ -563,7 +591,8 @@ function buildPayload_(response, formId) {
     submittedAt: response.getTimestamp().toISOString(),
     doneRaw: doneCodes,
     remarksRaw: finalRemarksText,
-    date: formDate
+    date: formDate,
+    employeeKey: resolveEmployeeKey_(formId, props) || undefined
   };
   return payload;
 }
@@ -890,4 +919,3 @@ function prop_(key) {
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
-

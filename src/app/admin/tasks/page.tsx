@@ -10,7 +10,7 @@ export default async function AdminTasksPage() {
   const [tasks, employees] = await Promise.all([
     prisma.taskMaster.findMany({
       orderBy: { taskCode: "asc" },
-      include: { employee: { select: { name: true } } },
+      include: { employee: { select: { name: true, active: true } } },
     }),
     prisma.employee.findMany({
       where: { active: true },
@@ -66,8 +66,8 @@ export default async function AdminTasksPage() {
                           <td data-label="Cadence" className="border-[3px] border-ink px-4 py-3 text-ink">{task.cadence}</td>
                           <td data-label="Priority" className="border-[3px] border-ink px-4 py-3 text-ink">{task.priority}</td>
                           <td data-label="Status" className="border-[3px] border-ink px-4 py-3">
-                            <span className={task.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>
-                              {task.active ? "Active" : "Inactive"}
+                            <span className={task.active && task.employee.active ? "sticker bg-brand-green text-ink" : "sticker bg-paper text-ink"}>
+                              {!task.employee.active ? "Employee archived" : task.active ? "Active" : "Inactive"}
                             </span>
                           </td>
                           <td data-label="Actions" className="border-[3px] border-ink px-4 py-3">

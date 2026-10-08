@@ -31,6 +31,7 @@ export type DueTaskMaster = {
     phone: string | null;
     designation: string;
     department: string;
+    active: boolean;
     supervisor?: { id: string; name: string; phone: string | null } | null;
   };
 };
@@ -86,7 +87,7 @@ function logTaskFailure(targetDate: Date, taskCode: string, attempt: number, err
 export async function resolveAssignedEmployee(
   task: {
     employeeId: string;
-    employee?: { id: string; name: string; phone: string | null; designation?: string; department?: string; supervisor?: { id: string; name: string; phone: string | null } | null } | null;
+    employee?: { id: string; name: string; phone: string | null; designation?: string; department?: string; active?: boolean; supervisor?: { id: string; name: string; phone: string | null } | null } | null;
     reassignments?: Array<{ id: string; effectiveDate: Date | string; newEmployeeId: string }>;
   },
   targetDate: Date,
@@ -96,6 +97,7 @@ export async function resolveAssignedEmployee(
   phone: string | null;
   designation: string;
   department: string;
+  active: boolean;
   supervisor?: { id: string; name: string; phone: string | null } | null;
 }> {
   const baseEmployee = task.employee ?? (await prisma.employee.findUnique({
@@ -121,6 +123,7 @@ export async function resolveAssignedEmployee(
       phone: baseEmployee.phone,
       designation: baseEmployee.designation ?? "Employee",
       department: baseEmployee.department ?? "General",
+      active: baseEmployee.active ?? true,
       supervisor: baseEmployee.supervisor ?? null,
     };
   }
@@ -137,6 +140,7 @@ export async function resolveAssignedEmployee(
       phone: baseEmployee.phone,
       designation: baseEmployee.designation ?? "Employee",
       department: baseEmployee.department ?? "General",
+      active: baseEmployee.active ?? true,
       supervisor: baseEmployee.supervisor ?? null,
     };
   }
@@ -147,6 +151,7 @@ export async function resolveAssignedEmployee(
     phone: reassignedEmployee.phone,
     designation: reassignedEmployee.designation ?? "Employee",
     department: reassignedEmployee.department ?? "General",
+    active: reassignedEmployee.active ?? true,
     supervisor: reassignedEmployee.supervisor ?? null,
   };
 }
@@ -161,7 +166,7 @@ export type DueTaskSet = {
 
 export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskSet> {
   const taskMasters = await prisma.taskMaster.findMany({
-    where: { active: true },
+    where: { active: true, employee: { is: { active: true } } },
     include: {
       employee: { include: { supervisor: true } },
       reassignments: { orderBy: { effectiveDate: "desc" } },
@@ -249,6 +254,7 @@ export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskSet> {
         if (!isDue) break;
 
         const assignedEmployee = await resolveAssignedEmployee(task, targetDate);
+        if (!assignedEmployee.active) break;
         dueTaskMasters.push({
           id: task.id,
           taskCode: task.taskCode,
@@ -430,7 +436,13 @@ export async function ensureDailyQueueAndLock(runDate: Date) {
   const dueSet = await getDueTaskMasters(runDate);
   const dueTaskIds = new Set(dueSet.tasks.map((task) => task.id));
   const queuedItems = await prisma.assignmentQueueItem.findMany({
-    where: { date: runDate, includeToday: true, taskMasterId: { not: null } },
+    where: {
+      date: runDate,
+      includeToday: true,
+      taskMasterId: { not: null },
+      employee: { is: { active: true } },
+      taskMaster: { is: { active: true, employee: { is: { active: true } } } },
+    },
     include: { employee: { include: { supervisor: true } }, taskMaster: true },
   });
   const queuedOnly = queuedItems.filter((item) => item.taskMasterId && item.taskMaster && !dueTaskIds.has(item.taskMasterId));

@@ -1,4 +1,4 @@
-import { DeleteEmployeeButton } from "@/app/admin/employees/_components/DeleteEmployeeButton";
+import { EmployeeActions } from "@/app/admin/employees/_components/EmployeeActions";
 import { PageEmptyState } from "@/components/ui/PageEmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { prisma } from "@/lib/prisma";
@@ -56,7 +56,11 @@ export default async function AdminEmployeesPage() {
                       </span>
                     </td>
                     <td data-label="Actions" className="border-[3px] border-ink px-4 py-3">
-                      <DeleteEmployeeButton employeeId={employee.id} employeeName={employee.name} />
+                      <EmployeeActions
+                        employeeId={employee.id}
+                        employeeName={employee.name}
+                        active={employee.active}
+                      />
                     </td>
                   </tr>
                 ))}

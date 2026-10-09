@@ -25,6 +25,8 @@ export function classifyRoute(pathname: string, method = "GET"): RoutePolicy {
     normalized === "/favicon.ico" ||
     normalized.startsWith("/api/cron/") ||
     normalized.startsWith("/api/integrations/") ||
+    // n8n logs WhatsApp sends here; the route enforces x-cron-secret itself.
+    normalized === "/api/notifications/log" ||
     normalized.startsWith("/api/webhooks/whatsapp")
   ) {
     return { requiresAuth: false, allowedRoles: ["MANAGER", "SENIOR", "EMPLOYEE"] };

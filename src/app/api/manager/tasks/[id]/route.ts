@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { dateKey, dbDate, istDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import { taskActiveUpdateData } from "@/lib/task-activation";
 import {
   diffTask,
   editTaskSchema,
@@ -111,8 +112,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     endDate: after.endDate ? dbDate(after.endDate) : null,
     category: after.category,
     notes: after.notes,
-    active: after.active,
-    ...(needsEffectiveFrom(diff) ? { scheduleEffectiveFrom: dbDate(todayKey) } : {}),
+    ...taskActiveUpdateData(before.active, after.active, todayKey),
+    ...(needsEffectiveFrom(diff) && diff.active?.to !== true
+      ? { scheduleEffectiveFrom: dbDate(todayKey) }
+      : {}),
   };
 
   try {

@@ -46,3 +46,6 @@ next-env.d.ts
 *.sql.gz
 diag-output.txt
 .vscode/
+Swift_Strips_Revised_Key_Employee_Scope_of_Work-1.xlsx
+backups/
+data/

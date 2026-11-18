@@ -39,3 +39,23 @@ npx vitest run
 
 The real-PostgreSQL integration test requires the local disposable database;
 see the scheduled-jobs document for the exact commands.
+
+## Revised employee scope import
+
+The revised scope workbook can be previewed and imported with:
+
+```sh
+npx tsx scripts/import-revised-scope.ts path/to/Swift_Strips_Revised_Key_Employee_Scope_of_Work-1.xlsx
+npx tsx scripts/import-revised-scope.ts path/to/Swift_Strips_Revised_Key_Employee_Scope_of_Work-1.xlsx --commit
+```
+
+The first command is read-only. Configure `DATABASE_URL` to preview existing
+employees/tasks; without it, the script only parses the workbook. Review the
+preview before using `--commit`. The importer retires superseded tasks without
+deleting checklist history, preserves existing phone values, and leaves
+unknown phone numbers blank. It excludes unapproved recommendations and
+unresolved identities; event-based duties and non-daily frequencies without
+the schedule detail required by the app are not activated. Supervisor links
+are set only when a single named supervisor can be matched; unresolved
+reporting lines are left unchanged or unassigned. It does not send WhatsApp
+messages.

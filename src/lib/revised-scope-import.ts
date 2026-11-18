@@ -1,8 +1,7 @@
 import * as XLSX from "xlsx";
 
+import type { Cadence } from "@/lib/cadence";
 import { normalizeScheduleDetail } from "@/lib/task-master-import";
-
-type Cadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 
 export type RevisedScopeEmployee = {
   name: string;
@@ -22,6 +21,8 @@ export type RevisedScopeTask = {
   escalationThreshold: number;
   category: string;
   notes: string;
+  active: boolean;
+  inactiveReasons: string[];
   priority: "MEDIUM";
   lineNumber: number;
 };
@@ -35,8 +36,21 @@ export type DeferredScopeEmployee = {
 export type SkippedScopeLine = {
   employeeName: string;
   scopeSheet: string;
-  lineNumber: number;
+  lineNumber: number | null;
   reason: string;
+};
+
+export type ScopeSheetReconciliation = {
+  employeeName: string;
+  scopeSheet: string;
+  ownerStatus: "confirmed" | "deferred";
+  ownerReason: string | null;
+  rowsInSheet: number;
+  rowsParsed: number;
+  rowsSkipped: number;
+  inactiveRows: number;
+  skippedReasons: Array<{ reason: string; count: number }>;
+  inactiveReasons: Array<{ reason: string; count: number }>;
 };
 
 export type ParsedRevisedScope = {
@@ -44,6 +58,7 @@ export type ParsedRevisedScope = {
   tasks: RevisedScopeTask[];
   deferredEmployees: DeferredScopeEmployee[];
   skippedLines: SkippedScopeLine[];
+  reconciliation: ScopeSheetReconciliation[];
 };
 
 export type ExistingTaskMaster = {
@@ -218,14 +233,14 @@ function supervisorFor(reporting: string): string | null {
   return candidate;
 }
 
-function cadenceFor(frequency: string): Cadence | null {
+function cadenceFor(frequency: string): Cadence {
   const value = frequency.toLowerCase();
   if (/\bdaily\b/.test(value)) return "DAILY";
   if (/\bweekly\b/.test(value)) return "WEEKLY";
   if (/\bmonthly\b/.test(value)) return "MONTHLY";
   if (/\bquarterly\b/.test(value)) return "QUARTERLY";
   if (/\byearly\b|\bannual(?:ly)?\b/.test(value)) return "YEARLY";
-  return null;
+  return "EVENT_DRIVEN";
 }
 
 function scheduleDetailFor(cadence: Cadence, frequency: string): string | null {
@@ -268,6 +283,7 @@ export function parseRevisedScopeWorkbook(workbook: XLSX.WorkBook): ParsedRevise
   const tasks: RevisedScopeTask[] = [];
   const deferredEmployees: DeferredScopeEmployee[] = [];
   const skippedLines: SkippedScopeLine[] = [];
+  const reconciliation: ScopeSheetReconciliation[] = [];
   const seenEmployees = new Set<string>();
   const seenTaskCodes = new Set<string>();
   const clarifications = clarificationReferences(workbook);
@@ -289,17 +305,15 @@ export function parseRevisedScopeWorkbook(workbook: XLSX.WorkBook): ParsedRevise
     const deferredReason = isDeferred(name, designation, reporting, clarifications);
     if (deferredReason) {
       deferredEmployees.push({ name, scopeSheet, reason: deferredReason });
-      continue;
+    } else {
+      employees.push({
+        name,
+        department,
+        designation: designation.replace(/\s*\([^)]*confirm[^)]*\)/i, "").trim() || "Employee",
+        supervisorName: supervisorFor(reporting),
+        scopeSheet,
+      });
     }
-
-    const employee: RevisedScopeEmployee = {
-      name,
-      department,
-      designation: designation.replace(/\s*\([^)]*confirm[^)]*\)/i, "").trim() || "Employee",
-      supervisorName: supervisorFor(reporting),
-      scopeSheet,
-    };
-    employees.push(employee);
 
     const scopeSheetName = workbook.SheetNames.find((sheetName) => normalized(sheetName) === normalized(scopeSheet));
     if (!scopeSheetName) {
@@ -314,43 +328,48 @@ export function parseRevisedScopeWorkbook(workbook: XLSX.WorkBook): ParsedRevise
       "Source status",
     ]);
 
-    for (const scopeRow of scopeRows.slice(scopeHeader.index + 1)) {
-      const lineNumber = Number.parseInt(cell(scopeRow, scopeHeader.columns, "No."), 10);
+    const bodyRows = scopeRows.slice(scopeHeader.index + 1).filter((row) =>
+      ["No.", "Responsibility / scope of work", "Frequency", "Source status"]
+        .some((header) => cell(row, scopeHeader.columns, header)),
+    );
+    const skippedReasonCounts = new Map<string, number>();
+    const inactiveReasonCounts = new Map<string, number>();
+    let rowsParsed = 0;
+    let rowsSkipped = 0;
+    let inactiveRows = 0;
+
+    for (const scopeRow of bodyRows) {
+      const lineNumberText = cell(scopeRow, scopeHeader.columns, "No.");
+      const lineNumber = /^\d+$/.test(lineNumberText) ? Number.parseInt(lineNumberText, 10) : null;
       const taskDescription = cell(scopeRow, scopeHeader.columns, "Responsibility / scope of work");
-      if (!Number.isInteger(lineNumber) || !taskDescription) continue;
+      if (lineNumber === null || !taskDescription) {
+        const reason = lineNumber === null ? "Missing or invalid task number." : "Missing task description.";
+        skippedLines.push({ employeeName: name, scopeSheet, lineNumber, reason });
+        skippedReasonCounts.set(reason, (skippedReasonCounts.get(reason) ?? 0) + 1);
+        rowsSkipped += 1;
+        continue;
+      }
+
+      rowsParsed += 1;
 
       const sourceStatus = normalized(cell(scopeRow, scopeHeader.columns, "Source status"));
-      if (sourceStatus !== "existingreworded") {
-        skippedLines.push({
-          employeeName: name,
-          scopeSheet,
-          lineNumber,
-          reason: sourceStatus === "recommendedaddition" ? "Recommended addition is not approved." : "Not marked Existing – reworded.",
-        });
-        continue;
-      }
-
       const frequency = cell(scopeRow, scopeHeader.columns, "Frequency");
-      const cadence = cadenceFor(frequency);
-      if (!cadence) {
-        skippedLines.push({
-          employeeName: name,
-          scopeSheet,
-          lineNumber,
-          reason: "No calendar cadence; event-based duty kept out of the default checklist.",
-        });
-        continue;
+      const inactiveReasons: string[] = [];
+      if (sourceStatus === "recommendedaddition") {
+        inactiveReasons.push("Recommended addition; inactive pending approval.");
+      } else if (sourceStatus !== "existingreworded") {
+        inactiveReasons.push(`Source status ${sourceStatus || "blank"} is not approved; inactive pending confirmation.`);
       }
 
-      const scheduleDetail = scheduleDetailFor(cadence, frequency);
-      if (cadence !== "DAILY" && !scheduleDetail) {
-        skippedLines.push({
-          employeeName: name,
-          scopeSheet,
-          lineNumber,
-          reason: `${cadence} frequency is missing the schedule detail required by the app.`,
-        });
-        continue;
+      const cadence = cadenceFor(frequency);
+      let scheduleDetail: string | null = null;
+      if (cadence === "EVENT_DRIVEN") {
+        inactiveReasons.push("No calendar cadence; event-driven duty is inactive pending trigger specification.");
+      } else {
+        scheduleDetail = scheduleDetailFor(cadence, frequency);
+        if (cadence !== "DAILY" && !scheduleDetail) {
+          inactiveReasons.push(`${cadence} schedule detail is missing; inactive pending schedule clarification.`);
+        }
       }
 
       const taskCode = taskCodeFor(name, lineNumber);
@@ -358,6 +377,14 @@ export function parseRevisedScopeWorkbook(workbook: XLSX.WorkBook): ParsedRevise
         throw new Error(`Duplicate generated task code "${taskCode}" in the revised scope workbook.`);
       }
       seenTaskCodes.add(taskCode);
+
+      const active = inactiveReasons.length === 0;
+      if (!active) {
+        inactiveRows += 1;
+        for (const reason of inactiveReasons) {
+          inactiveReasonCounts.set(reason, (inactiveReasonCounts.get(reason) ?? 0) + 1);
+        }
+      }
 
       tasks.push({
         taskCode,
@@ -368,14 +395,32 @@ export function parseRevisedScopeWorkbook(workbook: XLSX.WorkBook): ParsedRevise
         scheduleDetail,
         escalationThreshold: 2,
         category: department || "Operations",
-        notes: `Revised scope: ${scopeSheet}, line ${lineNumber}; frequency: ${frequency}.`,
+        notes: [
+          `Revised scope: ${scopeSheet}, line ${lineNumber}; frequency: ${frequency || "not stated"}.`,
+          ...inactiveReasons,
+        ].join(" "),
+        active,
+        inactiveReasons,
         priority: "MEDIUM",
         lineNumber,
       });
     }
+
+    reconciliation.push({
+      employeeName: name,
+      scopeSheet,
+      ownerStatus: deferredReason ? "deferred" : "confirmed",
+      ownerReason: deferredReason,
+      rowsInSheet: bodyRows.length,
+      rowsParsed,
+      rowsSkipped,
+      inactiveRows,
+      skippedReasons: [...skippedReasonCounts].map(([reason, count]) => ({ reason, count })),
+      inactiveReasons: [...inactiveReasonCounts].map(([reason, count]) => ({ reason, count })),
+    });
   }
 
-  return { employees, tasks, deferredEmployees, skippedLines };
+  return { employees, tasks, deferredEmployees, skippedLines, reconciliation };
 }
 
 export function selectSupersededTaskMasters(

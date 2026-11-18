@@ -153,6 +153,53 @@ describe("getDueTaskMasters", () => {
 });
 
 describe("ensureDailyQueueAndLock", () => {
+  it("does not generate before a future schedule-effective date, then generates on that date", async () => {
+    const effectiveDate = dbDate("2026-10-01");
+    db.taskMaster.findMany.mockResolvedValue([
+      baseTask({ scheduleEffectiveFrom: effectiveDate }),
+    ]);
+    db.assignmentQueueItem.findMany.mockResolvedValue([{
+      id: "queue-1",
+      queueCode: "Q-20260930-0001",
+      date: runDate,
+      employeeId: "emp-1",
+      taskDescription: "Review production summary",
+      source: "AUTO",
+      taskMasterId: "tm-1",
+      includeToday: true,
+      priority: "HIGH",
+      locked: false,
+      employee: {
+        id: "emp-1",
+        name: "Yogesh Tomar",
+        phone: "9876543210",
+        designation: "Employee",
+        department: "Operations",
+        supervisor: null,
+      },
+      taskMaster: {
+        id: "tm-1",
+        taskCode: "CEO-01-PROD",
+        escalationThreshold: 2,
+        scheduleEffectiveFrom: effectiveDate,
+      },
+    }]);
+
+    const todayResult = await ensureDailyQueueAndLock(runDate);
+
+    expect(todayResult).toMatchObject({ created: 0, existing: 0, failed: [] });
+    expect(db.assignmentQueueItem.upsert).not.toHaveBeenCalled();
+    expect(db.dailyChecklistItem.create).not.toHaveBeenCalled();
+
+    db.assignmentQueueItem.findMany.mockResolvedValue([]);
+    const effectiveDateResult = await ensureDailyQueueAndLock(effectiveDate);
+
+    expect(effectiveDateResult).toMatchObject({ created: 1, existing: 0, failed: [] });
+    expect(db.dailyChecklistItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ date: effectiveDate, taskMasterId: "tm-1" }),
+    });
+  });
+
   it("reconciles missing tasks when some daily rows already exist", async () => {
     const tasks = [
       baseTask({ id: "tm-1", taskCode: "CEO-01-PROD" }),

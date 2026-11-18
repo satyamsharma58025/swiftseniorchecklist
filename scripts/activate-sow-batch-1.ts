@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { DateTime } from "luxon";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
-import { dbDate, dateKey, istDateKey } from "@/lib/dates";
+import { addDays, dbDate, dateKey, istDateKey } from "@/lib/dates";
+import { checklistCode } from "@/lib/cadence";
 import {
   activationTasksToChange,
   rollbackRowsToRemove,
@@ -186,12 +187,25 @@ function printActivationPlan(
   tasks: ScriptTask[],
   employees: BatchEmployeeSnapshot[],
   changes: BatchTaskSnapshot[],
+  todayKey: string,
+  effectiveFromKey: string,
 ): void {
   const changeIds = new Set(changes.map((task) => task.id));
   console.log(`Employees in scope: ${employees.length}`);
   for (const employee of SOW_ACTIVATION_BATCH_1) {
     const row = employees.find(({ id }) => id === employee.employeeId)!;
     console.log(`EMPLOYEE | ${employee.employeeName} | ${employee.employeeId} | active=${row.active} | phone=${row.phone ? "Y" : "N"} | tasks=${employee.taskCodes.length}`);
+  }
+  console.log(
+    `scheduleEffectiveFrom to write: ${effectiveFromKey} IST (${dbDate(effectiveFromKey).toISOString()}); today=${todayKey} IST.`,
+  );
+  console.log(`Today generation: skipped for all ${SOW_ACTIVATION_TASK_CODES.length} tasks; target date must be ${effectiveFromKey} IST or later.`);
+  console.log(`EXPECTED CHECKLIST DATE: ${effectiveFromKey} IST; expected rows: ${SOW_ACTIVATION_TASK_CODES.length}.`);
+  for (const employee of SOW_ACTIVATION_BATCH_1) {
+    console.log(`EXPECTED EMPLOYEE | ${employee.employeeName} | ${employee.taskCodes.length} rows`);
+    for (const taskCode of employee.taskCodes) {
+      console.log(`EXPECTED CHECKLIST | ${employee.employeeName} | ${taskCode} | ${checklistCode(taskCode, effectiveFromKey)}`);
+    }
   }
   console.log(`TASKS IN SCOPE: ${tasks.length}`);
   for (const task of tasks) {
@@ -294,6 +308,7 @@ async function commitActivation(
   prisma: PrismaClient,
   actorUserId: string,
   todayKey: string,
+  effectiveFromKey: string,
 ): Promise<number> {
   return prisma.$transaction(async (transaction) => {
     if (istDateKey() !== todayKey) {
@@ -303,6 +318,7 @@ async function commitActivation(
     const { tasks } = await loadScope(transaction);
     const currentTasks = orderedTasks(tasks);
     assertTasksAreDue(currentTasks, todayKey);
+    assertTasksAreDue(currentTasks, effectiveFromKey);
     const toChange = activationTasksToChange(currentTasks);
     if (!toChange.length) return 0;
 
@@ -315,7 +331,7 @@ async function commitActivation(
           active: false,
           updatedAt: task.updatedAt,
         },
-        data: taskActiveUpdateData(false, true, todayKey),
+        data: taskActiveUpdateData(false, true, effectiveFromKey),
       });
       if (updated.count !== 1) {
         throw new Error(`Task "${task.taskCode}" changed during activation; transaction rolled back.`);
@@ -435,6 +451,7 @@ async function main() {
   const now = new Date();
   const ist = currentIstTime(now);
   const todayKey = istDateKey(now);
+  const effectiveFromKey = dateKey(addDays(dbDate(todayKey), 1));
   console.log(`Current IST: ${ist.toFormat("yyyy-LL-dd HH:mm:ss")} IST`);
   console.log(`Mode: ${options.rollback ? "rollback" : "activate"}; ${options.commit ? "commit requested" : "dry-run"}.`);
   assertCommitTime(options, now);
@@ -473,8 +490,9 @@ async function main() {
     }
 
     assertTasksAreDue(currentTasks, todayKey);
+    assertTasksAreDue(currentTasks, effectiveFromKey);
     const toChange = activationTasksToChange(currentTasks);
-    printActivationPlan(currentTasks, employees, toChange);
+    printActivationPlan(currentTasks, employees, toChange, todayKey, effectiveFromKey);
     if (!options.commit) {
       console.log("Dry run only — 0 writes.");
       return;
@@ -486,7 +504,7 @@ async function main() {
 
     const actorUserId = await assertActorExists(prisma, options.actorUserId);
     assertCommitTime(options);
-    const changed = await commitActivation(prisma, actorUserId, todayKey);
+    const changed = await commitActivation(prisma, actorUserId, todayKey, effectiveFromKey);
     console.log(`Activation committed in one transaction: ${changed} tasks activated and audited.`);
   } finally {
     await prisma.$disconnect();

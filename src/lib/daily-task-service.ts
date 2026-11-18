@@ -217,6 +217,11 @@ export async function getDueTaskMasters(targetDate: Date): Promise<DueTaskSet> {
   for (const task of taskMasters) {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
+        if (isBeforeScheduleEffective(
+          task.scheduleEffectiveFrom ? dateKey(task.scheduleEffectiveFrom) : null,
+          targetDateKey,
+        )) break;
+
         if (isPaused(task.id, targetDateKey)) {
           result.skippedPaused += 1;
           break;
@@ -445,7 +450,16 @@ export async function ensureDailyQueueAndLock(runDate: Date) {
     },
     include: { employee: { include: { supervisor: true } }, taskMaster: true },
   });
-  const queuedOnly = queuedItems.filter((item) => item.taskMasterId && item.taskMaster && !dueTaskIds.has(item.taskMasterId));
+  const runDateKey = dateKey(runDate);
+  const queuedOnly = queuedItems.filter((item) =>
+    item.taskMasterId &&
+    item.taskMaster &&
+    !dueTaskIds.has(item.taskMasterId) &&
+    !isBeforeScheduleEffective(
+      item.taskMaster.scheduleEffectiveFrom ? dateKey(item.taskMaster.scheduleEffectiveFrom) : null,
+      runDateKey,
+    ),
+  );
   const createdThisRun = new Set<string>();
   const summary = {
     created: 0,

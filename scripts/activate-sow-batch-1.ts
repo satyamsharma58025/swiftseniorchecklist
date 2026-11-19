@@ -37,6 +37,7 @@ type ScriptTask = BatchTaskSnapshot & {
 type Options = {
   commit: boolean;
   rollback: boolean;
+  purgeToday: boolean;
   allowEarly: boolean;
   actorUserId: string | null;
 };
@@ -57,10 +58,10 @@ function directUrlFromEnvironment(): string {
 }
 
 function parseOptions(args: string[]): Options {
-  const allowed = new Set(["--commit", "--rollback", "--allow-early"]);
+  const allowed = new Set(["--commit", "--rollback", "--purge-today", "--allow-early"]);
   const invalid = args.filter((arg) => !allowed.has(arg) && !arg.startsWith("--actor-user-id="));
   if (invalid.length) {
-    throw new Error("Usage: tsx scripts/activate-sow-batch-1.ts [--rollback] [--commit --actor-user-id=<id> --allow-early]");
+    throw new Error("Usage: tsx scripts/activate-sow-batch-1.ts [--rollback] [--purge-today] [--commit --actor-user-id=<id> --allow-early]");
   }
 
   const actorUserId = args.find((arg) => arg.startsWith("--actor-user-id="))?.slice("--actor-user-id=".length) ?? null;
@@ -68,9 +69,14 @@ function parseOptions(args: string[]): Options {
     throw new Error("Provide at most one non-empty --actor-user-id=<id>.");
   }
 
+  if (args.includes("--rollback") && args.includes("--purge-today")) {
+    throw new Error("Choose either --rollback or --purge-today, not both.");
+  }
+
   return {
     commit: args.includes("--commit"),
     rollback: args.includes("--rollback"),
+    purgeToday: args.includes("--purge-today"),
     allowEarly: args.includes("--allow-early"),
     actorUserId,
   };
@@ -357,6 +363,82 @@ async function commitActivation(
   });
 }
 
+async function loadPurgeTodayRows(
+  database: PrismaClient | Prisma.TransactionClient,
+  taskMasterIds: string[],
+  today: Date,
+) {
+  const [checklists, queueItems] = await Promise.all([
+    database.dailyChecklistItem.findMany({
+      where: { taskMasterId: { in: taskMasterIds }, date: today },
+      select: {
+        id: true,
+        taskMasterId: true,
+        date: true,
+        updatedAt: true,
+        checklistCode: true,
+        status: true,
+        seniorRemarks: true,
+        employeeResponse: true,
+        employeeRespondedAt: true,
+        formSubmissionTimestamp: true,
+        reminderCount: true,
+        lastRemindedAt: true,
+        escalated: true,
+        escalatedAt: true,
+        escalationTier: true,
+        colorStatus: true,
+        deliveryStatus: true,
+        needsManualReconciliation: true,
+        notifications: { select: { id: true } },
+        activity: { select: { id: true } },
+        escalationLogs: { select: { id: true } },
+      },
+    }),
+    database.assignmentQueueItem.findMany({
+      where: { taskMasterId: { in: taskMasterIds }, date: today },
+      select: { id: true, queueCode: true, taskMasterId: true, date: true },
+    }),
+  ]);
+
+  return { checklists: checklists as RollbackChecklistSnapshot[], queueItems: queueItems as RollbackQueueSnapshot[] };
+}
+
+async function commitPurgeToday(
+  prisma: PrismaClient,
+  taskMasterIds: string[],
+  todayKey: string,
+): Promise<{ removedChecklists: number; removedQueueItems: number }> {
+  return prisma.$transaction(async (transaction) => {
+    if (istDateKey() !== todayKey) {
+      throw new Error("IST business date changed during purge; transaction rolled back.");
+    }
+    const today = dbDate(todayKey);
+    const rows = await loadPurgeTodayRows(transaction, taskMasterIds, today);
+    const plan = rollbackRowsToRemove(rows.checklists, rows.queueItems);
+
+    let removedChecklists = 0;
+    for (const item of plan.checklists) {
+      const deleted = await transaction.dailyChecklistItem.deleteMany({
+        where: { id: item.id, date: today, status: "PENDING", updatedAt: item.updatedAt },
+      });
+      if (deleted.count !== 1) throw new Error(`Checklist row "${item.checklistCode}" changed during purge; transaction rolled back.`);
+      removedChecklists += deleted.count;
+    }
+
+    const removedQueueItems = plan.queueItems.length
+      ? await transaction.assignmentQueueItem.deleteMany({
+          where: { id: { in: plan.queueItems.map((item) => item.id) }, date: today },
+        })
+      : { count: 0 };
+    if (removedQueueItems.count !== plan.queueItems.length) {
+      throw new Error("Queue rows changed during purge; transaction rolled back.");
+    }
+
+    return { removedChecklists, removedQueueItems: removedQueueItems.count };
+  }, { isolationLevel: "Serializable", maxWait: 20_000, timeout: 120_000 });
+}
+
 async function commitRollback(
   prisma: PrismaClient,
   actorUserId: string,
@@ -444,6 +526,67 @@ async function commitRollback(
   });
 }
 
+async function verifyActivationCommit(
+  prisma: PrismaClient,
+  effectiveFromKey: string,
+  todayKey: string,
+): Promise<void> {
+  const { tasks } = await loadScope(prisma);
+  const scopedIds = tasks.map((task) => task.id);
+  const counts = await prisma.taskMaster.findMany({
+    where: { id: { in: scopedIds }, active: true },
+    select: { employeeId: true, scheduleEffectiveFrom: true, taskCode: true },
+  });
+
+  for (const employee of SOW_ACTIVATION_BATCH_1) {
+    const activeCount = counts.filter((task) => task.employeeId === employee.employeeId).length;
+    const expectedCount = employee.taskCodes.length;
+    console.log(`VERIFY EMPLOYEE | ${employee.employeeName} | active=${activeCount} | expected=${expectedCount}`);
+    if (activeCount !== expectedCount) {
+      throw new Error(`Post-activation verification failed for ${employee.employeeName}: active=${activeCount}, expected=${expectedCount}.`);
+    }
+  }
+  console.log(`VERIFY TOTAL | active=${counts.length} | expected=35`);
+  if (counts.length !== 35) {
+    throw new Error(`Post-activation verification failed: active=${counts.length}, expected=35.`);
+  }
+
+  const wrongEffectiveFrom = counts.filter(
+    (task) => !task.scheduleEffectiveFrom || dateKey(task.scheduleEffectiveFrom) !== effectiveFromKey,
+  );
+  console.log(`VERIFY scheduleEffectiveFrom | expected=${effectiveFromKey} | mismatches=${wrongEffectiveFrom.length}`);
+  if (wrongEffectiveFrom.length) {
+    throw new Error(`Post-activation verification failed: ${wrongEffectiveFrom.length} tasks have the wrong scheduleEffectiveFrom.`);
+  }
+
+  const changeCount = await prisma.taskMasterChange.count({
+    where: {
+      taskMasterId: { in: scopedIds },
+      reason: ACTIVATION_REASON,
+      createdAt: { gte: dbDate(todayKey) },
+    },
+  });
+  console.log(`VERIFY TaskMasterChange | reason="${ACTIVATION_REASON}" | count=${changeCount} | expected=35`);
+  if (changeCount < 35) {
+    throw new Error(`Post-activation verification failed: ${ACTIVATION_REASON} audit count=${changeCount}, expected=35.`);
+  }
+
+  const todayOrEarlier = dbDate(todayKey);
+  const [checklists, queues, notifications] = await Promise.all([
+    prisma.dailyChecklistItem.count({ where: { taskMasterId: { in: scopedIds }, date: { lte: todayOrEarlier } } }),
+    prisma.assignmentQueueItem.count({ where: { taskMasterId: { in: scopedIds }, date: { lte: todayOrEarlier } } }),
+    prisma.notificationLog.count({
+      where: {
+        checklistItem: { is: { taskMasterId: { in: scopedIds }, date: { lte: todayOrEarlier } } },
+      },
+    }),
+  ]);
+  console.log(`VERIFY today-or-earlier | DailyChecklistItem=${checklists} AssignmentQueueItem=${queues} NotificationLog=${notifications} | expected=0 0 0`);
+  if (checklists !== 0 || queues !== 0 || notifications !== 0) {
+    throw new Error("Post-activation verification failed: scoped today-or-earlier checklist, queue, or notification rows exist.");
+  }
+}
+
 async function main() {
   const directUrl = directUrlFromEnvironment();
   printTarget(directUrl);
@@ -453,7 +596,8 @@ async function main() {
   const todayKey = istDateKey(now);
   const effectiveFromKey = dateKey(addDays(dbDate(todayKey), 1));
   console.log(`Current IST: ${ist.toFormat("yyyy-LL-dd HH:mm:ss")} IST`);
-  console.log(`Mode: ${options.rollback ? "rollback" : "activate"}; ${options.commit ? "commit requested" : "dry-run"}.`);
+  const mode = options.rollback ? "rollback" : options.purgeToday ? "purge-today" : "activate";
+  console.log(`Mode: ${mode}; ${options.commit ? "commit requested" : "dry-run"}.`);
   assertCommitTime(options, now);
   if (options.commit && process.env.CONFIRM_PROD !== "YES") {
     throw new Error("Production writes require --commit and CONFIRM_PROD=YES.");
@@ -467,6 +611,20 @@ async function main() {
     const { employees, tasks } = await loadScope(prisma);
     const currentTasks = orderedTasks(tasks);
     const ids = currentTasks.map((task) => task.id);
+
+    if (options.purgeToday) {
+      const rows = await loadPurgeTodayRows(prisma, ids, dbDate(todayKey));
+      printRollbackPlan(rows.checklists, rows.queueItems);
+      console.log("Purge-today scope: DailyChecklistItem and AssignmentQueueItem for the 35 scoped tasks only.");
+      if (!options.commit) {
+        console.log("Dry run only — 0 writes.");
+        return;
+      }
+
+      const result = await commitPurgeToday(prisma, ids, todayKey);
+      console.log(`Purge-today committed: ${result.removedChecklists} checklist rows and ${result.removedQueueItems} queue rows removed.`);
+      return;
+    }
 
     if (options.rollback) {
       const rows = await loadRollbackRows(prisma, ids, dbDate(todayKey));
@@ -499,6 +657,7 @@ async function main() {
     }
     if (!toChange.length) {
       console.log("All 35 scoped tasks are already active; idempotent no-op, 0 writes.");
+      await verifyActivationCommit(prisma, effectiveFromKey, todayKey);
       return;
     }
 
@@ -506,6 +665,7 @@ async function main() {
     assertCommitTime(options);
     const changed = await commitActivation(prisma, actorUserId, todayKey, effectiveFromKey);
     console.log(`Activation committed in one transaction: ${changed} tasks activated and audited.`);
+    await verifyActivationCommit(prisma, effectiveFromKey, todayKey);
   } finally {
     await prisma.$disconnect();
   }

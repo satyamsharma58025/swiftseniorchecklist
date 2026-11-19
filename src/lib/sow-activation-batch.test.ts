@@ -10,6 +10,12 @@ import {
   type BatchTaskSnapshot,
   type RollbackChecklistSnapshot,
 } from "@/lib/sow-activation-batch";
+import {
+  SOW_ACTIVATION_BATCH_2,
+  SOW_ACTIVATION_BATCH_2_TASK_CODES,
+  SOW_RETIREMENT_BATCH_2,
+  SOW_RETIREMENT_BATCH_2_TASK_CODES,
+} from "@/lib/sow-activation-batch-2";
 import { taskActiveUpdateData } from "@/lib/task-activation";
 
 const taskSnapshots = (): BatchTaskSnapshot[] => SOW_ACTIVATION_BATCH_1.flatMap((employee) =>
@@ -83,6 +89,24 @@ describe("SOW activation batch 1 scope", () => {
     expect(() => activationTasksToChange(tasks.map((task, index) =>
       index === 0 ? { ...task, active: true } : task,
     ))).toThrow("mixed active state");
+  });
+});
+
+describe("SOW activation batch 2 scope", () => {
+  it("contains the approved 56 SOW tasks and 36 non-SOW retirements for nine employees", () => {
+    expect(SOW_ACTIVATION_BATCH_2).toHaveLength(9);
+    expect(SOW_ACTIVATION_BATCH_2_TASK_CODES).toHaveLength(56);
+    expect(new Set(SOW_ACTIVATION_BATCH_2_TASK_CODES).size).toBe(56);
+    expect(SOW_ACTIVATION_BATCH_2.map(({ taskCodes }) => taskCodes.length)).toEqual([
+      12, 10, 10, 8, 5, 3, 3, 3, 2,
+    ]);
+
+    expect(SOW_RETIREMENT_BATCH_2).toHaveLength(5);
+    expect(SOW_RETIREMENT_BATCH_2_TASK_CODES).toHaveLength(36);
+    expect(new Set(SOW_RETIREMENT_BATCH_2_TASK_CODES).size).toBe(36);
+    expect(SOW_RETIREMENT_BATCH_2.map(({ taskCodes }) => taskCodes.length)).toEqual([1, 2, 7, 2, 24]);
+    const retirementCodes = new Set<string>(SOW_RETIREMENT_BATCH_2_TASK_CODES);
+    expect(SOW_ACTIVATION_BATCH_2_TASK_CODES.some((code) => retirementCodes.has(code))).toBe(false);
   });
 });
 

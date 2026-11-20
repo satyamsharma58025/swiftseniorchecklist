@@ -293,6 +293,29 @@ describe("ensureDailyQueueAndLock", () => {
     logError.mockRestore();
   });
 
+  it("materializes independent tasks concurrently with a bounded worker count", async () => {
+    const tasks = Array.from({ length: 16 }, (_, index) => baseTask({
+      id: `tm-${index + 1}`,
+      taskCode: `TASK-${String(index + 1).padStart(2, "0")}`,
+    }));
+    let activeCreates = 0;
+    let maxConcurrentCreates = 0;
+    db.taskMaster.findMany.mockResolvedValue(tasks);
+    db.dailyChecklistItem.create.mockImplementation(async ({ data }) => {
+      activeCreates += 1;
+      maxConcurrentCreates = Math.max(maxConcurrentCreates, activeCreates);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeCreates -= 1;
+      return { id: `item-${data.taskMasterId}`, ...data };
+    });
+
+    const result = await ensureDailyQueueAndLock(runDate);
+
+    expect(result).toMatchObject({ created: 16, failed: [] });
+    expect(maxConcurrentCreates).toBeGreaterThan(1);
+    expect(maxConcurrentCreates).toBeLessThanOrEqual(8);
+  });
+
   it("recovers a queue P2002 by rereading the task/date row", async () => {
     const task = baseTask();
     const existingQueue = { id: "queue-raced", taskMasterId: task.id, date: runDate };

@@ -475,35 +475,43 @@ export async function ensureDailyQueueAndLock(runDate: Date) {
     ...queuedOnly.map((item) => ({ taskCode: item.taskMaster!.taskCode, task: null, queueItem: item as QueueMaterializationItem })),
   ];
 
-  for (const candidate of candidates) {
-    let completed = false;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      try {
-        if (candidate.task) await ensureAssignmentQueue(runDate, [candidate.task]);
-        const [result] = await materializeDailyChecklist(
-          runDate,
-          candidate.task ? [candidate.task] : [],
-          candidate.queueItem ? [candidate.queueItem] : [],
-        );
-        if (!result) throw new Error("Task materialization returned no checklist row");
+  let nextCandidate = 0;
+  const processCandidates = async () => {
+    while (nextCandidate < candidates.length) {
+      const candidate = candidates[nextCandidate++];
+      let completed = false;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          if (candidate.task) await ensureAssignmentQueue(runDate, [candidate.task]);
+          const [result] = await materializeDailyChecklist(
+            runDate,
+            candidate.task ? [candidate.task] : [],
+            candidate.queueItem ? [candidate.queueItem] : [],
+          );
+          if (!result) throw new Error("Task materialization returned no checklist row");
 
-        if (result.created || createdThisRun.has(result.taskMasterId)) {
-          summary.created += 1;
-          createdThisRun.add(result.taskMasterId);
-        } else {
-          summary.existing += 1;
-        }
-        completed = true;
-        break;
-      } catch (error) {
-        logTaskFailure(runDate, candidate.taskCode, attempt, error);
-        if (attempt === 2) {
-          summary.failed.push({ taskCode: candidate.taskCode, error: errorMessage(error) });
+          if (result.created || createdThisRun.has(result.taskMasterId)) {
+            summary.created += 1;
+            createdThisRun.add(result.taskMasterId);
+          } else {
+            summary.existing += 1;
+          }
+          completed = true;
+          break;
+        } catch (error) {
+          logTaskFailure(runDate, candidate.taskCode, attempt, error);
+          if (attempt === 2) {
+            summary.failed.push({ taskCode: candidate.taskCode, error: errorMessage(error) });
+          }
         }
       }
+      if (!completed) continue;
     }
-    if (!completed) continue;
-  }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(8, candidates.length) }, () => processCandidates()),
+  );
 
   return summary;
 }

@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export type EmployeeSummary = {
   id: string;
   name: string;
@@ -26,7 +24,7 @@ export function EmployeeTabs({
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <Link
+      <a
         href={`/checklist/${date}?employeeId=all#employee-checklist`}
         aria-current={activeId === "all" ? "page" : undefined}
         className={[
@@ -67,14 +65,14 @@ export function EmployeeTabs({
             </span>
           </>
         ) : null}
-      </Link>
+      </a>
 
       {employees.map((employee) => {
         const isActive = employee.id === activeId;
         const progress = employee.total ? (employee.done / employee.total) * 100 : 0;
 
         return (
-          <Link
+          <a
             key={employee.id}
             href={`/checklist/${date}?employeeId=${encodeURIComponent(employee.id)}#employee-checklist`}
             aria-current={isActive ? "page" : undefined}
@@ -110,7 +108,7 @@ export function EmployeeTabs({
             <span className={`-mt-3 text-xs font-bold ${isActive ? "text-paper/75" : "text-ink/70"}`}>
               {employee.pending + employee.notDone} tasks still open
             </span>
-          </Link>
+          </a>
         );
       })}
     </div>

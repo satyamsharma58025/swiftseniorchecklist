@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 export function DateControl({
@@ -14,11 +14,13 @@ export function DateControl({
   selectedEmployeeId?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const dateIndex = dates.indexOf(date);
   const previousDate = dateIndex > 0 ? dates[dateIndex - 1] : undefined;
   const nextDate = dateIndex >= 0 ? dates[dateIndex + 1] : undefined;
-  const employeeQuery = selectedEmployeeId
-    ? `?employeeId=${encodeURIComponent(selectedEmployeeId)}`
+  const currentEmployeeId = searchParams.get("employeeId") ?? selectedEmployeeId;
+  const employeeQuery = currentEmployeeId
+    ? `?employeeId=${encodeURIComponent(currentEmployeeId)}`
     : "";
   const dateHref = (day: string) => `/checklist/${day}${employeeQuery}`;
 

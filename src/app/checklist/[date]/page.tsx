@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 
 import { AutoRefresh } from "@/app/checklist/_components/AutoRefresh";
 import { BrandHeader } from "@/app/checklist/_components/BrandHeader";
-import { ChecklistPanel } from "@/app/checklist/_components/ChecklistPanel";
 import { DateControl } from "@/app/checklist/_components/DateControl";
 import { EmployeeTabs } from "@/app/checklist/_components/EmployeeTabs";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -168,10 +167,33 @@ export default async function ChecklistDatePage({
     notFound();
   }
 
-  const displayedRows = isAll
-    ? rows
-    : rows.filter((row) => row.employeeName === selectedEmployee?.name);
   const employeeByName = new Map(targetEmployees.map((employee) => [employee.name, employee]));
+  const checklistItems = rows.map((row) => ({
+    id: row.id,
+    checklistCode: row.checklistCode,
+    taskDescription: row.taskDescription,
+    employeeName: row.employeeName,
+    designation: employeeByName.get(row.employeeName)?.designation ?? null,
+    cadence: row.taskMaster.cadence,
+    category: row.taskMaster.category,
+    scheduleDetail: row.taskMaster.scheduleDetail,
+    section: sectionFor({
+      cadence: row.taskMaster.cadence,
+      status: row.status,
+      escalated: row.escalated,
+      isQueueOnly: row.taskMaster.taskCode.startsWith("MANUAL-"),
+      isCarriedForward: carriedTaskIds.has(row.taskMasterId),
+    }),
+    status: row.status,
+    priority: row.priority,
+    reminderCount: row.reminderCount,
+    escalated: row.escalated,
+    seniorRemarks: row.seniorRemarks,
+    employeeResponse: row.employeeResponse,
+    colorStatus: row.colorStatus,
+    formSubmittedAt: row.formSubmissionTimestamp ? row.formSubmissionTimestamp.toISOString() : null,
+    updatedAt: row.updatedAt.toISOString(),
+  }));
 
   const lastFormSubmission = lastFormSubmissionAt ? new Date(lastFormSubmissionAt) : null;
   const dayTotals = {
@@ -239,54 +261,7 @@ export default async function ChecklistDatePage({
             employees={employeeSummaries}
             selectedEmployeeId={isAll ? "all" : selectedEmployee?.id}
             allSummary={dayTotals}
-          />
-        </section>
-
-        <section id="employee-checklist" className="neo-border bg-white p-4 neo-shadow-sm md:p-6">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">
-                {isAll ? "All Floor Tasks" : "Employee"}
-              </p>
-              <h2 className="brand-display mt-2 text-3xl text-ink">
-                {isAll ? "All Employees" : selectedEmployee?.name}
-              </h2>
-              <p className="mt-1 text-sm text-ink/75">
-                {isAll ? `${employeeSummaries.length} employees with assigned tasks` : selectedEmployee?.designation}
-              </p>
-            </div>
-            <span className="sticker bg-electric-lime text-ink">{displayedRows.length} tasks</span>
-          </div>
-
-          <ChecklistPanel
-            key={displayedRows.map((row) => `${row.id}:${row.updatedAt.getTime()}`).join("|")}
-            employeeName={isAll ? "All Employees" : selectedEmployee?.name ?? "Employee"}
-            emptyHref={`/queue/${selectedDate}`}
-            items={displayedRows.map((row) => ({
-              id: row.id,
-              checklistCode: row.checklistCode,
-              taskDescription: row.taskDescription,
-              employeeName: row.employeeName,
-              designation: employeeByName.get(row.employeeName)?.designation ?? null,
-              cadence: row.taskMaster.cadence,
-              category: row.taskMaster.category,
-              scheduleDetail: row.taskMaster.scheduleDetail,
-              section: sectionFor({
-                cadence: row.taskMaster.cadence,
-                status: row.status,
-                escalated: row.escalated,
-                isQueueOnly: row.taskMaster.taskCode.startsWith("MANUAL-"),
-                isCarriedForward: carriedTaskIds.has(row.taskMasterId),
-              }),
-              status: row.status,
-              priority: row.priority,
-              reminderCount: row.reminderCount,
-              escalated: row.escalated,
-              seniorRemarks: row.seniorRemarks,
-              employeeResponse: row.employeeResponse,
-              colorStatus: row.colorStatus,
-              formSubmittedAt: row.formSubmissionTimestamp ? row.formSubmissionTimestamp.toISOString() : null,
-            }))}
+            items={checklistItems}
           />
         </section>
 

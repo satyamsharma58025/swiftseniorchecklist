@@ -45,6 +45,7 @@ export type ChecklistTaskRow = {
   seniorRemarks?: string | null;
   employeeResponse?: string | null;
   formSubmittedAt?: string | null;
+  updatedAt?: string;
 };
 
 export type SectionGroup = {

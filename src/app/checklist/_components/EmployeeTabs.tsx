@@ -1,3 +1,9 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { ChecklistPanel, type ChecklistTaskRow } from "@/app/checklist/_components/ChecklistPanel";
+
 export type EmployeeSummary = {
   id: string;
   name: string;
@@ -9,23 +15,57 @@ export type EmployeeSummary = {
   escalated: number;
 };
 
+export function tasksForEmployee(
+  items: ChecklistTaskRow[],
+  employees: EmployeeSummary[],
+  employeeId?: string,
+) {
+  if (employeeId === "all") return items;
+  const employee = employees.find((candidate) => candidate.id === employeeId) ?? employees[0];
+  return items.filter((item) => item.employeeName === employee?.name);
+}
+
 export function EmployeeTabs({
   date,
   employees,
   selectedEmployeeId,
   allSummary,
+  items,
 }: {
   date: string;
   employees: EmployeeSummary[];
   selectedEmployeeId?: string;
   allSummary?: { total: number; done: number; pending: number; notDone: number };
+  items: ChecklistTaskRow[];
 }) {
-  const activeId = selectedEmployeeId ?? employees[0]?.id;
+  const [activeId, setActiveId] = useState(selectedEmployeeId ?? employees[0]?.id);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const requestedId = new URLSearchParams(window.location.search).get("employeeId");
+      setActiveId(requestedId ?? employees[0]?.id);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [employees]);
+
+  const selectedEmployee = employees.find((employee) => employee.id === activeId) ?? employees[0];
+  const isAll = activeId === "all";
+  const displayedRows = tasksForEmployee(items, employees, activeId);
+
+  function selectEmployee(employeeId: string) {
+    setActiveId(employeeId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("employeeId", employeeId);
+    url.hash = "";
+    window.history.pushState(null, "", url);
+  }
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <a
-        href={`/checklist/${date}?employeeId=all#employee-checklist`}
+      <button
+        type="button"
+        onClick={() => selectEmployee("all")}
         aria-current={activeId === "all" ? "page" : undefined}
         className={[
           "neo-press flex min-w-0 flex-col justify-between gap-4 border-[3px] border-ink p-3 text-left",
@@ -65,16 +105,17 @@ export function EmployeeTabs({
             </span>
           </>
         ) : null}
-      </a>
+      </button>
 
       {employees.map((employee) => {
         const isActive = employee.id === activeId;
         const progress = employee.total ? (employee.done / employee.total) * 100 : 0;
 
         return (
-          <a
+          <button
+            type="button"
             key={employee.id}
-            href={`/checklist/${date}?employeeId=${encodeURIComponent(employee.id)}#employee-checklist`}
+            onClick={() => selectEmployee(employee.id)}
             aria-current={isActive ? "page" : undefined}
             className={[
               "neo-press flex min-w-0 flex-col justify-between gap-4 border-[3px] border-ink p-3 text-left",
@@ -108,9 +149,33 @@ export function EmployeeTabs({
             <span className={`-mt-3 text-xs font-bold ${isActive ? "text-paper/75" : "text-ink/70"}`}>
               {employee.pending + employee.notDone} tasks still open
             </span>
-          </a>
+          </button>
         );
       })}
+
+      <section id="employee-checklist" className="neo-border col-span-full bg-white p-4 neo-shadow-sm md:p-6">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">
+              {isAll ? "All Floor Tasks" : "Employee"}
+            </p>
+            <h2 className="brand-display mt-2 text-3xl text-ink">
+              {isAll ? "All Employees" : selectedEmployee?.name}
+            </h2>
+            <p className="mt-1 text-sm text-ink/75">
+              {isAll ? `${employees.length} employees with assigned tasks` : selectedEmployee?.designation}
+            </p>
+          </div>
+          <span className="sticker bg-electric-lime text-ink">{displayedRows.length} tasks</span>
+        </div>
+
+        <ChecklistPanel
+          key={displayedRows.map((row) => `${row.id}:${row.updatedAt ?? ""}`).join("|")}
+          employeeName={isAll ? "All Employees" : selectedEmployee?.name ?? "Employee"}
+          emptyHref={`/queue/${date}`}
+          items={displayedRows}
+        />
+      </section>
     </div>
   );
 }

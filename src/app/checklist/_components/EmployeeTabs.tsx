@@ -27,7 +27,7 @@ export function EmployeeTabs({
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <Link
-        href={`/checklist/${date}?employeeId=all`}
+        href={`/checklist/${date}?employeeId=all#employee-checklist`}
         aria-current={activeId === "all" ? "page" : undefined}
         className={[
           "neo-press flex min-w-0 flex-col justify-between gap-4 border-[3px] border-ink p-3 text-left",
@@ -76,7 +76,7 @@ export function EmployeeTabs({
         return (
           <Link
             key={employee.id}
-            href={`/checklist/${date}?employeeId=${encodeURIComponent(employee.id)}`}
+            href={`/checklist/${date}?employeeId=${encodeURIComponent(employee.id)}#employee-checklist`}
             aria-current={isActive ? "page" : undefined}
             className={[
               "neo-press flex min-w-0 flex-col justify-between gap-4 border-[3px] border-ink p-3 text-left",

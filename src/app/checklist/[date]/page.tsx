@@ -51,7 +51,35 @@ export default async function ChecklistDatePage({
   const tomorrow = dateKey(addDays(dbDate(today), 1));
   const mayGenerate = selectedDate >= today && selectedDate <= tomorrow;
   const targetDate = dbDate(selectedDate);
-  const [employees] = await Promise.all([
+  if (mayGenerate) {
+    const { ensureDailyQueueAndLock } = await import("@/lib/daily-task-service");
+    await ensureDailyQueueAndLock(targetDate);
+  }
+
+  const readRows = () => prisma.dailyChecklistItem.findMany({
+    where: { date: targetDate },
+    orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
+    select: {
+      id: true,
+      checklistCode: true,
+      taskMasterId: true,
+      employeeName: true,
+      taskDescription: true,
+      status: true,
+      escalated: true,
+      priority: true,
+      reminderCount: true,
+      seniorRemarks: true,
+      employeeResponse: true,
+      colorStatus: true,
+      formSubmissionTimestamp: true,
+      updatedAt: true,
+      taskMaster: {
+        select: { taskCode: true, cadence: true, category: true, scheduleDetail: true },
+      },
+    },
+  });
+  const [employees, rows, priorOpenItems] = await Promise.all([
     prisma.employee.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -60,43 +88,7 @@ export default async function ChecklistDatePage({
         designation: true,
       },
     }),
-    mayGenerate
-      ? import("@/lib/daily-task-service").then(({ ensureDailyQueueAndLock }) =>
-          ensureDailyQueueAndLock(targetDate),
-        )
-      : Promise.resolve(null),
-  ]);
-
-  const targetEmployees = employees.length
-    ? employees
-    : EMPLOYEE_NAMES.map((name, index) => ({ id: `seed-${index + 1}`, name, designation: "Employee" }));
-
-  const isAll = resolvedParams.employeeId === "all";
-
-  const [rows, priorOpenItems] = await Promise.all([
-    prisma.dailyChecklistItem.findMany({
-      where: { date: targetDate },
-      orderBy: [{ employeeName: "asc" }, { taskDescription: "asc" }],
-      select: {
-        id: true,
-        checklistCode: true,
-        taskMasterId: true,
-        employeeName: true,
-        taskDescription: true,
-        status: true,
-        escalated: true,
-        priority: true,
-        reminderCount: true,
-        seniorRemarks: true,
-        employeeResponse: true,
-        colorStatus: true,
-        formSubmissionTimestamp: true,
-        updatedAt: true,
-        taskMaster: {
-          select: { taskCode: true, cadence: true, category: true, scheduleDetail: true },
-        },
-      },
-    }),
+    readRows(),
     prisma.dailyChecklistItem.findMany({
       where: {
         date: addDays(targetDate, -1),
@@ -105,6 +97,13 @@ export default async function ChecklistDatePage({
       select: { taskMasterId: true },
     }),
   ]);
+
+  const targetEmployees = employees.length
+    ? employees
+    : EMPLOYEE_NAMES.map((name, index) => ({ id: `seed-${index + 1}`, name, designation: "Employee" }));
+
+  const isAll = resolvedParams.employeeId === "all";
+
   const carriedTaskIds = new Set(priorOpenItems.map((item) => item.taskMasterId));
 
   const summaryByEmployeeName = new Map<string, {
@@ -243,7 +242,7 @@ export default async function ChecklistDatePage({
           />
         </section>
 
-        <section className="neo-border bg-white p-4 neo-shadow-sm md:p-6">
+        <section id="employee-checklist" className="neo-border bg-white p-4 neo-shadow-sm md:p-6">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-ink/70">
